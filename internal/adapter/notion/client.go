@@ -296,6 +296,27 @@ func asArray(value any) ([]any, bool) {
 	return list, ok
 }
 
+func asInt(value any) (int, bool) {
+	switch number := value.(type) {
+	case int:
+		return number, true
+	case int32:
+		return int(number), true
+	case int64:
+		return int(number), true
+	case float64:
+		return int(number), true
+	case json.Number:
+		result, err := number.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(result), true
+	default:
+		return 0, false
+	}
+}
+
 func buildPlainTextRichText(content string) []map[string]any {
 	if strings.TrimSpace(content) == "" {
 		return []map[string]any{}
@@ -332,12 +353,10 @@ type notionPage struct {
 	Properties map[string]any `json:"properties"`
 }
 
-type notionBlock struct {
-	ID string `json:"id"`
-}
-
 type notionBlockChildrenResponse struct {
-	Results []notionBlock `json:"results"`
+	Results    []map[string]any `json:"results"`
+	HasMore    bool             `json:"has_more"`
+	NextCursor *string          `json:"next_cursor"`
 }
 
 type notionUser struct {

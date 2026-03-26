@@ -12,6 +12,96 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
+// GetBlock 读取单个 block 的详情。
+func (c *Client) GetBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	blockID, appErr := requireIDField(input, "block_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodGet,
+		"/v1/blocks/"+url.PathEscape(blockID),
+		nil,
+		nil,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	block, appErr := decodeBlockResponse(responseBody, "failed to decode Notion block response")
+	if appErr != nil {
+		return nil, appErr
+	}
+	return normalizeBlockData(block), nil
+}
+
+// ListBlockChildren 读取指定 block 下的直接子块列表。
+func (c *Client) ListBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	blockID, appErr := requireIDField(input, "block_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	query := url.Values{}
+	if pageSize, ok := asInt(input["page_size"]); ok && pageSize > 0 {
+		query.Set("page_size", fmt.Sprintf("%d", pageSize))
+	}
+	if pageToken, ok := asString(input["page_token"]); ok && strings.TrimSpace(pageToken) != "" {
+		query.Set("start_cursor", strings.TrimSpace(pageToken))
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodGet,
+		"/v1/blocks/"+url.PathEscape(blockID)+"/children",
+		query,
+		nil,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response notionBlockChildrenResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion block children response: %v", err))
+	}
+
+	items := make([]map[string]any, 0, len(response.Results))
+	for _, item := range response.Results {
+		items = append(items, normalizeBlockData(item))
+	}
+
+	nextPageToken := ""
+	if response.NextCursor != nil {
+		nextPageToken = strings.TrimSpace(*response.NextCursor)
+	}
+
+	return map[string]any{
+		"block_id":        blockID,
+		"items":           items,
+		"next_page_token": nextPageToken,
+		"has_more":        response.HasMore,
+	}, nil
+}
+
 // AppendBlockChildren 向页面或块末尾追加子块。
 func (c *Client) AppendBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
@@ -60,8 +150,8 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile config.Profile
 
 	childIDs := make([]string, 0, len(response.Results))
 	for _, item := range response.Results {
-		if strings.TrimSpace(item.ID) != "" {
-			childIDs = append(childIDs, item.ID)
+		if childID, ok := asString(item["id"]); ok && strings.TrimSpace(childID) != "" {
+			childIDs = append(childIDs, strings.TrimSpace(childID))
 		}
 	}
 
@@ -70,6 +160,80 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile config.Profile
 		"appended_count": len(childIDs),
 		"child_ids":      childIDs,
 	}, nil
+}
+
+// UpdateBlock 更新指定 block 的正文内容。
+func (c *Client) UpdateBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	blockID, appErr := requireIDField(input, "block_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	payload, appErr := buildUpdateBlockPayload(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPatch,
+		"/v1/blocks/"+url.PathEscape(blockID),
+		nil,
+		payload,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	block, appErr := decodeBlockResponse(responseBody, "failed to decode Notion block update response")
+	if appErr != nil {
+		return nil, appErr
+	}
+	return normalizeBlockData(block), nil
+}
+
+// DeleteBlock 将指定 block 移入回收站。
+func (c *Client) DeleteBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	blockID, appErr := requireIDField(input, "block_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodDelete,
+		"/v1/blocks/"+url.PathEscape(blockID),
+		nil,
+		nil,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	block, appErr := decodeBlockResponse(responseBody, "failed to decode Notion block delete response")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	data := normalizeBlockData(block)
+	data["deleted"] = true
+	return data, nil
 }
 
 // buildBlockChildren 将 Clawrise 的简化块结构映射为 Notion 块。
@@ -97,6 +261,33 @@ func buildBlockChildren(raw any) ([]map[string]any, *apperr.AppError) {
 		children = append(children, child)
 	}
 	return children, nil
+}
+
+func buildUpdateBlockPayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	blockInput := map[string]any{}
+	if rawBlock, exists := input["block"]; exists {
+		record, ok := asMap(rawBlock)
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "block must be an object")
+		}
+		blockInput = cloneMap(record)
+	} else {
+		blockInput = cloneMap(input)
+		delete(blockInput, "block_id")
+		delete(blockInput, "in_trash")
+	}
+
+	payload, appErr := buildBlock(blockInput)
+	if appErr != nil {
+		return nil, appErr
+	}
+	delete(payload, "object")
+
+	if inTrash, ok := asBool(input["in_trash"]); ok {
+		payload["in_trash"] = inTrash
+	}
+
+	return payload, nil
 }
 
 func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
@@ -203,4 +394,114 @@ func buildRichText(textInput any, richTextInput any) ([]map[string]any, *apperr.
 		return []map[string]any{}, nil
 	}
 	return nil, apperr.New("INVALID_INPUT", "text must be a string")
+}
+
+func decodeBlockResponse(responseBody []byte, decodeErrorMessage string) (map[string]any, *apperr.AppError) {
+	var block map[string]any
+	if err := json.Unmarshal(responseBody, &block); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("%s: %v", decodeErrorMessage, err))
+	}
+
+	blockID, ok := asString(block["id"])
+	if !ok || strings.TrimSpace(blockID) == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "block id is empty in Notion response")
+	}
+	return block, nil
+}
+
+func normalizeBlockData(block map[string]any) map[string]any {
+	blockID, _ := asString(block["id"])
+	blockType, _ := asString(block["type"])
+	hasChildren, _ := asBool(block["has_children"])
+	archived, _ := asBool(block["archived"])
+	inTrash, _ := asBool(block["in_trash"])
+
+	result := map[string]any{
+		"block_id":     strings.TrimSpace(blockID),
+		"type":         strings.TrimSpace(blockType),
+		"has_children": hasChildren,
+		"archived":     archived || inTrash,
+		"in_trash":     inTrash,
+		"plain_text":   extractBlockPlainText(block),
+		"raw":          cloneMap(block),
+	}
+
+	if parent, ok := asMap(block["parent"]); ok && len(parent) > 0 {
+		result["parent"] = cloneMap(parent)
+	}
+	if checked, ok := extractTodoChecked(block); ok {
+		result["checked"] = checked
+	}
+	if language := extractCodeLanguage(block); language != "" {
+		result["language"] = language
+	}
+
+	return result
+}
+
+func extractBlockPlainText(block map[string]any) string {
+	blockType, ok := asString(block["type"])
+	if !ok || strings.TrimSpace(blockType) == "" {
+		return ""
+	}
+
+	body, ok := asMap(block[blockType])
+	if !ok {
+		return ""
+	}
+
+	if richText, ok := asArray(body["rich_text"]); ok {
+		return extractRichTextPlainText(richText)
+	}
+	if title, ok := asString(body["title"]); ok {
+		return strings.TrimSpace(title)
+	}
+	if caption, ok := asArray(body["caption"]); ok {
+		return extractRichTextPlainText(caption)
+	}
+	return ""
+}
+
+func extractRichTextPlainText(items []any) string {
+	var builder strings.Builder
+	for _, item := range items {
+		record, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		if plainText, ok := asString(record["plain_text"]); ok {
+			builder.WriteString(plainText)
+			continue
+		}
+		text, ok := asMap(record["text"])
+		if !ok {
+			continue
+		}
+		content, ok := asString(text["content"])
+		if ok {
+			builder.WriteString(content)
+		}
+	}
+	return builder.String()
+}
+
+func extractTodoChecked(block map[string]any) (bool, bool) {
+	body, ok := asMap(block["to_do"])
+	if !ok {
+		return false, false
+	}
+	checked, ok := asBool(body["checked"])
+	return checked, ok
+}
+
+func extractCodeLanguage(block map[string]any) string {
+	body, ok := asMap(block["code"])
+	if !ok {
+		return ""
+	}
+	language, ok := asString(body["language"])
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(language)
 }

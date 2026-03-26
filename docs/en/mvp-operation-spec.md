@@ -61,7 +61,11 @@ Notion:
 
 - `notion.page.create`
 - `notion.page.get`
+- `notion.block.get`
+- `notion.block.list_children`
 - `notion.block.append`
+- `notion.block.update`
+- `notion.block.delete`
 
 P1 operations:
 
@@ -438,6 +442,97 @@ Success output should include:
 - `block_id`
 - `appended_count`
 - appended child identifiers
+
+### notion.block.get
+
+Purpose:
+
+- read a single block
+- normalize block-level content metadata
+
+Required fields:
+
+- `block_id`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `block_id`
+- `type`
+- `has_children`
+- `plain_text`
+
+### notion.block.list_children
+
+Purpose:
+
+- list direct children under a block
+- support structured content traversal
+
+Required fields:
+
+- `block_id`
+
+Optional fields:
+
+- `page_size`
+- `page_token`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+### notion.block.update
+
+Purpose:
+
+- update one block in place
+- support precise structured content editing
+
+Required fields:
+
+- `block_id`
+- block payload
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `block_id`
+- `type`
+- `plain_text`
+
+### notion.block.delete
+
+Purpose:
+
+- archive one block
+- support structured content removal
+
+Required fields:
+
+- `block_id`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `block_id`
+- `archived`
+- `in_trash`
 
 ### notion.user.get
 

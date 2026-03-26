@@ -115,7 +115,11 @@ Notion：
 
 - `notion.page.create`
 - `notion.page.get`
+- `notion.block.get`
+- `notion.block.list_children`
 - `notion.block.append`
+- `notion.block.update`
+- `notion.block.delete`
 
 ### 3.2 P1 可后置
 
@@ -469,7 +473,98 @@ P1 读操作。
 - `appended_count`
 - 追加后的子 block 标识
 
-### 5.4 notion.user.get
+### 5.4 notion.block.get
+
+用途：
+
+- 读取单个 block
+- 验证 block 级内容标准化输出
+
+必填字段：
+
+- `block_id`
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `block_id`
+- `type`
+- `has_children`
+- `plain_text`
+
+### 5.5 notion.block.list_children
+
+用途：
+
+- 列出指定 block 下的直接子 block
+- 支持结构化正文遍历
+
+必填字段：
+
+- `block_id`
+
+可选字段：
+
+- `page_size`
+- `page_token`
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+### 5.6 notion.block.update
+
+用途：
+
+- 原地更新单个 block
+- 支持精细化结构化编辑
+
+必填字段：
+
+- `block_id`
+- block 内容载荷
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `block_id`
+- `type`
+- `plain_text`
+
+### 5.7 notion.block.delete
+
+用途：
+
+- 归档单个 block
+- 支持结构化内容删除
+
+必填字段：
+
+- `block_id`
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `block_id`
+- `archived`
+- `in_trash`
+
+### 5.8 notion.user.get
 
 P1 读操作。
 

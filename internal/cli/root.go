@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
+	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
+	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
 	"github.com/clawrise/clawrise-cli/internal/config"
 	"github.com/clawrise/clawrise-cli/internal/output"
 	"github.com/clawrise/clawrise-cli/internal/runtime"
@@ -39,7 +41,10 @@ func Run(args []string, deps Dependencies) error {
 		return err
 	}
 
-	registry := adapter.NewRegistry()
+	registry, err := newDefaultRegistry()
+	if err != nil {
+		return err
+	}
 	executor := runtime.NewExecutor(store, registry)
 
 	if len(args) == 0 {
@@ -63,6 +68,23 @@ func Run(args []string, deps Dependencies) error {
 	default:
 		return runOperation(args, deps.Stdout, deps.Stderr, executor)
 	}
+}
+
+func newDefaultRegistry() (*adapter.Registry, error) {
+	registry := adapter.NewRegistry()
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		return nil, err
+	}
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
+	if err != nil {
+		return nil, err
+	}
+
+	feishuadapter.RegisterOperations(registry, feishuClient)
+	notionadapter.RegisterOperations(registry, notionClient)
+	return registry, nil
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {

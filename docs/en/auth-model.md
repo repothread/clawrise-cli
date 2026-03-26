@@ -282,7 +282,11 @@ Current MVP execution matrix:
 - `feishu.contact.user.get` -> `bot`
 - `notion.page.create` -> `integration`
 - `notion.page.get` -> `integration`
+- `notion.block.get` -> `integration`
+- `notion.block.list_children` -> `integration`
 - `notion.block.append` -> `integration`
+- `notion.block.update` -> `integration`
+- `notion.block.delete` -> `integration`
 - `notion.user.get` -> `integration`
 
 ## 10. Security Rules

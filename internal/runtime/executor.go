@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
-	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
-	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
@@ -20,27 +18,14 @@ import (
 type Executor struct {
 	store    *config.Store
 	registry *adapter.Registry
-	feishu   *feishuadapter.Client
-	notion   *notionadapter.Client
 	now      func() time.Time
 }
 
 // NewExecutor creates a new executor.
 func NewExecutor(store *config.Store, registry *adapter.Registry) *Executor {
-	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
-	if err != nil {
-		panic(err)
-	}
-	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
-	if err != nil {
-		panic(err)
-	}
-
 	return &Executor{
 		store:    store,
 		registry: registry,
-		feishu:   feishuClient,
-		notion:   notionClient,
 		now:      time.Now,
 	}
 }
@@ -126,44 +111,21 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		defer cancel()
 	}
 
-	switch canonicalOperation {
-	case "feishu.calendar.event.create":
-		data, appErr := e.feishu.CreateCalendarEvent(ctx, profile, input, idempotency.Key)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, appErr, executionProfile), nil
-	case "feishu.wiki.space.list":
-		data, appErr := e.feishu.ListWikiSpaces(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, nil, appErr, executionProfile), nil
-	case "feishu.wiki.node.list":
-		data, appErr := e.feishu.ListWikiNodes(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, nil, appErr, executionProfile), nil
-	case "feishu.wiki.node.create":
-		data, appErr := e.feishu.CreateWikiNode(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, appErr, executionProfile), nil
-	case "feishu.docs.document.append_blocks":
-		clientToken := ""
-		if idempotency != nil {
-			clientToken = idempotency.Key
-		}
-		data, appErr := e.feishu.AppendDocumentBlocks(ctx, profile, input, clientToken)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, appErr, executionProfile), nil
-	case "feishu.docs.document.get_raw_content":
-		data, appErr := e.feishu.GetDocumentRawContent(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, nil, appErr, executionProfile), nil
-	case "notion.page.create":
-		data, appErr := e.notion.CreatePage(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, appErr, executionProfile), nil
-	case "notion.page.get":
-		data, appErr := e.notion.GetPage(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, nil, appErr, executionProfile), nil
-	case "notion.block.append":
-		data, appErr := e.notion.AppendBlockChildren(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, appErr, executionProfile), nil
-	case "notion.user.get":
-		data, appErr := e.notion.GetUser(ctx, profile, input)
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, nil, appErr, executionProfile), nil
+	if definition.Handler == nil {
+		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), nil
 	}
 
-	return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), nil
+	idempotencyKey := ""
+	if idempotency != nil {
+		idempotencyKey = idempotency.Key
+	}
+
+	data, appErr := definition.Handler(ctx, adapter.Call{
+		Profile:        profile,
+		Input:          input,
+		IdempotencyKey: idempotencyKey,
+	})
+	return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, appErr, executionProfile), nil
 }
 
 func (e *Executor) buildFatalEnvelope(requestID string, dryRun bool, platform string, operation string, appErr *apperr.AppError) Envelope {

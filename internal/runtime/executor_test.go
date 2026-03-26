@@ -37,7 +37,7 @@ func TestExecutorDryRunSuccess(t *testing.T) {
 		},
 	})
 
-	executor := NewExecutor(store, adapter.NewRegistry())
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
 	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
 		OperationInput: "calendar.event.create",
 		DryRun:         true,
@@ -89,7 +89,7 @@ func TestExecutorReadOperationOmitsIdempotency(t *testing.T) {
 		},
 	})
 
-	executor := NewExecutor(store, adapter.NewRegistry())
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
 	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
 		OperationInput: "page.get",
 		DryRun:         true,
@@ -126,7 +126,7 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 		},
 	})
 
-	executor := NewExecutor(store, adapter.NewRegistry())
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
 	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
 		OperationInput: "feishu.calendar.event.list",
 		ProfileName:    "notion_team_docs",
@@ -206,9 +206,7 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 
 	executor := &Executor{
 		store:    store,
-		registry: adapter.NewRegistry(),
-		feishu:   feishuClient,
-		notion:   notionClient,
+		registry: newTestRegistry(t, feishuClient, notionClient),
 		now:      time.Now,
 	}
 
@@ -225,6 +223,93 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	data := envelope.Data.(map[string]any)
 	if data["title"] != "执行器验证" {
 		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
+func TestExecutorExecutesNotionBlockListChildren(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Profile:  "notion_team_docs",
+		},
+		Profiles: map[string]config.Profile{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				Grant: config.Grant{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		},
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/blocks/block_demo/children" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"results": []map[string]any{
+						{
+							"id":           "blk_1",
+							"type":         "paragraph",
+							"has_children": false,
+							"in_trash":     false,
+							"paragraph": map[string]any{
+								"rich_text": []map[string]any{
+									{
+										"type":       "text",
+										"plain_text": "结构化正文",
+										"text": map[string]any{
+											"content": "结构化正文",
+										},
+									},
+								},
+							},
+						},
+					},
+					"has_more": false,
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "block.list_children",
+		InputJSON:      `{"block_id":"block_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion execution success, got error: %+v", envelope.Error)
+	}
+	data := envelope.Data.(map[string]any)
+	items := data["items"].([]map[string]any)
+	if len(items) != 1 {
+		t.Fatalf("unexpected items length: %d", len(items))
+	}
+	if items[0]["plain_text"] != "结构化正文" {
+		t.Fatalf("unexpected plain_text: %+v", items[0]["plain_text"])
 	}
 }
 
@@ -263,4 +348,29 @@ func newTestStore(t *testing.T, cfg *config.Config) *config.Store {
 		t.Fatalf("failed to save test config: %v", err)
 	}
 	return store
+}
+
+func newTestRegistry(t *testing.T, feishuClient *feishuadapter.Client, notionClient *notionadapter.Client) *adapter.Registry {
+	t.Helper()
+
+	registry := adapter.NewRegistry()
+
+	if feishuClient == nil {
+		client, err := feishuadapter.NewClient(feishuadapter.Options{})
+		if err != nil {
+			t.Fatalf("failed to construct feishu client: %v", err)
+		}
+		feishuClient = client
+	}
+	if notionClient == nil {
+		client, err := notionadapter.NewClient(notionadapter.Options{})
+		if err != nil {
+			t.Fatalf("failed to construct notion client: %v", err)
+		}
+		notionClient = client
+	}
+
+	feishuadapter.RegisterOperations(registry, feishuClient)
+	notionadapter.RegisterOperations(registry, notionClient)
+	return registry
 }
