@@ -1,0 +1,55 @@
+defaults:
+  platform: feishu
+  subject: bot
+  profile: feishu_bot_ops
+
+profiles:
+  # Feishu bot profile for general operations.
+  feishu_bot_ops:
+    platform: feishu
+    subject: bot
+    grant:
+      type: client_credentials
+      app_id: env:FEISHU_BOT_OPS_APP_ID
+      app_secret: env:FEISHU_BOT_OPS_APP_SECRET
+
+  # Feishu bot profile for another application or business domain.
+  feishu_bot_sales:
+    platform: feishu
+    subject: bot
+    grant:
+      type: client_credentials
+      app_id: env:FEISHU_BOT_SALES_APP_ID
+      app_secret: env:FEISHU_BOT_SALES_APP_SECRET
+
+  # Reserved for future Feishu user-mode OAuth support.
+  feishu_user_alice:
+    platform: feishu
+    subject: user
+    grant:
+      type: oauth_user
+      client_id: env:FEISHU_CLIENT_ID
+      client_secret: env:FEISHU_CLIENT_SECRET
+      access_token: env:FEISHU_ALICE_ACCESS_TOKEN
+      refresh_token: env:FEISHU_ALICE_REFRESH_TOKEN
+
+  # Notion internal integration for a single workspace.
+  notion_team_docs:
+    platform: notion
+    subject: integration
+    grant:
+      type: static_token
+      token: env:NOTION_TEAM_DOCS_TOKEN
+      notion_version: "2026-03-11"
+
+  # Reserved for future Notion public OAuth support.
+  notion_public_workspace_a:
+    platform: notion
+    subject: integration
+    grant:
+      type: oauth_refreshable
+      client_id: env:NOTION_CLIENT_ID
+      client_secret: env:NOTION_CLIENT_SECRET
+      access_token: env:NOTION_WORKSPACE_A_ACCESS_TOKEN
+      refresh_token: env:NOTION_WORKSPACE_A_REFRESH_TOKEN
+      notion_version: "2026-03-11"

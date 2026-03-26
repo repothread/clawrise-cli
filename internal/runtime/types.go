@@ -1,0 +1,68 @@
+package runtime
+
+import "time"
+
+// ExecuteOptions describes one operation execution request.
+type ExecuteOptions struct {
+	OperationInput string
+	ProfileName    string
+	SubjectName    string
+	InputJSON      string
+	InputFile      string
+	Timeout        time.Duration
+	DryRun         bool
+	IdempotencyKey string
+	Output         string
+	Quiet          bool
+	Stdin          any
+}
+
+// Envelope is the normalized output envelope for execution commands.
+type Envelope struct {
+	OK          bool              `json:"ok"`
+	Operation   string            `json:"operation"`
+	RequestID   string            `json:"request_id"`
+	Context     *Context          `json:"context,omitempty"`
+	Data        any               `json:"data"`
+	Error       *ErrorBody        `json:"error"`
+	Meta        Meta              `json:"meta"`
+	Idempotency *IdempotencyState `json:"idempotency,omitempty"`
+}
+
+// Context describes the resolved execution context for the current command.
+type Context struct {
+	Platform string `json:"platform,omitempty"`
+	Subject  string `json:"subject,omitempty"`
+	Profile  string `json:"profile,omitempty"`
+}
+
+// ErrorBody is the normalized error payload.
+type ErrorBody struct {
+	Code         string `json:"code"`
+	Message      string `json:"message"`
+	Retryable    bool   `json:"retryable"`
+	UpstreamCode string `json:"upstream_code,omitempty"`
+	HTTPStatus   int    `json:"http_status,omitempty"`
+}
+
+// Meta stores execution metadata.
+type Meta struct {
+	Platform   string `json:"platform"`
+	DurationMS int64  `json:"duration_ms"`
+	RetryCount int    `json:"retry_count"`
+	DryRun     bool   `json:"dry_run"`
+}
+
+// IdempotencyState describes the idempotency state of the current request.
+type IdempotencyState struct {
+	Key    string `json:"key"`
+	Status string `json:"status"`
+}
+
+// ExecutionProfile is the resolved execution identity at runtime.
+type ExecutionProfile struct {
+	Name     string         `json:"name"`
+	Platform string         `json:"platform"`
+	Subject  string         `json:"subject"`
+	Grant    map[string]any `json:"grant"`
+}

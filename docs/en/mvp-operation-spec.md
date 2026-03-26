@@ -1,0 +1,477 @@
+# Clawrise MVP Operation Spec
+
+See the Chinese version at [../zh/mvp-operation-spec.md](../zh/mvp-operation-spec.md).
+
+## 1. Purpose
+
+This document defines the first batch of operations at an implementation-ready level.
+
+It answers:
+
+- which operations belong to MVP
+- what JSON each operation accepts
+- which fields are required
+- which subject types are allowed
+- which write operations require idempotency
+- what normalized success output should contain
+
+## 2. Shared Conventions
+
+All operations use JSON input.
+
+Field naming uses `snake_case`.
+
+Time values use `RFC3339`.
+
+List operations use:
+
+- `page_size`
+- `page_token`
+
+List outputs normalize to:
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+Write operations require idempotency in MVP.
+
+Current subject rules:
+
+- Feishu operations allow `bot`
+- Notion operations allow `integration`
+
+## 3. MVP Scope
+
+P0 operations:
+
+Feishu:
+
+- `feishu.calendar.event.create`
+- `feishu.calendar.event.list`
+- `feishu.wiki.space.list`
+- `feishu.wiki.node.list`
+- `feishu.wiki.node.create`
+- `feishu.docs.document.append_blocks`
+- `feishu.docs.document.get_raw_content`
+- `feishu.docs.document.create`
+- `feishu.docs.document.edit`
+
+Notion:
+
+- `notion.page.create`
+- `notion.page.get`
+- `notion.block.append`
+
+P1 operations:
+
+Feishu:
+
+- `feishu.contact.user.get`
+
+Notion:
+
+- `notion.user.get`
+
+## 4. Feishu Operations
+
+### feishu.calendar.event.create
+
+Purpose:
+
+- create calendar events
+- validate write path, idempotency, and time normalization
+
+Required fields:
+
+- `calendar_id`
+- `summary`
+- `start_at`
+- `end_at`
+
+Optional fields:
+
+- `description`
+- `location`
+- `reminders`
+- `timezone`
+
+Allowed subject:
+
+- `bot`
+
+Local validation:
+
+- `end_at` must be later than `start_at`
+- `summary` must not be empty
+- `attendees` are not supported by the current real implementation
+
+Success output should include:
+
+- `event_id`
+- `calendar_id`
+- `summary`
+- `start_at`
+- `end_at`
+- `html_url`
+
+Currently implemented request subset:
+
+- `calendar_id`
+- `summary`
+- `start_at`
+- `end_at`
+- `description`
+- `location`
+- `reminders`
+- `timezone`
+
+Note:
+
+- `attendees` are not created together with the event. According to the official Feishu API, attendees must be handled through a separate attendee API.
+
+### feishu.calendar.event.list
+
+Purpose:
+
+- list events in a time range
+- validate normalized list output
+
+Required fields:
+
+- `calendar_id`
+
+Optional fields:
+
+- `start_at_from`
+- `start_at_to`
+- `page_size`
+- `page_token`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+The Feishu document capability should use generic operation names, while the
+actual actor is selected through `subject` and `profile` context:
+
+- `feishu.docs.document.create`
+- `feishu.docs.document.edit`
+
+Recommended defaults:
+
+- use `subject=user` for creation when user visibility matters
+- use `subject=bot` for ongoing automated edits when attribution separation matters
+
+### feishu.docs.document.create
+
+Purpose:
+
+- create an empty document
+- recommended with `subject=user` so the resource is naturally visible in the user's scope
+
+Required fields:
+
+- `title`
+
+Optional fields:
+
+- `folder_token`
+
+Allowed subject:
+
+- `user`
+- `bot`
+
+MVP limitation:
+
+- create the document only
+- body editing is deferred to a future operation
+- bot access still needs to be granted before the bot can edit the document
+
+Visibility note:
+
+- because the resource is created under user identity, it is more naturally placed in the user's visible scope
+- this is exactly why creation and bot editing should be split into different operations
+
+Success output should include:
+
+- `document_id`
+- `title`
+- `folder_token`
+- `url`
+
+Recommended future extensions:
+
+- add document sharing operations
+- add editing support for existing shared documents
+
+### feishu.wiki.space.list
+
+Purpose:
+
+- list wiki spaces visible to the current bot
+- verify whether the bot has already been added to the target knowledge base
+
+Allowed subject:
+
+- `bot`
+
+Notes:
+
+- the official Feishu API does not return "My Library" in this list
+- an empty result can mean the bot has no wiki space access yet, not necessarily that the API failed
+
+### feishu.wiki.node.list
+
+Purpose:
+
+- list child nodes under a wiki space or parent node
+- discover parent node tokens and existing document nodes
+
+Required fields:
+
+- `space_id`
+
+Optional fields:
+
+- `parent_node_token`
+- `page_size`
+- `page_token`
+
+Allowed subject:
+
+- `bot`
+
+### feishu.wiki.node.create
+
+Purpose:
+
+- create a `docx` child node under a wiki parent node
+
+Required fields:
+
+- `space_id`
+
+Optional fields:
+
+- `parent_node_token`
+- `title`
+- `obj_type`
+- `node_type`
+
+Allowed subject:
+
+- `bot`
+
+Current implementation notes:
+
+- defaults to `docx`
+- defaults to `node_type=origin`
+- returns both the wiki node token and the resulting `document_id`
+
+Precondition:
+
+- the bot must have container edit permission on the parent node
+
+### feishu.docs.document.edit
+
+Recommended execution modes:
+
+- `subject=bot`: recommended default automation edit mode
+- `subject=user`: use only when user attribution is explicitly desired
+
+### feishu.docs.document.append_blocks
+
+Purpose:
+
+- append block content to an existing docx document
+
+Required fields:
+
+- `document_id`
+- `blocks`
+
+Optional fields:
+
+- `block_id`
+
+Allowed subject:
+
+- `bot`
+
+Currently implemented block subset:
+
+- `paragraph`
+- `heading_1`
+- `heading_2`
+- `heading_3`
+- `bulleted_list_item`
+- `numbered_list_item`
+- `quote`
+- `to_do`
+- `code`
+- `divider`
+
+Implementation notes:
+
+- appends to the document root by default
+- when `block_id` is omitted, `document_id` is used as the root block id
+
+### feishu.docs.document.get_raw_content
+
+Purpose:
+
+- read pure text content from a docx document
+
+Required fields:
+
+- `document_id`
+
+Allowed subject:
+
+- `bot`
+
+### feishu.contact.user.get
+
+P1 read operation.
+
+Required fields:
+
+- `user_id`
+
+Allowed subject:
+
+- `bot`
+
+## 5. Notion Operations
+
+### notion.page.create
+
+Purpose:
+
+- create a page
+- validate structured content writes and idempotency
+
+Required fields:
+
+- `parent.type`
+- `parent.id`
+- `title`
+
+Optional fields:
+
+- `properties`
+- `children`
+
+Allowed subject:
+
+- `integration`
+
+MVP block subset:
+
+- `paragraph`
+- `heading_1`
+- `heading_2`
+- `heading_3`
+- `bulleted_list_item`
+- `numbered_list_item`
+- `to_do`
+- `quote`
+- `code`
+- `divider`
+
+Success output should include:
+
+- `page_id`
+- `title`
+- `parent`
+- `url`
+
+### notion.page.get
+
+Purpose:
+
+- read page details
+- validate normalized object output
+
+Required fields:
+
+- `page_id`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `page_id`
+- `title`
+- `url`
+- `archived`
+- `properties`
+
+### notion.block.append
+
+Purpose:
+
+- append blocks to a page or block
+- validate structured writes and idempotency
+
+Required fields:
+
+- `block_id`
+- `children`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `block_id`
+- `appended_count`
+- appended child identifiers
+
+### notion.user.get
+
+P1 read operation.
+
+Required fields:
+
+- `user_id`
+
+Allowed subject:
+
+- `integration`
+
+## 6. Deferred Scope
+
+The following are out of MVP scope:
+
+- full rich-text styling coverage
+- file upload
+- image upload
+- table blocks
+- complex Feishu document body editing
+- full Notion database query DSL mapping
+- transactional multi-write flows
+- cross-platform workflow orchestration
+
+## 7. Recommended Implementation Order
+
+1. input loading, output envelope, and error model
+2. `feishu.calendar.event.create`
+3. `feishu.calendar.event.list`
+4. `notion.page.create`
+5. `notion.page.get`
+6. idempotency and audit storage
+7. `notion.block.append`
+8. `feishu.docs.document.create`
+9. P1 read operations
