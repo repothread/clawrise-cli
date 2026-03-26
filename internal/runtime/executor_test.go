@@ -1,10 +1,17 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
+	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
+	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
@@ -133,6 +140,118 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 	}
 	if envelope.Error == nil || envelope.Error.Code != "PROFILE_PLATFORM_MISMATCH" {
 		t.Fatalf("unexpected error payload: %+v", envelope.Error)
+	}
+}
+
+func TestExecutorExecutesNotionPageGet(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Profile:  "notion_team_docs",
+		},
+		Profiles: map[string]config.Profile{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				Grant: config.Grant{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		},
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/pages/page_demo" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"id":       "page_demo",
+					"url":      "https://www.notion.so/page_demo",
+					"in_trash": false,
+					"parent": map[string]any{
+						"type":    "page_id",
+						"page_id": "parent_demo",
+					},
+					"properties": map[string]any{
+						"title": map[string]any{
+							"title": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "执行器验证",
+									"text": map[string]any{
+										"content": "执行器验证",
+									},
+								},
+							},
+						},
+					},
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: adapter.NewRegistry(),
+		feishu:   feishuClient,
+		notion:   notionClient,
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "page.get",
+		InputJSON:      `{"page_id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion execution success, got error: %+v", envelope.Error)
+	}
+	data := envelope.Data.(map[string]any)
+	if data["title"] != "执行器验证" {
+		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
+type roundTripFunc func(request *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func jsonHTTPResponse(t *testing.T, statusCode int, value any) *http.Response {
+	t.Helper()
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("failed to marshal response body: %v", err)
+	}
+
+	return &http.Response{
+		StatusCode: statusCode,
+		Header: http.Header{
+			"Content-Type": []string{"application/json; charset=utf-8"},
+		},
+		Body:          io.NopCloser(bytes.NewReader(data)),
+		ContentLength: int64(len(data)),
+		Request: &http.Request{
+			Header: http.Header{},
+		},
 	}
 }
 

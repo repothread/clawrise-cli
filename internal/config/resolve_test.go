@@ -31,3 +31,55 @@ func TestValidateGrantClientCredentials(t *testing.T) {
 		t.Fatalf("ValidateGrant returned error: %v", err)
 	}
 }
+
+func TestValidateGrantNotionStaticToken(t *testing.T) {
+	t.Setenv("CLAWRISE_TEST_NOTION_TOKEN", "notion-token")
+
+	err := ValidateGrant(Profile{
+		Platform: "notion",
+		Subject:  "integration",
+		Grant: Grant{
+			Type:  "static_token",
+			Token: "env:CLAWRISE_TEST_NOTION_TOKEN",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateGrant returned error: %v", err)
+	}
+}
+
+func TestValidateGrantRejectsNotionSubjectMismatch(t *testing.T) {
+	t.Setenv("CLAWRISE_TEST_NOTION_TOKEN", "notion-token")
+
+	err := ValidateGrant(Profile{
+		Platform: "notion",
+		Subject:  "user",
+		Grant: Grant{
+			Type:  "static_token",
+			Token: "env:CLAWRISE_TEST_NOTION_TOKEN",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected ValidateGrant to reject notion subject mismatch")
+	}
+}
+
+func TestValidateGrantNotionOAuthRefreshable(t *testing.T) {
+	t.Setenv("CLAWRISE_TEST_NOTION_CLIENT_ID", "client-id")
+	t.Setenv("CLAWRISE_TEST_NOTION_CLIENT_SECRET", "client-secret")
+	t.Setenv("CLAWRISE_TEST_NOTION_REFRESH_TOKEN", "refresh-token")
+
+	err := ValidateGrant(Profile{
+		Platform: "notion",
+		Subject:  "integration",
+		Grant: Grant{
+			Type:         "oauth_refreshable",
+			ClientID:     "env:CLAWRISE_TEST_NOTION_CLIENT_ID",
+			ClientSecret: "env:CLAWRISE_TEST_NOTION_CLIENT_SECRET",
+			RefreshToken: "env:CLAWRISE_TEST_NOTION_REFRESH_TOKEN",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateGrant returned error: %v", err)
+	}
+}

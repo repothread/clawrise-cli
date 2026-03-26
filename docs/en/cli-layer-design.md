@@ -31,6 +31,13 @@ It should not start as:
 - a massive hand-written command tree
 - an MCP-first execution path
 
+Modeling boundary:
+
+- Clawrise should unify runtime semantics, not provider resource schemas.
+- Business resource fields should remain provider-native.
+- Feishu docs, Notion pages, calendars, sheets, and future APIs must not be forced into one shared global field model.
+- If a cross-platform abstraction becomes useful later, it should be added as an optional higher-level workflow layer rather than baked into the core operation contracts.
+
 ## 3. Command Model
 
 Primary execution entry:

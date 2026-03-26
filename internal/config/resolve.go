@@ -31,8 +31,15 @@ func ResolveSecret(raw string) (string, error) {
 
 // ValidateGrant validates grant completeness without exposing secret values.
 func ValidateGrant(profile Profile) error {
+	if profile.Platform == "notion" && profile.Subject != "integration" {
+		return fmt.Errorf("notion profiles must use subject integration")
+	}
+
 	switch profile.Grant.Type {
 	case "client_credentials":
+		if profile.Platform == "notion" {
+			return fmt.Errorf("notion does not support grant type: %s", profile.Grant.Type)
+		}
 		if _, err := ResolveSecret(profile.Grant.AppID); err != nil {
 			return fmt.Errorf("missing app_id: %w", err)
 		}
@@ -44,6 +51,9 @@ func ValidateGrant(profile Profile) error {
 			return fmt.Errorf("missing token: %w", err)
 		}
 	case "oauth_user":
+		if profile.Platform == "notion" {
+			return fmt.Errorf("notion does not support grant type: %s", profile.Grant.Type)
+		}
 		if _, err := ResolveSecret(profile.Grant.ClientID); err != nil {
 			return fmt.Errorf("missing client_id: %w", err)
 		}

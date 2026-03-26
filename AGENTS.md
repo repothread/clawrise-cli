@@ -32,6 +32,14 @@ GOCACHE=/tmp/clawrise-go-build GOMODCACHE=/tmp/clawrise-gomodcache go test ./...
 - Use `snake_case` for JSON/YAML fields and `camelCase`/`PascalCase` for Go identifiers.
 - Operation names follow `<platform>.<resource-path>.<action>`, for example `feishu.wiki.node.create`.
 
+## Architecture Guardrails
+
+- Clawrise unifies the runtime contract, not the provider resource schema.
+- Keep operation inputs and outputs provider-native when they describe business resources such as documents, calendars, tables, contacts, or records.
+- Do not force Feishu, Notion, Google, or future platforms into one shared cross-platform resource field model.
+- Shared structure should stay limited to runtime-level concerns such as the execution envelope, auth context, error model, timeout, retry, and idempotency behavior.
+- If a future workflow needs a cross-platform abstraction, build it as an optional higher-level helper or workflow layer instead of changing the core operation contracts.
+
 ## Testing Guidelines
 
 - Place tests next to implementation as `*_test.go`.
