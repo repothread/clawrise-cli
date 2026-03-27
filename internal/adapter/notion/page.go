@@ -86,6 +86,48 @@ func (c *Client) GetPage(ctx context.Context, profile config.Profile, input map[
 	return mapPageData(response), nil
 }
 
+// UpdatePage updates page properties or archive state.
+func (c *Client) UpdatePage(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	pageID, appErr := requireIDField(input, "page_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	payload, appErr := buildUpdatePagePayload(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPatch,
+		"/v1/pages/"+url.PathEscape(pageID),
+		nil,
+		payload,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response notionPage
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion page update response: %v", err))
+	}
+	if strings.TrimSpace(response.ID) == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "page id is empty in Notion response")
+	}
+
+	return mapPageData(response), nil
+}
+
 // GetPageMarkdown reads page content or unknown subtrees in enhanced markdown form.
 func (c *Client) GetPageMarkdown(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
@@ -192,6 +234,77 @@ func buildCreatePagePayload(profile config.Profile, input map[string]any) (map[s
 		payload["children"] = children
 	}
 	return payload, nil
+}
+
+func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	payload := map[string]any{}
+	properties := map[string]any{}
+
+	if rawProperties, exists := input["properties"]; exists {
+		record, ok := asMap(rawProperties)
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "properties must be an object")
+		}
+		properties = cloneMap(record)
+	}
+	if title, ok := asString(input["title"]); ok && strings.TrimSpace(title) != "" {
+		titleProperty := "title"
+		if value, ok := asString(input["title_property"]); ok && strings.TrimSpace(value) != "" {
+			titleProperty = strings.TrimSpace(value)
+		}
+		properties[titleProperty] = map[string]any{
+			"title": buildPlainTextRichText(strings.TrimSpace(title)),
+		}
+	}
+	if len(properties) > 0 {
+		payload["properties"] = properties
+	}
+	if archived, ok := asBool(input["archived"]); ok {
+		payload["archived"] = archived
+	}
+	if icon, exists := input["icon"]; exists {
+		normalized, appErr := normalizeNotionFileObject(icon, true)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload["icon"] = normalized
+	}
+	if cover, exists := input["cover"]; exists {
+		normalized, appErr := normalizeNotionFileObject(cover, false)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload["cover"] = normalized
+	}
+	if len(payload) == 0 {
+		return nil, apperr.New("INVALID_INPUT", "at least one updatable field is required")
+	}
+	return payload, nil
+}
+
+func normalizeNotionFileObject(raw any, allowEmoji bool) (map[string]any, *apperr.AppError) {
+	switch value := raw.(type) {
+	case string:
+		if strings.TrimSpace(value) == "" {
+			return nil, apperr.New("INVALID_INPUT", "file object value cannot be empty")
+		}
+		if allowEmoji && !strings.Contains(value, "://") {
+			return map[string]any{
+				"type":  "emoji",
+				"emoji": strings.TrimSpace(value),
+			}, nil
+		}
+		return map[string]any{
+			"type": "external",
+			"external": map[string]any{
+				"url": strings.TrimSpace(value),
+			},
+		}, nil
+	case map[string]any:
+		return cloneMap(value), nil
+	default:
+		return nil, apperr.New("INVALID_INPUT", "file object must be a string or an object")
+	}
 }
 
 func buildPageParent(profile config.Profile, raw any) (map[string]any, string, *apperr.AppError) {

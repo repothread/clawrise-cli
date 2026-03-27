@@ -239,7 +239,7 @@ func (c *Client) GetDocumentBlockDescendants(ctx context.Context, profile config
 
 // UpdateDocumentBlock updates the text content of a single block.
 func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -289,7 +289,7 @@ func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile
 
 // BatchDeleteDocumentBlockChildren deletes a contiguous range of child blocks from a parent block.
 func (c *Client) BatchDeleteDocumentBlockChildren(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -343,7 +343,7 @@ func (c *Client) BatchDeleteDocumentBlockChildren(ctx context.Context, profile c
 
 // AppendDocumentBlocks appends text-oriented blocks to a docx document.
 func (c *Client) AppendDocumentBlocks(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}

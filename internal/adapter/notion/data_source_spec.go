@@ -15,3 +15,15 @@ func notionDataSourceQuerySpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func notionDataSourceGetSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Get a Notion data source schema.",
+		Input: adapter.InputSpec{
+			Required: []string{"data_source_id"},
+			Sample: map[string]any{
+				"data_source_id": "ds_demo",
+			},
+		},
+	}
+}

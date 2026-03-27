@@ -34,6 +34,20 @@ func notionPageGetSpec() adapter.OperationSpec {
 	}
 }
 
+func notionPageUpdateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Update a Notion page's properties or archive state.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id"},
+			Optional: []string{"title", "title_property", "properties", "archived", "icon", "cover"},
+			Sample: map[string]any{
+				"page_id": "page_demo",
+				"title":   "Updated project notes",
+			},
+		},
+	}
+}
+
 func notionPageMarkdownGetSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Get Notion page content as markdown.",

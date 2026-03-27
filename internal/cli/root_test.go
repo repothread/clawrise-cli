@@ -183,8 +183,11 @@ func TestRunSpecStatus(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"summary"`)) {
 		t.Fatalf("expected summary output, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"registered_but_stubbed"`)) {
-		t.Fatalf("expected issue buckets in status output, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"registered_count"`)) {
+		t.Fatalf("expected runtime counts in status output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"declared_count"`)) {
+		t.Fatalf("expected catalog counts in status output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

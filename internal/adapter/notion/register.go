@@ -33,6 +33,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.page.update",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionPageUpdateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.UpdatePage(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.page.markdown.get",
 		Platform:        "notion",
 		Mutating:        false,
@@ -63,6 +74,39 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Spec:            notionSearchQuerySpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.Search(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.comment.list",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionCommentListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListComments(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.comment.create",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionCommentCreateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.CreateComment(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.data_source.get",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionDataSourceGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetDataSource(ctx, call.Profile, call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{

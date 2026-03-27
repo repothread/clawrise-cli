@@ -380,6 +380,12 @@ type notionBlockChildrenResponse struct {
 	NextCursor *string          `json:"next_cursor"`
 }
 
+type notionCommentListResponse struct {
+	Results    []map[string]any `json:"results"`
+	HasMore    bool             `json:"has_more"`
+	NextCursor *string          `json:"next_cursor"`
+}
+
 type notionUser struct {
 	ID        string            `json:"id"`
 	Type      string            `json:"type"`

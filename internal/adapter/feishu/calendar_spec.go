@@ -47,3 +47,44 @@ func calendarEventListSpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func calendarEventGetSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Get one Feishu calendar event.",
+		Input: adapter.InputSpec{
+			Required: []string{"calendar_id", "event_id"},
+			Sample: map[string]any{
+				"calendar_id": "cal_demo",
+				"event_id":    "evt_demo",
+			},
+		},
+	}
+}
+
+func calendarEventUpdateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Update a Feishu calendar event.",
+		Input: adapter.InputSpec{
+			Required: []string{"calendar_id", "event_id"},
+			Optional: []string{"summary", "description", "start_at", "end_at", "location", "reminders", "timezone"},
+			Sample: map[string]any{
+				"calendar_id": "cal_demo",
+				"event_id":    "evt_demo",
+				"summary":     "Updated weekly sync",
+			},
+		},
+	}
+}
+
+func calendarEventDeleteSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Delete a Feishu calendar event.",
+		Input: adapter.InputSpec{
+			Required: []string{"calendar_id", "event_id"},
+			Sample: map[string]any{
+				"calendar_id": "cal_demo",
+				"event_id":    "evt_demo",
+			},
+		},
+	}
+}

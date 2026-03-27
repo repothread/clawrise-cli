@@ -28,6 +28,42 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
 		Spec:            calendarEventListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListCalendarEvents(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.calendar.event.get",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            calendarEventGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetCalendarEvent(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.calendar.event.update",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            calendarEventUpdateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.UpdateCalendarEvent(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.calendar.event.delete",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            calendarEventDeleteSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.DeleteCalendarEvent(ctx, call.Profile, call.Input)
+		},
 	})
 	registry.Register(adapter.Definition{
 		Operation:       "feishu.docs.document.create",
@@ -36,6 +72,9 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentCreateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.CreateDocument(ctx, call.Profile, call.Input)
+		},
 	})
 	registry.Register(adapter.Definition{
 		Operation:       "feishu.docs.document.get",
@@ -159,6 +198,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "feishu.docs.document.edit",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot", "user"},
+		Spec:            docsDocumentEditSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.EditDocument(ctx, call.Profile, call.Input, call.IdempotencyKey)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "feishu.docs.document.get_raw_content",
 		Platform:        "feishu",
 		Mutating:        false,
@@ -176,5 +226,52 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
 		Spec:            contactUserGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetUser(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.bitable.record.list",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            bitableRecordListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListBitableRecords(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.bitable.record.get",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            bitableRecordGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetBitableRecord(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.bitable.record.create",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            bitableRecordCreateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.CreateBitableRecord(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.bitable.record.update",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            bitableRecordUpdateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.UpdateBitableRecord(ctx, call.Profile, call.Input)
+		},
 	})
 }

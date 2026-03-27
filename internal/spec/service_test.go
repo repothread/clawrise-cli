@@ -75,9 +75,24 @@ func TestServiceGetOperation(t *testing.T) {
 }
 
 func TestServiceGetStubbedOperation(t *testing.T) {
-	service := NewService(newTestRegistry(t))
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.stubbed",
+		Platform:        "demo",
+		Mutating:        false,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Stubbed demo operation.",
+			Input: adapter.InputSpec{
+				Sample: map[string]any{
+					"id": "demo",
+				},
+			},
+		},
+	})
+	service := NewService(registry)
 
-	result, err := service.Get("feishu.calendar.event.list")
+	result, err := service.Get("demo.page.stubbed")
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}

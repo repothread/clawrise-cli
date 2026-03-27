@@ -12,6 +12,42 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
+// GetDataSource reads data source metadata and schema.
+func (c *Client) GetDataSource(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	dataSourceID, appErr := requireIDField(input, "data_source_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodGet,
+		"/v1/data_sources/"+url.PathEscape(dataSourceID),
+		nil,
+		nil,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion data source response: %v", err))
+	}
+	if id, ok := asString(response["id"]); !ok || strings.TrimSpace(id) == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "data source id is empty in Notion response")
+	}
+	return normalizeDataSourceObject(response), nil
+}
+
 // QueryDataSource queries pages or nested data sources under a data source.
 func (c *Client) QueryDataSource(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	dataSourceID, appErr := requireIDField(input, "data_source_id")
@@ -83,6 +119,35 @@ func (c *Client) QueryDataSource(ctx context.Context, profile config.Profile, in
 		result["type"] = strings.TrimSpace(response.Type)
 	}
 	return result, nil
+}
+
+func normalizeDataSourceObject(item map[string]any) map[string]any {
+	result := map[string]any{
+		"data_source_id": extractFirstString(item, "id"),
+		"raw":            cloneMap(item),
+	}
+	if titleItems, ok := asArray(item["title"]); ok {
+		result["title"] = extractRichTextPlainText(titleItems)
+	}
+	if properties, ok := asMap(item["properties"]); ok {
+		result["properties"] = cloneMap(properties)
+	}
+	if parent, ok := asMap(item["parent"]); ok && len(parent) > 0 {
+		result["parent"] = cloneMap(parent)
+	}
+	if urlValue := extractFirstString(item, "url"); urlValue != "" {
+		result["url"] = urlValue
+	}
+	return result
+}
+
+func extractFirstString(record map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := asString(record[key]); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func buildQueryDataSourcePayload(input map[string]any) (map[string]any, *apperr.AppError) {

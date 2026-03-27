@@ -314,6 +314,18 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 	switch blockType {
 	case "paragraph", "quote", "bulleted_list_item", "numbered_list_item":
 		payload[blockType] = buildTextualBlockBody(richText, children, input["color"])
+	case "toggle":
+		payload[blockType] = buildTextualBlockBody(richText, children, input["color"])
+	case "callout":
+		body := buildTextualBlockBody(richText, children, input["color"])
+		icon, appErr := buildCalloutIcon(input)
+		if appErr != nil {
+			return nil, appErr
+		}
+		if icon != nil {
+			body["icon"] = icon
+		}
+		payload[blockType] = body
 	case "heading_1", "heading_2", "heading_3":
 		body := buildTextualBlockBody(richText, children, input["color"])
 		if toggleable, ok := asBool(input["is_toggleable"]); ok {
@@ -350,6 +362,30 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 			return nil, apperr.New("INVALID_INPUT", "divider blocks do not support text")
 		}
 		payload[blockType] = map[string]any{}
+	case "image", "file":
+		if len(children) > 0 {
+			return nil, apperr.New("INVALID_INPUT", blockType+" blocks do not support nested children")
+		}
+		body, appErr := buildExternalFileBlockBody(input)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload[blockType] = body
+	case "table":
+		body, appErr := buildTableBlockBody(input, children)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload[blockType] = body
+	case "table_row":
+		if len(children) > 0 {
+			return nil, apperr.New("INVALID_INPUT", "table_row blocks do not support nested children")
+		}
+		body, appErr := buildTableRowBlockBody(input)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload[blockType] = body
 	default:
 		return nil, apperr.New("INVALID_INPUT", fmt.Sprintf("unsupported Notion block type %s", blockType))
 	}
@@ -368,6 +404,127 @@ func buildTextualBlockBody(richText []map[string]any, children []map[string]any,
 		body["color"] = strings.TrimSpace(color)
 	}
 	return body
+}
+
+func buildCalloutIcon(input map[string]any) (map[string]any, *apperr.AppError) {
+	if rawIcon, exists := input["icon"]; exists {
+		return normalizeNotionFileObject(rawIcon, true)
+	}
+	if emoji, ok := asString(input["emoji"]); ok && strings.TrimSpace(emoji) != "" {
+		return map[string]any{
+			"type":  "emoji",
+			"emoji": strings.TrimSpace(emoji),
+		}, nil
+	}
+	return nil, nil
+}
+
+func buildExternalFileBlockBody(input map[string]any) (map[string]any, *apperr.AppError) {
+	body := map[string]any{}
+	if urlValue, ok := asString(input["url"]); ok && strings.TrimSpace(urlValue) != "" {
+		body["type"] = "external"
+		body["external"] = map[string]any{
+			"url": strings.TrimSpace(urlValue),
+		}
+	} else if external, ok := asMap(input["external"]); ok && len(external) > 0 {
+		body["type"] = "external"
+		body["external"] = cloneMap(external)
+	} else {
+		return nil, apperr.New("INVALID_INPUT", "url is required for external file blocks")
+	}
+
+	caption, appErr := buildRichText(input["caption"], input["caption_rich_text"])
+	if appErr != nil {
+		return nil, appErr
+	}
+	if len(caption) > 0 {
+		body["caption"] = caption
+	}
+	return body, nil
+}
+
+func buildTableBlockBody(input map[string]any, children []map[string]any) (map[string]any, *apperr.AppError) {
+	if rows, exists := input["rows"]; exists {
+		var appErr *apperr.AppError
+		children, appErr = buildBlockChildren(rows)
+		if appErr != nil {
+			return nil, appErr
+		}
+	}
+	for _, child := range children {
+		if blockType, ok := asString(child["type"]); !ok || strings.TrimSpace(blockType) != "table_row" {
+			return nil, apperr.New("INVALID_INPUT", "table children must be table_row blocks")
+		}
+	}
+
+	tableWidth := 0
+	if value, ok := asInt(input["table_width"]); ok && value > 0 {
+		tableWidth = value
+	} else {
+		tableWidth = inferTableWidth(children)
+	}
+	if tableWidth <= 0 {
+		return nil, apperr.New("INVALID_INPUT", "table_width is required")
+	}
+
+	body := map[string]any{
+		"table_width": tableWidth,
+	}
+	if hasColumnHeader, ok := asBool(input["has_column_header"]); ok {
+		body["has_column_header"] = hasColumnHeader
+	}
+	if hasRowHeader, ok := asBool(input["has_row_header"]); ok {
+		body["has_row_header"] = hasRowHeader
+	}
+	if len(children) > 0 {
+		body["children"] = children
+	}
+	return body, nil
+}
+
+func buildTableRowBlockBody(input map[string]any) (map[string]any, *apperr.AppError) {
+	rawCells, ok := asArray(input["cells"])
+	if !ok || len(rawCells) == 0 {
+		return nil, apperr.New("INVALID_INPUT", "cells is required for table_row blocks")
+	}
+
+	cells := make([][]map[string]any, 0, len(rawCells))
+	for _, rawCell := range rawCells {
+		switch value := rawCell.(type) {
+		case string:
+			cells = append(cells, buildPlainTextRichText(value))
+		case []any:
+			richText := make([]map[string]any, 0, len(value))
+			for _, rawRichText := range value {
+				record, ok := asMap(rawRichText)
+				if !ok {
+					return nil, apperr.New("INVALID_INPUT", "table_row cell rich text items must be objects")
+				}
+				richText = append(richText, cloneMap(record))
+			}
+			cells = append(cells, richText)
+		default:
+			return nil, apperr.New("INVALID_INPUT", "each table_row cell must be a string or a rich_text array")
+		}
+	}
+	return map[string]any{
+		"cells": cells,
+	}, nil
+}
+
+func inferTableWidth(children []map[string]any) int {
+	if len(children) == 0 {
+		return 0
+	}
+	body, ok := asMap(children[0]["table_row"])
+	if !ok {
+		return 0
+	}
+	cells, ok := asArray(body["cells"])
+	if !ok {
+		return 0
+	}
+	return len(cells)
 }
 
 func buildRichText(textInput any, richTextInput any) ([]map[string]any, *apperr.AppError) {
@@ -445,6 +602,10 @@ func extractBlockPlainText(block map[string]any) string {
 		return ""
 	}
 
+	if blockType == "table_row" {
+		return extractTableRowPlainText(block)
+	}
+
 	body, ok := asMap(block[blockType])
 	if !ok {
 		return ""
@@ -460,6 +621,27 @@ func extractBlockPlainText(block map[string]any) string {
 		return extractRichTextPlainText(caption)
 	}
 	return ""
+}
+
+func extractTableRowPlainText(block map[string]any) string {
+	body, ok := asMap(block["table_row"])
+	if !ok {
+		return ""
+	}
+	cells, ok := asArray(body["cells"])
+	if !ok {
+		return ""
+	}
+
+	parts := make([]string, 0, len(cells))
+	for _, rawCell := range cells {
+		items, ok := asArray(rawCell)
+		if !ok {
+			continue
+		}
+		parts = append(parts, extractRichTextPlainText(items))
+	}
+	return strings.Join(parts, " | ")
 }
 
 func extractRichTextPlainText(items []any) string {
