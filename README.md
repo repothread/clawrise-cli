@@ -24,6 +24,7 @@ Next planned platform after MVP:
 ## Documentation
 
 - [CLI Layer Design](docs/en/cli-layer-design.md)
+- [Plugin System Design](docs/en/plugin-system-design.md)
 - [Roadmap](docs/en/roadmap.md)
 - [`spec` Subsystem Design](docs/en/spec-design.md)
 - [Auth Model](docs/en/auth-model.md)

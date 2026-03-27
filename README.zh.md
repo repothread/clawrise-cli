@@ -24,6 +24,7 @@ Clawrise 是一个面向智能体的第三方服务接口命令行执行层。
 ## 文档入口
 
 - [执行层架构设计](docs/zh/cli-layer-design.md)
+- [插件系统设计](docs/zh/plugin-system-design.md)
 - [近期路线图](docs/zh/roadmap.md)
 - [`spec` 子系统设计](docs/zh/spec-design.md)
 - [授权模型](docs/zh/auth-model.md)

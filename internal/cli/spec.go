@@ -5,19 +5,16 @@ import (
 	"io"
 	"strings"
 
-	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/output"
 	"github.com/clawrise/clawrise-cli/internal/spec"
 )
 
 // runSpec handles `clawrise spec` subcommands.
-func runSpec(args []string, stdout io.Writer, registry *adapter.Registry) error {
+func runSpec(args []string, stdout io.Writer, service *spec.Service) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
 		printSpecHelp(stdout)
 		return nil
 	}
-
-	service := spec.NewService(registry)
 
 	switch args[0] {
 	case "list":

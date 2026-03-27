@@ -20,6 +20,11 @@ func NewService(registry *adapter.Registry) *Service {
 	return newServiceWithCatalog(registry, speccatalog.All())
 }
 
+// NewServiceWithCatalog creates a `spec` service with an explicit catalog source.
+func NewServiceWithCatalog(registry *adapter.Registry, catalogEntries []speccatalog.Entry) *Service {
+	return newServiceWithCatalog(registry, catalogEntries)
+}
+
 func newServiceWithCatalog(registry *adapter.Registry, catalogEntries []speccatalog.Entry) *Service {
 	return &Service{
 		registry:       registry,

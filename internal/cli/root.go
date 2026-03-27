@@ -10,12 +10,11 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/clawrise/clawrise-cli/internal/adapter"
-	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
-	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
 	"github.com/clawrise/clawrise-cli/internal/config"
 	"github.com/clawrise/clawrise-cli/internal/output"
+	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 	"github.com/clawrise/clawrise-cli/internal/runtime"
+	"github.com/clawrise/clawrise-cli/internal/spec"
 )
 
 // Dependencies describes the base dependencies used by the CLI runtime.
@@ -41,11 +40,13 @@ func Run(args []string, deps Dependencies) error {
 		return err
 	}
 
-	registry, err := newDefaultRegistry()
+	manager, err := newDefaultPluginManager()
 	if err != nil {
 		return err
 	}
+	registry := manager.Registry()
 	executor := runtime.NewExecutor(store, registry)
+	specService := spec.NewServiceWithCatalog(registry, manager.CatalogEntries())
 
 	if len(args) == 0 {
 		printRootHelp(deps.Stdout)
@@ -68,7 +69,7 @@ func Run(args []string, deps Dependencies) error {
 	case "doctor":
 		return runDoctor(store, deps.Stdout)
 	case "spec":
-		return runSpec(args[1:], deps.Stdout, registry)
+		return runSpec(args[1:], deps.Stdout, specService)
 	case "auth", "config", "batch", "completion":
 		return runPlaceholder(args[0], deps.Stdout)
 	default:
@@ -76,21 +77,8 @@ func Run(args []string, deps Dependencies) error {
 	}
 }
 
-func newDefaultRegistry() (*adapter.Registry, error) {
-	registry := adapter.NewRegistry()
-
-	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
-	if err != nil {
-		return nil, err
-	}
-	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
-	if err != nil {
-		return nil, err
-	}
-
-	feishuadapter.RegisterOperations(registry, feishuClient)
-	notionadapter.RegisterOperations(registry, notionClient)
-	return registry, nil
+func newDefaultPluginManager() (*pluginruntime.Manager, error) {
+	return pluginruntime.NewBuiltinManager(context.Background())
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
