@@ -8,6 +8,16 @@
 
 这份文档把 MVP 阶段的 operation 收敛到“可直接编码”的粒度。
 
+它现在应被视为最初的 MVP 基线，而不是当前 runtime 的完整能力清单。
+
+当前 runtime 已经在多个方向上超出这份基线，包括：
+
+- 更多飞书日历操作
+- 飞书多维表格记录操作
+- 更多 Notion 页面和 data source 操作
+- Notion 评论操作
+- 更宽的 Notion block 子集
+
 它回答以下问题：
 
 - MVP 到底做哪些 operation
@@ -79,6 +89,11 @@ clawrise notion.page.create --json '{"title":"项目记录"}'
 
 - Feishu operation 允许 `bot`
 - Notion operation 允许 `integration`
+
+补充说明：
+
+- 当前 runtime 已经支持部分飞书文档操作在 `subject=user` 下执行
+- 这份文档仍主要描述 MVP 基线，而不是当前所有扩展能力
 
 ### 2.7 Notion Block 子集
 

@@ -230,12 +230,14 @@ source ~/.zshrc
 - `oauth_user` 这种 profile 结构已经在配置模型中预留
 - 相关文档与命名策略已经确定
 
-但请注意：
+当前运行时状态：
 
-- 当前代码已经打通的是 bot/app 身份的 Feishu 日历创建
-- 用户身份的真实执行链路还没有接入运行时代码
+- `oauth_user` 已经接入运行时，用于部分飞书文档操作
+- `feishu.docs.document.create` 可以在 `subject=user` 下真实执行
+- 文档编辑链路也可以在 operation 允许时使用用户身份
+- 不是所有 Feishu operation 都支持 `subject=user`，仍需以 operation 级主体约束为准
 
-也就是说：
+这意味着：
 
-- 你现在可以先把用户授权凭证准备好并写入环境变量
-- 但真正基于 `subject=user` 的文档执行链路还需要后续实现
+- 你现在可以准备好用户授权凭证并直接用于真实调用
+- 但仍应通过 `spec get` 或 operation 文档确认具体 operation 是否允许 `user`

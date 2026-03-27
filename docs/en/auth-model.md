@@ -133,9 +133,10 @@ Architecture support:
 - `bot`
 - `user`
 
-MVP implementation support:
+Current runtime support:
 
 - `bot`
+- `user` for selected document operations through `oauth_user`
 
 Bot/app style profile:
 
@@ -150,7 +151,7 @@ profiles:
       app_secret: env:FEISHU_BOT_OPS_APP_SECRET
 ```
 
-User style profile reserved for later:
+User style profile:
 
 ```yaml
 profiles:
@@ -186,7 +187,7 @@ profiles:
       notion_version: "2026-03-11"
 ```
 
-Public integration is a later extension path:
+Public integration remains a later extension path:
 
 ```yaml
 profiles:
@@ -217,6 +218,10 @@ type AuthConstraint struct {
 ```
 
 Runtime rules:
+
+- runtime must reject unsupported subject types explicitly
+- runtime must not silently switch from one profile to another
+- provider plugins may implement provider-native auth behavior, but profile resolution remains a core runtime concern
 
 - fail immediately if the selected profile subject is not allowed
 - do not silently switch profiles

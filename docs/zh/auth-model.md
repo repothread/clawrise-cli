@@ -133,9 +133,10 @@ clawrise notion.page.create --profile notion_team_docs
 - `bot`
 - `user`
 
-MVP 实现优先支持：
+当前运行时支持：
 
 - `bot`
+- 通过 `oauth_user` 支持部分文档操作的 `user`
 
 Bot / 应用态 profile：
 
@@ -150,7 +151,7 @@ profiles:
       app_secret: env:FEISHU_BOT_OPS_APP_SECRET
 ```
 
-用户态 profile 预留结构：
+用户态 profile：
 
 ```yaml
 profiles:
@@ -186,7 +187,7 @@ profiles:
       notion_version: "2026-03-11"
 ```
 
-public integration 是后续扩展路径：
+public integration 仍然是后续扩展路径：
 
 ```yaml
 profiles:
@@ -217,6 +218,10 @@ type AuthConstraint struct {
 ```
 
 运行时规则：
+
+- 运行时必须显式拒绝不被允许的主体类型
+- 运行时不能静默切换 profile
+- provider plugin 可以实现 provider-native auth 行为，但 profile 解析仍应由 core runtime 负责
 
 - 如果选中的 profile 主体不在允许列表里，立即失败
 - 不允许静默切换 profile

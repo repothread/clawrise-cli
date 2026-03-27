@@ -13,6 +13,21 @@
 
 这份设计按最终形态编写，不以当前内置 Feishu / Notion 注册逻辑为兼容前提。
 
+## 1.1 当前进展
+
+截至当前仓库状态：
+
+- `M1` 已完成：
+  - core 中已经存在 provider runtime 抽象
+- `M2` 已完成：
+  - manifest 解析、插件发现和外部进程 runtime 已落地
+- `M3` 已完成：
+  - Feishu / Notion 第一方能力已经通过 plugin binary 暴露
+- `M4` 已部分完成：
+  - 已具备 `plugin list/install/info/remove`
+  - 已支持本地目录、`file://`、`https://`、`npm://` 安装
+  - release hardening、trust policy、upgrade workflow 仍需继续完善
+
 ## 2. 非目标
 
 首版插件系统明确不做：
@@ -655,11 +670,19 @@ core 加载插件时应执行：
 
 ### 17.1 M1: 抽象 provider runtime
 
+状态：
+
+- 已完成
+
 - 从 core 中移除平台硬编码构造逻辑
 - 引入 `ProviderRuntime`
-- 保持当前 provider 仍以内置方式运行，但走统一接口
+- 通过 in-process runtime shim 作为过渡层，为第一方 provider 脱离 core 做准备
 
 ### 17.2 M2: 实现本地插件协议与插件发现
+
+状态：
+
+- 已完成
 
 - 实现 `stdio + JSON-RPC`
 - 实现 manifest 解析
@@ -668,16 +691,26 @@ core 加载插件时应执行：
 
 ### 17.3 M3: 将 Feishu / Notion 迁移为 first-party plugin
 
+状态：
+
+- 已完成
+
 - 复用当前 adapter 与 registry
 - 为每个平台提供单独二进制入口
 - core 不再直接 import 平台 adapter
 
 ### 17.4 M4: 安装器与远程分发
 
+状态：
+
+- 部分完成
+
 - `clawrise plugin install`
 - `clawrise plugin list`
+- `clawrise plugin info`
 - `clawrise plugin remove`
 - 支持 `file://`、`https://`、`npm://`
+- 增加 trust、verify 与 upgrade policy
 
 ## 18. 对当前仓库的直接影响
 

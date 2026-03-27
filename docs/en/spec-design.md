@@ -4,9 +4,14 @@ See the Chinese version at [../zh/spec-design.md](../zh/spec-design.md).
 
 ## 1. Purpose
 
-This document describes the `clawrise spec` command surface, data model, status model, and implementation layout.
+The `spec` subsystem exists to make Clawrise itself the structured source of truth for discoverable capabilities.
 
-The point of `spec` is not to duplicate Markdown documentation. The point is to make Clawrise itself the structured source of truth for currently discoverable capabilities.
+It is not meant to duplicate Markdown documentation. It is meant to expose:
+
+- what operations are currently discoverable
+- what metadata is attached to those operations
+- what the current runtime can really execute
+- how runtime and catalog declarations differ
 
 ## 2. Current Implementation Status
 
@@ -14,28 +19,45 @@ Implemented today:
 
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
-- hierarchical browsing over registered operations
-- operation detail views backed by registry metadata
+- `clawrise spec status`
+- hierarchical discovery over the current runtime registry
+- catalog-backed runtime drift analysis
+- metadata completeness checks in tests
 
 Still planned:
 
-- `clawrise spec status`
 - `clawrise spec export`
-- catalog-backed drift analysis
+- completion driven directly by `spec`
+- progressively generated docs from provider metadata
 
-## 3. Design Goals
+## 3. Current Runtime Model
+
+Clawrise now uses a plugin-first provider architecture.
+
+That means the `spec` subsystem reads from two aggregated layers:
+
+- runtime operation registry aggregated from provider runtimes
+- structured catalog aggregated from provider runtimes
+
+In the current repository:
+
+- first-party Feishu and Notion plugins expose operations through the plugin runtime interface
+- the core aggregates those provider runtimes into one registry view
+- `spec` is built on top of that aggregated view
+
+## 4. Design Goals
 
 The `spec` subsystem should:
 
-- let both humans and agents discover supported operations directly from the CLI
+- let humans and agents discover operations directly from the CLI
 - keep default output bounded as operation count grows
-- reuse one structured metadata layer across registry, docs, completion, and tests
-- distinguish runtime facts from planned catalog declarations
+- reuse one metadata layer across runtime, docs, completion, and tests
+- distinguish runtime facts from catalog declarations
 - preserve Clawrise's boundary of unified runtime semantics with provider-native business schemas
 
-## 4. Command Surface
+## 5. Command Surface
 
-The current and planned `spec` commands are:
+Current command surface:
 
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
@@ -46,27 +68,18 @@ Current behavior:
 
 - `list` is implemented
 - `get` is implemented
-- `status` is reserved for the next milestone
-- `export` is reserved for a later milestone
+- `status` is implemented
+- `export` is still planned
 
-## 5. Hierarchical Browse Model
+## 6. Hierarchical Browse Model
 
-`spec list` is intentionally a path browser, not a flat export.
+`spec list` is intentionally a hierarchical browser, not a flat export.
 
-Clawrise operation naming is already hierarchical:
+Operation naming remains:
 
 ```text
 <platform>.<resource-path>.<action>
 ```
-
-Examples:
-
-- `clawrise spec list`
-  - returns platforms such as `feishu` and `notion`
-- `clawrise spec list feishu`
-  - returns direct groups such as `calendar`, `docs`, `wiki`, and `contact`
-- `clawrise spec list feishu.docs.document`
-  - returns leaf operations such as `create`, `get`, and `list_blocks`
 
 Current node types:
 
@@ -75,7 +88,14 @@ Current node types:
 - `group`
 - `operation`
 
-## 6. Detail View Model
+Default behavior should remain:
+
+- hierarchical
+- bounded
+- summary-first
+- not a machine-export substitute
+
+## 7. Detail View Model
 
 `spec get` returns one operation detail record.
 
@@ -97,83 +117,134 @@ Current fields include:
 - `examples`
 - `runtime_status`
 
-The current detail view is runtime-driven only. Catalog-backed status fields are planned for a later phase.
+The current detail view remains runtime-driven. `spec status` is where runtime/catalog drift is reported explicitly.
 
-## 7. Source-of-Truth Model
+## 8. Source-of-Truth Model
 
-The target model has two layers:
+The current model has two explicit layers:
 
 - `Runtime Registry`
 - `Catalog`
 
-Current implementation only uses the runtime registry.
+### Runtime Registry
 
-That means:
+The runtime registry represents operations the current binary can discover through loaded provider runtimes.
 
-- `spec list/get` reflect what the current binary knows about
-- they can still show stubbed operations if an operation is registered without a handler
-- they do not yet report catalog drift
+It answers:
 
-Catalog support is planned for `M2`.
+- what operations are exposed right now
+- what metadata is attached right now
+- whether an operation is currently implemented
 
-## 8. Metadata Model
+### Catalog
 
-The adapter registry now stores both execution metadata and lightweight discovery metadata.
+The catalog represents the structured declaration set the project recognizes for the current provider runtimes.
 
-Current registry metadata includes:
+It answers:
 
-- operation identity
-- platform
-- mutating flag
-- default timeout
-- allowed subjects
-- handler binding
-- discovery spec such as summary, input fields, notes, examples, and idempotency behavior
+- which operations are declared
+- which runtime operations are missing catalog coverage
+- which catalog entries are missing from runtime
 
-The current `spec` metadata is intentionally lightweight. It does not attempt to be a full JSON Schema system yet.
+## 9. Status Model
 
-## 9. Current File Layout
+`spec status` is a governance surface, not a browse surface.
 
-Current implementation files:
+It should report:
+
+- total registered operations
+- implemented vs stubbed counts
+- total catalog declarations
+- runtime-present but catalog-missing operations
+- catalog-declared but runtime-missing operations
+
+Current status labels:
+
+- runtime:
+  - `registered_and_implemented`
+  - `registered_but_stubbed`
+  - `runtime_missing`
+- catalog:
+  - `declared`
+  - `catalog_missing`
+
+## 10. Metadata Model
+
+The current operation metadata layer is still intentionally lightweight.
+
+It includes:
+
+- execution metadata:
+  - operation name
+  - platform
+  - mutating flag
+  - default timeout
+  - allowed subjects
+- discovery metadata:
+  - summary
+  - description
+  - dry-run support
+  - input fields
+  - examples
+  - idempotency behavior
+
+It still does not try to be a full JSON Schema system.
+
+## 11. Current File Layout
+
+Current implementation files include:
 
 - `internal/spec/types.go`
 - `internal/spec/service.go`
+- `internal/spec/status.go`
+- `internal/spec/catalog/*`
 - `internal/cli/spec.go`
-- `internal/adapter/registry.go`
 
-Current metadata placement follows adapter structure instead of a single platform-wide table. Examples:
+Current provider aggregation lives under:
 
-- `internal/adapter/feishu/calendar_spec.go`
-- `internal/adapter/feishu/docx_spec.go`
-- `internal/adapter/notion/page_spec.go`
-- `internal/adapter/notion/block_spec.go`
+- `internal/plugin/runtime.go`
+- `internal/plugin/process.go`
+- `internal/plugin/registry_runtime.go`
 
-This keeps discovery metadata aligned with the existing adapter module boundaries.
+The important architectural point is:
 
-## 10. Planned Next Step
+- `spec` no longer assumes providers are hard-coded directly into the core
+- it consumes the aggregated runtime and catalog view built by the provider runtime layer
 
-The next design step is `M2`:
+## 12. Relationship to Other Subsystems
 
-- add a structured operation catalog
-- implement `spec status`
-- reconcile runtime registration against catalog declarations
-- add metadata completeness checks in tests
+### 12.1 Completion
 
-## 11. Relationship to Other Subsystems
+`completion` should consume the same metadata layer as `spec` rather than maintaining a separate command tree.
 
-### 11.1 Completion
+### 12.2 Documentation
 
-`completion` should eventually consume the `spec` tree instead of maintaining a separate command tree.
+Operation docs should progressively be generated from provider metadata and catalog entries.
 
-### 11.2 Documentation
+### 12.3 Tests
 
-Over time, operation docs should be progressively generated from registry and catalog metadata rather than maintained entirely by hand.
+`spec` should be treated as a contract layer.
 
-### 11.3 Tests
-
-`spec` should be treated as a contract layer. Tests should cover:
+Tests should cover:
 
 - hierarchical browse behavior
 - operation detail behavior
-- stubbed operation reporting
-- future catalog drift reporting
+- runtime/catalog drift reporting
+- metadata completeness
+
+## 13. Next Step
+
+The next major step after the current implementation is:
+
+- implement `clawrise spec export`
+- drive completion from the same provider metadata
+- let docs gradually converge on generated or metadata-driven content
+
+## 14. Completion Signal
+
+The near-term `spec` work can be considered complete when:
+
+- runtime capabilities are discoverable through `list/get`
+- runtime/catalog drift is visible through `status`
+- `export` exists for machine consumers
+- completion and docs stop depending on separate hand-maintained command knowledge

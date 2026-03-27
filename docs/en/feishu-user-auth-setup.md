@@ -230,12 +230,14 @@ In the current repository:
 - the `oauth_user` profile shape already exists in the config model
 - the naming and design strategy are already documented
 
-But note:
+Current runtime status:
 
-- the currently implemented live Feishu path is bot/app-based calendar creation
-- real user-identity execution has not been wired into the runtime yet
+- `oauth_user` is wired into the runtime for selected Feishu document operations
+- `feishu.docs.document.create` can run under `subject=user`
+- document editing flows can also use user identity where the operation allows it
+- not every Feishu operation supports `subject=user`; operation-level subject constraints still apply
 
-So:
+That means:
 
-- you can prepare the user credentials now and add them to your environment
-- but the actual document execution path under `subject=user` still needs to be implemented later
+- you can prepare the user credentials now and use them with real execution
+- you should still verify per-operation subject support through `spec get` or the operation docs

@@ -8,11 +8,17 @@ Clawrise is an agent-native CLI execution layer for SaaS APIs.
 
 It is designed to let AI agents call third-party systems through stable CLI operations instead of heavyweight MCP-style tool schemas.
 
-The repository contains design documents and an in-progress Go implementation of the runtime core.
+The current architecture is plugin-first:
 
-## MVP Scope
+- `clawrise` is the core runtime and CLI
+- provider capabilities are exposed through external provider plugins
+- first-party Feishu and Notion support are shipped as plugin binaries
 
-Current MVP platforms:
+The repository contains both the evolving design documents and the current Go implementation of the core runtime and first-party plugins.
+
+## Current Scope
+
+Current first-party plugin platforms:
 
 - `feishu`
 - `notion`
@@ -34,10 +40,10 @@ Next planned platform after MVP:
 ## Design Focus
 
 - CLI command model
-- adapter architecture
+- provider plugin architecture
 - auth and profile model
 - idempotency and audit rules
-- MVP operation contracts for Feishu and Notion
+- operation contracts for Feishu and Notion
 
 ## Modeling Boundary
 
@@ -54,9 +60,29 @@ Clawrise standardizes how operations are executed, not how every SaaS resource i
 
 ## Status
 
-This repository contains both design documents and an in-progress Go implementation of the runtime core.
+The current repository state includes:
 
-Current discovery support:
+- external-process provider runtime abstraction
+- first-party plugin binaries for Feishu and Notion
+- plugin discovery through plugin manifests
+- plugin management commands:
+  - `clawrise plugin list`
+  - `clawrise plugin install <source>`
+  - `clawrise plugin info <name> <version>`
+  - `clawrise plugin remove <name> <version>`
+- current install sources:
+  - local directory
+  - `file://`
+  - `https://`
+  - `npm://`
+- current discovery support:
+  - `clawrise spec list [path]`
+  - `clawrise spec get <operation>`
+  - `clawrise spec status`
 
-- `clawrise spec list [path]`
-- `clawrise spec get <operation>`
+Still not implemented:
+
+- `clawrise spec export`
+- `completion`
+- plugin verification and signature policy
+- official packaged first-party plugin distribution workflow

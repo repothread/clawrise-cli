@@ -6,6 +6,16 @@ See the Chinese version at [../zh/mvp-operation-spec.md](../zh/mvp-operation-spe
 
 This document defines the first batch of operations at an implementation-ready level.
 
+It should now be read as the original MVP baseline, not as the complete list of currently implemented operations.
+
+The current runtime already exceeds this baseline in several areas, including:
+
+- additional Feishu calendar operations
+- Feishu Bitable record operations
+- additional Notion page and data source operations
+- Notion comment operations
+- a broader Notion block subset
+
 It answers:
 
 - which operations belong to MVP
@@ -40,6 +50,11 @@ Current subject rules:
 
 - Feishu operations allow `bot`
 - Notion operations allow `integration`
+
+Additional note:
+
+- the current runtime also supports selected Feishu document operations under `subject=user`
+- this document still describes the MVP baseline rather than every current runtime extension
 
 ## 3. MVP Scope
 

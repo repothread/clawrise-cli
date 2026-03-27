@@ -1,12 +1,17 @@
 # Clawrise `spec` 子系统设计
 
+英文版见 [../en/spec-design.md](../en/spec-design.md)。
+
 ## 1. 文档目的
 
-这份文档定义 `clawrise spec` 的命令面、数据模型、状态模型与实现落点。
+`spec` 子系统的目标，是让 Clawrise 自己成为当前能力的结构化事实源。
 
-它要解决的问题不是“如何再写一份文档”，而是“如何让 Clawrise 自己成为当前能力的结构化事实源”。
+它不是为了再写一份 Markdown 文档副本，而是为了回答这些问题：
 
-整体推进节奏见 [roadmap.md](roadmap.md)。
+- 当前有哪些 operation 可被发现
+- 这些 operation 带有什么元数据
+- 当前 runtime 真实可执行什么
+- runtime 与 catalog 的差异是什么
 
 ## 2. 当前实现状态
 
@@ -14,226 +19,87 @@
 
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
-- 基于 registry 的层级浏览
-- 基于 operation 元数据的详情查询
-
-当前尚未实现：
-
 - `clawrise spec status`
+- 基于当前 runtime registry 的层级发现
+- 基于 catalog 的 runtime 漂移对账
+- 元数据完整性测试
+
+当前仍未实现：
+
 - `clawrise spec export`
-- 基于 catalog 的漂移对账
+- 直接复用 `spec` 元数据的 completion
+- 基于 provider 元数据的渐进式文档生成
 
-## 3. 设计目标
+## 3. 当前运行时模型
 
-`spec` 子系统需要同时满足以下目标：
+Clawrise 现在已经转向 plugin-first 的 provider 架构。
 
-- 让人和 agent 都能通过 CLI 自己发现当前支持的 operation
-- 默认输出可控，避免 operation 数量增长后列表爆炸
-- 让 registry、文档、completion、测试共享一份结构化元数据
-- 明确区分“当前运行时真实能力”和“项目规划中的声明能力”
-- 保持现有建模边界：统一运行时，不统一 provider-native 业务字段
+这意味着 `spec` 当前读取的是两层聚合视图：
 
-## 4. 非目标
+- 来自 provider runtime 的 runtime operation registry
+- 来自 provider runtime 的结构化 catalog
 
-首版 `spec` 明确不做：
+在当前仓库中：
 
-- 不做交互式 UI
-- 不做 REPL
-- 不解析 Markdown 反向生成结构化 spec
-- 不引入完整 JSON Schema 体系
-- 不把 `spec` 变成工作流或执行入口
+- Feishu / Notion 第一方 plugin 通过 provider runtime 接口暴露 operation
+- core 聚合这些 provider runtime，形成统一 registry 视图
+- `spec` 构建在这个聚合视图之上
 
-## 5. 命令面设计
+## 4. 设计目标
 
-当前与规划中的 `spec` 子命令如下：
+`spec` 子系统当前应满足：
+
+- 让人和 agent 都能直接通过 CLI 发现 operation
+- 默认输出可控，避免 operation 增长后失控
+- 让 runtime、docs、completion、tests 复用同一层元数据
+- 明确区分 runtime 事实与 catalog 声明
+- 保持建模边界：统一 runtime，不统一 provider-native 业务字段
+
+## 5. 命令面
+
+当前命令面：
 
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
 - `clawrise spec status`
 - `clawrise spec export`
 
-其中：
+当前状态：
 
-- `list` 用于按层级浏览目录
-- `get` 用于查看单个 operation 详情
-- `status` 用于查看 runtime 与 catalog 的差异
-- `export` 用于显式导出全量结构化数据，给脚本或 agent 缓存使用
+- `list` 已实现
+- `get` 已实现
+- `status` 已实现
+- `export` 仍待实现
 
-### 5.1 `spec list`
+## 6. 层级浏览模型
 
-`spec list` 的默认语义必须是“浏览目录”，不是“平铺所有 operation”。
+`spec list` 仍然应是层级浏览器，而不是平铺导出接口。
 
-原因是 Clawrise 的 operation 命名天然具备层级结构：
+operation 命名继续遵循：
 
 ```text
 <platform>.<resource-path>.<action>
 ```
 
-推荐行为：
-
-- `clawrise spec list`
-  - 返回平台层，如 `feishu`、`notion`
-- `clawrise spec list feishu`
-  - 返回 `calendar`、`docs`、`wiki`、`contact`
-- `clawrise spec list feishu.docs`
-  - 返回 `document`、`block`
-- `clawrise spec list feishu.docs.document`
-  - 返回叶子 operation，如 `create`、`get`、`list_blocks`
-
-推荐参数：
-
-- `--depth`
-- `--flat`
-- `--implemented`
-- `--subject`
-- `--mutating`
-- `--limit`
-- `--cursor`
-
-默认规则：
-
-- 默认 `depth=1`
-- 默认不递归
-- 默认只返回摘要，不返回详细输入定义
-- 默认不平铺全量 operation
-
-### 5.2 `spec get`
-
-`spec get` 只接收叶子 operation，例如：
-
-```bash
-clawrise spec get feishu.calendar.event.create
-```
-
-如果用户传入的是 group path，例如 `feishu.docs`，应返回明确错误，引导用户改用 `spec list`。
-
-### 5.3 `spec status`
-
-`spec status` 的职责不是浏览，而是治理。
-
-它应回答这些问题：
-
-- 当前 runtime 共注册了多少 operation
-- 其中多少已实现，多少只是占位
-- catalog 声明了多少 operation
-- 哪些 operation 已声明但 runtime 中不存在
-- 哪些 operation runtime 中存在但 catalog 未收录
-
-### 5.4 `spec export`
-
-`spec export` 用于显式导出完整结构化 spec，不应与 `list` 混用语义。
-
-这能避免把 `list` 设计成既要做人类可读目录浏览，又要做机器可读全量导出的“双重接口”。
-
-## 6. 层级模型
-
-`spec list` 应返回树节点，而不是直接返回 operation 全表。
-
-推荐节点类型：
+当前节点类型：
 
 - `root`
 - `platform`
 - `group`
 - `operation`
 
-这里不强制把中间层写死成 `resource`，因为不同平台未来的路径层级不一定完全对齐。
+默认行为仍应保持：
 
-### 6.1 `list` 输出示例
-
-根层：
-
-```json
-{
-  "ok": true,
-  "data": {
-    "path": "",
-    "node_type": "root",
-    "depth": 1,
-    "items": [
-      {
-        "name": "feishu",
-        "full_path": "feishu",
-        "node_type": "platform",
-        "child_count": 4,
-        "operation_count": 16
-      },
-      {
-        "name": "notion",
-        "full_path": "notion",
-        "node_type": "platform",
-        "child_count": 5,
-        "operation_count": 12
-      }
-    ]
-  }
-}
-```
-
-中间层：
-
-```json
-{
-  "ok": true,
-  "data": {
-    "path": "feishu.docs",
-    "node_type": "group",
-    "depth": 1,
-    "items": [
-      {
-        "name": "document",
-        "full_path": "feishu.docs.document",
-        "node_type": "group",
-        "child_count": 5,
-        "operation_count": 5
-      },
-      {
-        "name": "block",
-        "full_path": "feishu.docs.block",
-        "node_type": "group",
-        "child_count": 5,
-        "operation_count": 5
-      }
-    ]
-  }
-}
-```
-
-叶子层：
-
-```json
-{
-  "ok": true,
-  "data": {
-    "path": "feishu.docs.document",
-    "node_type": "group",
-    "depth": 1,
-    "items": [
-      {
-        "name": "create",
-        "full_path": "feishu.docs.document.create",
-        "node_type": "operation",
-        "implemented": false,
-        "mutating": true,
-        "summary": "Create an empty Feishu document."
-      },
-      {
-        "name": "get",
-        "full_path": "feishu.docs.document.get",
-        "node_type": "operation",
-        "implemented": true,
-        "mutating": false,
-        "summary": "Get Feishu document metadata."
-      }
-    ]
-  }
-}
-```
+- 层级浏览
+- 输出可控
+- 先摘要后细节
+- 不承担机器全量导出职责
 
 ## 7. 详情模型
 
-`spec get` 返回单个 operation 的完整契约信息。
+`spec get` 返回单个 operation 的详情记录。
 
-建议字段：
+当前字段包括：
 
 - `operation`
 - `platform`
@@ -251,254 +117,134 @@ clawrise spec get feishu.calendar.event.create
 - `examples`
 - `runtime_status`
 
-### 7.1 `get` 输出示例
-
-```json
-{
-  "ok": true,
-  "data": {
-    "operation": "feishu.calendar.event.create",
-    "platform": "feishu",
-    "resource_path": "calendar.event",
-    "action": "create",
-    "summary": "Create a Feishu calendar event.",
-    "allowed_subjects": ["bot"],
-    "mutating": true,
-    "implemented": true,
-    "dry_run_supported": true,
-    "default_timeout_ms": 10000,
-    "idempotency": {
-      "required": true,
-      "auto_generated": true
-    },
-    "input": {
-      "required": ["calendar_id", "summary", "start_at", "end_at"],
-      "optional": ["description", "location", "reminders", "timezone"],
-      "notes": [
-        "Time fields use RFC3339.",
-        "`attendees` is not supported in the current implementation."
-      ],
-      "sample": {
-        "calendar_id": "cal_demo",
-        "summary": "Weekly sync",
-        "start_at": "2026-03-30T10:00:00+08:00",
-        "end_at": "2026-03-30T11:00:00+08:00"
-      }
-    },
-    "examples": [
-      {
-        "title": "Create an event",
-        "command": "clawrise feishu.calendar.event.create --json '{...}'"
-      }
-    ],
-    "runtime_status": "registered_and_implemented"
-  }
-}
-```
+当前详情页仍然以 runtime 元数据为主；runtime/catalog 漂移由 `spec status` 负责显式报告。
 
 ## 8. 事实源模型
 
-`spec` 不应只有一份事实源，而应拆成两层：
+当前模型明确拆成两层：
 
 - `Runtime Registry`
 - `Catalog`
 
-二者职责不同。
+### Runtime Registry
 
-### 7.1 Runtime Registry
+Runtime Registry 表示当前二进制通过已加载 provider runtime 能发现到的 operation 集。
 
-Runtime Registry 表示当前二进制真实可见的 operation。
+它回答：
 
-它的特点是：
+- 现在暴露了哪些 operation
+- 这些 operation 现在带了哪些元数据
+- 哪些 operation 当前真实已实现
 
-- 由 adapter 注册产生
-- 表示“现在能发现到什么”
-- 不一定代表“现在都已经真正实现”
+### Catalog
 
-### 7.2 Catalog
+Catalog 表示项目当前认领的结构化 operation 声明集。
 
-Catalog 表示项目当前认领的 operation 集。
+它回答：
 
-它的特点是：
-
-- 用结构化方式声明“项目认为应该支持哪些 operation”
-- 可以包含已实现、占位、规划中
-- 用于驱动文档、状态治理与测试约束
-
-### 7.3 为什么需要两层
-
-如果只有 runtime registry，就无法表达“文档已认领但尚未实现”的 operation。
-
-如果只有 catalog，就无法知道当前二进制真实暴露了哪些能力。
-
-因此 `spec status` 必须基于两层做差异分析。
+- 哪些 operation 被声明了
+- 哪些 runtime operation 缺少 catalog 覆盖
+- 哪些 catalog operation 在 runtime 中缺失
 
 ## 9. 状态模型
 
-建议定义以下 runtime 状态：
+`spec status` 是治理接口，不是浏览接口。
 
-- `registered_and_implemented`
-- `registered_but_stubbed`
-- `runtime_missing`
+它应报告：
 
-建议定义以下 catalog 状态：
+- 当前注册 operation 总数
+- implemented / stubbed 数量
+- catalog 声明总数
+- runtime 中存在但 catalog 未收录的 operation
+- catalog 已声明但 runtime 缺失的 operation
 
-- `declared`
-- `catalog_missing`
+当前状态标签：
 
-`status` 重点需要识别的问题项：
-
-- `registered_but_stubbed`
-- `catalog_declared_but_runtime_missing`
-- `runtime_present_but_catalog_missing`
+- runtime:
+  - `registered_and_implemented`
+  - `registered_but_stubbed`
+  - `runtime_missing`
+- catalog:
+  - `declared`
+  - `catalog_missing`
 
 ## 10. 元数据模型
 
-当前 adapter registry 的定义只覆盖执行相关元数据，无法支撑 `spec` 层；见 `internal/adapter/registry.go`。
+当前 operation 元数据仍然保持轻量。
 
-建议把 operation 定义扩展为“执行元数据 + 描述元数据”。
+它包括：
 
-建议结构：
+- 执行元数据：
+  - operation name
+  - platform
+  - mutating flag
+  - default timeout
+  - allowed subjects
+- 发现元数据：
+  - summary
+  - description
+  - dry-run support
+  - input fields
+  - examples
+  - idempotency behavior
 
-```go
-type Definition struct {
-    Operation       string
-    Platform        string
-    Mutating        bool
-    DefaultTimeout  time.Duration
-    AllowedSubjects []string
-    Handler         HandlerFunc
-    Spec            OperationSpec
-}
+当前仍然不打算把它直接扩成完整 JSON Schema 体系。
 
-type OperationSpec struct {
-    Summary          string
-    Description      string
-    DryRunSupported  bool
-    Input            InputSpec
-    Idempotency      IdempotencySpec
-    Examples         []ExampleSpec
-    Stability        string
-    UnsupportedNotes []string
-}
+## 11. 当前文件落点
 
-type InputSpec struct {
-    Required []string
-    Optional []string
-    Notes    []string
-    Sample   map[string]any
-}
-
-type IdempotencySpec struct {
-    Required      bool
-    AutoGenerated bool
-}
-
-type ExampleSpec struct {
-    Title   string
-    Command string
-}
-```
-
-首版不建议直接上完整 JSON Schema，原因有三点：
-
-- 当前实现里很多校验逻辑还散落在 adapter 中
-- 首版最重要的是先建立统一事实源
-- 过早引入完整 schema 会显著扩大实现范围
-
-## 11. 当前实现落点
-
-当前已经存在：
+当前实现文件包括：
 
 - `internal/spec/types.go`
 - `internal/spec/service.go`
-- `internal/cli/spec.go`
-- `internal/adapter/feishu/calendar_spec.go`
-- `internal/adapter/feishu/docx_spec.go`
-- `internal/adapter/feishu/wiki_spec.go`
-- `internal/adapter/notion/page_spec.go`
-- `internal/adapter/notion/block_spec.go`
-
-已完成的关键修改：
-
-- `internal/adapter/registry.go`
-  - 扩展 `Definition`
-  - 增加只读遍历接口
-- 各平台 `register.go`
-  - 为每个 operation 补 `Spec`
-- `internal/cli/root.go`
-  - 把 `spec` 从占位命令替换为真实子命令
-
-下一阶段计划新增：
-
 - `internal/spec/status.go`
-- `internal/spec/catalog/feishu.go`
-- `internal/spec/catalog/notion.go`
+- `internal/spec/catalog/*`
+- `internal/cli/spec.go`
+
+当前 provider 聚合层位于：
+
+- `internal/plugin/runtime.go`
+- `internal/plugin/process.go`
+- `internal/plugin/registry_runtime.go`
+
+当前最重要的架构事实是：
+
+- `spec` 已不再假设 provider 永远硬编码在 core 中
+- 它消费的是 provider runtime 聚合后的 registry 和 catalog 视图
 
 ## 12. 与其他子系统的关系
 
-### 12.1 与 completion
+### 12.1 与 Completion
 
-`completion` 不应维护另一套独立命令树，而应直接消费 `spec` 生成的层级节点。
-
-也就是说：
-
-- 平台补全来自 root 层
-- group 补全来自 path 节点
-- operation 补全来自叶子节点
+`completion` 应直接消费 `spec` 所在的同一层 provider 元数据，而不是维护另一套命令树。
 
 ### 12.2 与文档
 
-中长期应让中英文 operation 文档逐步从 catalog 和 registry 元数据生成，而不是继续完全手工同步。
-
-但首版不建议反向解析现有 Markdown。
+operation 文档应逐步转向从 provider 元数据和 catalog 生成，而不是继续完全手工同步。
 
 ### 12.3 与测试
 
-测试需要把 `spec` 当成契约层，而不是可选辅助功能。
+`spec` 应继续被当成契约层。
 
-至少应覆盖：
+测试至少应覆盖：
 
-- `list` 路径行为
-- `get` 对叶子与非叶子的处理
-- `status` 的 diff 逻辑
-- operation 元数据完整性
+- 层级浏览行为
+- operation 详情行为
+- runtime/catalog 漂移报告
+- 元数据完整性
 
-## 13. 分阶段实施建议
+## 13. 下一步
 
-### 13.1 第一阶段
+在当前实现基础上，下一步主要是：
 
-- 扩展 registry 元数据
-- 实现 `spec list`
-- 实现 `spec get`
-- 为当前已注册 operation 补齐基础 `Spec`
+- 实现 `clawrise spec export`
+- 让 completion 复用同一套 provider 元数据
+- 让文档逐步向 metadata-driven 方向收敛
 
-状态：
+## 14. 完成标志
 
-- 已完成
+可以认为近期 `spec` 工作完成的标志是：
 
-### 13.2 第二阶段
-
-- 引入 catalog
-- 实现 `spec status`
-- 加入 metadata completeness test
-
-### 13.3 第三阶段
-
-- 实现 `spec export`
-- 让 `completion` 复用 `spec`
-- 开始把 operation 文档迁移为结构化生成优先
-
-## 14. 验收标准
-
-当前 `M1` 已达到的验收结果：
-
-- `clawrise spec list` 可以逐层浏览当前 operation 目录
-- `clawrise spec get <operation>` 可以返回完整详情
-- `spec` 输出不依赖真实凭证与外部网络
-
-下一阶段需要补齐：
-
-- `clawrise spec status`
-- catalog 对账
-- metadata completeness test
+- runtime 能力可通过 `list/get` 发现
+- runtime/catalog 漂移可通过 `status` 查看
+- `export` 可供机器消费者使用
+- completion 和文档不再依赖另一套手工维护的命令知识

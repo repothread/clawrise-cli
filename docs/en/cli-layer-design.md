@@ -20,7 +20,7 @@ Clawrise should provide:
 
 - low token overhead
 - stable invocation contracts
-- adapter-based extensibility
+- provider-plugin-based extensibility
 - controllable auth, retry, timeout, rate limit, idempotency, and audit behavior
 - normalized machine-friendly output
 
@@ -84,6 +84,7 @@ Reserved management commands:
 - `clawrise platform ...`
 - `clawrise subject ...`
 - `clawrise profile ...`
+- `clawrise plugin ...`
 - `clawrise auth ...`
 - `clawrise config ...`
 - `clawrise batch ...`
@@ -94,12 +95,21 @@ Reserved management commands:
 
 Current implementation status:
 
+- first-party Feishu and Notion are exposed through external provider plugin binaries
+- `clawrise plugin list`
+- `clawrise plugin install <source>`
+- `clawrise plugin info <name> <version>`
+- `clawrise plugin remove <name> <version>`
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
 - `clawrise spec status`
 - `clawrise spec export`
 
-At the moment only `list/get` are implemented, while `status/export` remain planned.
+At the moment:
+
+- `plugin list/install/info/remove` are implemented
+- `spec list/get/status` are implemented
+- `spec export` is still planned
 
 ## 4. Input and Output
 
@@ -184,7 +194,7 @@ Recommended runtime responsibilities:
 1. command parser
 2. config loader
 3. auth manager
-4. adapter registry
+4. provider runtime manager
 5. operation metadata resolver
 6. input validator
 7. idempotency controller
@@ -198,32 +208,30 @@ Execution flow:
 CLI input
   -> resolve operation and flags
   -> load config / profile
-  -> resolve adapter and operation metadata
+  -> resolve provider runtime and operation metadata
   -> read JSON input
   -> validate and normalize
   -> resolve idempotency
   -> apply timeout / retry / rate limit policy
-  -> execute adapter
+  -> execute provider runtime
   -> normalize output
   -> write audit record
 ```
 
-## 6. Adapter Model
+## 6. Provider Runtime Model
 
-The runtime should not know platform-specific details directly.
+The core runtime should not know provider implementation details directly.
 
 Recommended Go interfaces:
 
 ```go
-type Adapter interface {
+type ProviderRuntime interface {
     Name() string
-    Resolve(operation string) (OperationHandler, error)
-}
-
-type OperationHandler interface {
-    Meta() OperationMeta
-    Validate(ctx context.Context, input map[string]any) error
-    Execute(ctx context.Context, req ExecuteRequest) (*ExecuteResult, error)
+    Handshake(ctx context.Context) (HandshakeResult, error)
+    ListOperations(ctx context.Context) ([]Definition, error)
+    GetCatalog(ctx context.Context) ([]CatalogEntry, error)
+    Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error)
+    Health(ctx context.Context) (HealthResult, error)
 }
 ```
 
@@ -402,12 +410,12 @@ MVP platforms:
 - `feishu`
 - `notion`
 
-Recommended MVP sequence:
+Recommended implementation sequence:
 
 1. build the runtime core
-2. implement the Feishu adapter MVP
-3. implement the Notion adapter MVP
-4. build the generation pipeline
-5. extend to Google later
+2. define the provider runtime boundary
+3. ship first-party Feishu and Notion plugins
+4. add plugin discovery and installation
+5. extend to Google and other providers later
 
 Detailed operation contracts are documented in [mvp-operation-spec.md](mvp-operation-spec.md).

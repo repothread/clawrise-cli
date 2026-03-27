@@ -20,7 +20,7 @@ Clawrise 必须满足：
 
 - 低 token：默认不依赖 MCP schema 注入上下文
 - 高稳定：命令格式固定，输出结构固定，减少 prompt 解释空间
-- 高扩展：平台、资源、动作都可以增量扩展
+- 高扩展：平台能力通过 provider plugin 增量扩展
 - 高可控：支持认证、限流、重试、超时、审计、幂等
 - AI 友好：输入简单、输出稳定、错误可判定、可直接串联
 
@@ -119,6 +119,7 @@ operation 路径格式：
 - `clawrise platform ...`
 - `clawrise subject ...`
 - `clawrise profile ...`
+- `clawrise plugin ...`
 - `clawrise auth ...`
 - `clawrise config ...`
 - `clawrise batch ...`
@@ -129,12 +130,21 @@ operation 路径格式：
 
 当前实现状态：
 
+- Feishu / Notion 第一方能力已经通过外部 provider plugin binary 暴露
+- `clawrise plugin list`
+- `clawrise plugin install <source>`
+- `clawrise plugin info <name> <version>`
+- `clawrise plugin remove <name> <version>`
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
 - `clawrise spec status`
 - `clawrise spec export`
 
-其中当前仅 `list/get` 已实现，`status/export` 仍为后续计划。
+其中当前：
+
+- `plugin list/install/info/remove` 已实现
+- `spec list/get/status` 已实现
+- `spec export` 仍待实现
 
 ## 5. 输入输出规范
 
@@ -219,7 +229,7 @@ operation 路径格式：
 1. 命令解析器
 2. 配置加载器
 3. 认证管理器
-4. 适配器注册中心
+4. provider runtime 管理层
 5. operation 元信息解析器
 6. 输入校验器
 7. 幂等控制器
@@ -233,32 +243,30 @@ operation 路径格式：
 CLI 输入
   -> 解析 operation 和 flags
   -> 加载 config / profile
-  -> 解析 adapter 和 operation 元信息
+  -> 解析 provider runtime 和 operation 元信息
   -> 读取 JSON 输入
   -> 本地校验与标准化
   -> 处理幂等
   -> 装配超时 / 重试 / 限流策略
-  -> 调用 adapter
+  -> 调用 provider runtime
   -> 标准化输出
   -> 写审计日志
 ```
 
-## 7. Adapter 模型
+## 7. Provider Runtime 模型
 
-运行时不应该直接知道平台细节。
+core runtime 不应直接知道 provider 的实现细节。
 
 推荐 Go 接口：
 
 ```go
-type Adapter interface {
+type ProviderRuntime interface {
     Name() string
-    Resolve(operation string) (OperationHandler, error)
-}
-
-type OperationHandler interface {
-    Meta() OperationMeta
-    Validate(ctx context.Context, input map[string]any) error
-    Execute(ctx context.Context, req ExecuteRequest) (*ExecuteResult, error)
+    Handshake(ctx context.Context) (HandshakeResult, error)
+    ListOperations(ctx context.Context) ([]Definition, error)
+    GetCatalog(ctx context.Context) ([]CatalogEntry, error)
+    Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error)
+    Health(ctx context.Context) (HealthResult, error)
 }
 ```
 
@@ -440,9 +448,9 @@ MVP 平台组合：
 推荐实施顺序：
 
 1. 实现运行时内核
-2. 实现 Feishu adapter MVP
-3. 实现 Notion adapter MVP
-4. 实现生成器
-5. 后续扩展 Google
+2. 定义 provider runtime 边界
+3. 交付 Feishu / Notion 第一方 plugin
+4. 实现插件发现与安装
+5. 后续扩展 Google 和其他 provider
 
 具体 operation 契约见 [mvp-operation-spec.md](mvp-operation-spec.md)。

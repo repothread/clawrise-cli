@@ -15,6 +15,21 @@ It addresses the following problems:
 
 This design is written for the desired end-state. It does not preserve the current built-in Feishu / Notion registration path as a compatibility constraint.
 
+## 1.1 Current Progress
+
+As of the current repository state:
+
+- `M1` is complete:
+  - provider runtime abstraction exists in the core
+- `M2` is complete:
+  - manifest parsing, plugin discovery, and external-process runtime exist
+- `M3` is complete:
+  - first-party Feishu and Notion are exposed through plugin binaries
+- `M4` is partially complete:
+  - `plugin list/install/info/remove` exist
+  - local directory, `file://`, `https://`, and `npm://` installation are implemented
+  - release hardening, trust policy, and upgrade workflow still need more work
+
 ## 2. Non-goals
 
 The first plugin system version should explicitly avoid:
@@ -657,11 +672,19 @@ Suggested implementation phases:
 
 ### 17.1 M1: Extract provider runtime abstraction
 
+Status:
+
+- completed
+
 - remove hard-coded provider construction from the core
 - introduce `ProviderRuntime`
-- keep built-in providers temporarily, but behind the same runtime interface
+- use an in-process runtime shim only as a transition step while moving first-party providers out of the core
 
 ### 17.2 M2: Implement local plugin protocol and discovery
+
+Status:
+
+- completed
 
 - implement `stdio + JSON-RPC`
 - implement manifest parsing
@@ -670,16 +693,26 @@ Suggested implementation phases:
 
 ### 17.3 M3: Move Feishu / Notion into first-party plugins
 
+Status:
+
+- completed
+
 - reuse current adapter and registry logic
 - add per-provider plugin entry binaries
 - stop importing provider adapters directly from the core
 
 ### 17.4 M4: Add installation and remote distribution
 
+Status:
+
+- partially completed
+
 - `clawrise plugin install`
 - `clawrise plugin list`
+- `clawrise plugin info`
 - `clawrise plugin remove`
 - support `file://`, `https://`, and `npm://`
+- add trust, verification, and upgrade policy
 
 ## 18. Direct Impact on the Current Repository
 
