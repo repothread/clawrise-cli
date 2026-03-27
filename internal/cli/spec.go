@@ -12,7 +12,7 @@ import (
 
 // runSpec handles `clawrise spec` subcommands.
 func runSpec(args []string, stdout io.Writer, registry *adapter.Registry) error {
-	if len(args) == 0 {
+	if len(args) == 0 || isHelpToken(args[0]) {
 		printSpecHelp(stdout)
 		return nil
 	}

@@ -51,6 +51,10 @@ func Run(args []string, deps Dependencies) error {
 		printRootHelp(deps.Stdout)
 		return nil
 	}
+	if isHelpToken(args[0]) {
+		printRootHelp(deps.Stdout)
+		return nil
+	}
 
 	switch args[0] {
 	case "platform":
@@ -115,6 +119,9 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 	flags.BoolVar(&quiet, "quiet", false, "print only data on successful execution")
 
 	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
 		return err
 	}
 
@@ -164,8 +171,8 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 }
 
 func runSubject(args []string, store *config.Store, stdout io.Writer) error {
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stdout, "Usage: clawrise subject [use|current|unset|list]")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printSubjectHelp(stdout)
 		return nil
 	}
 
@@ -232,8 +239,8 @@ func runSubject(args []string, store *config.Store, stdout io.Writer) error {
 }
 
 func runPlatform(args []string, store *config.Store, stdout io.Writer) error {
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stdout, "Usage: clawrise platform [use|current|unset]")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printPlatformHelp(stdout)
 		return nil
 	}
 
@@ -278,8 +285,8 @@ func runPlatform(args []string, store *config.Store, stdout io.Writer) error {
 }
 
 func runProfile(args []string, store *config.Store, stdout io.Writer) error {
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(stdout, "Usage: clawrise profile [use|current|list]")
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printProfileHelp(stdout)
 		return nil
 	}
 
@@ -401,6 +408,28 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")
+}
+
+func printPlatformHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise platform [use|current|unset]")
+}
+
+func printSubjectHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise subject [use|current|unset|list]")
+}
+
+func printProfileHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise profile [use|current|list]")
+}
+
+// 统一识别 CLI 帮助标记，避免各子命令各自维护一套判断逻辑。
+func isHelpToken(token string) bool {
+	switch strings.TrimSpace(token) {
+	case "-h", "--help", "help":
+		return true
+	default:
+		return false
+	}
 }
 
 func isSupportedSubject(subject string) bool {

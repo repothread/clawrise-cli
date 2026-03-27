@@ -5,6 +5,55 @@ import (
 	"testing"
 )
 
+func TestRunRootHelpFlag(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"--help"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage:")) {
+		t.Fatalf("expected root help output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise spec [list|get|status|export]")) {
+		t.Fatalf("expected spec usage in root help, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunOperationHelpFlag(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"feishu.calendar.event.create", "--help"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("Usage of clawrise:")) {
+		t.Fatalf("expected operation flag help, got: %s", stderr.String())
+	}
+}
+
 func TestRunOperationDryRun(t *testing.T) {
 	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
 	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
@@ -110,6 +159,52 @@ func TestRunSpecGet(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"implemented": true`)) {
 		t.Fatalf("expected implemented flag, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunSpecHelpFlag(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"spec", "--help"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise spec [list|get|status|export]")) {
+		t.Fatalf("expected spec help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunPlatformHelpFlag(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"platform", "--help"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise platform [use|current|unset]")) {
+		t.Fatalf("expected platform help output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
