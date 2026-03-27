@@ -12,6 +12,42 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
+// GetComment reads a single Notion comment object.
+func (c *Client) GetComment(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	commentID, appErr := requireIDField(input, "comment_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodGet,
+		"/v1/comments/"+url.PathEscape(commentID),
+		nil,
+		nil,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion comment response: %v", err))
+	}
+	if id, ok := asString(response["id"]); !ok || strings.TrimSpace(id) == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "comment id is empty in Notion response")
+	}
+	return normalizeComment(response), nil
+}
+
 // ListComments lists open comments under a page or block.
 func (c *Client) ListComments(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, ok := asString(input["block_id"])

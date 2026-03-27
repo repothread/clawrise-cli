@@ -60,6 +60,64 @@ func bitableRecordDeleteSpec() adapter.OperationSpec {
 	}
 }
 
+func bitableRecordBatchCreateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Create multiple Feishu Bitable records in one request.",
+		Input: adapter.InputSpec{
+			Required: []string{"app_token", "table_id", "records"},
+			Optional: []string{"user_id_type", "client_token", "ignore_consistency_check"},
+			Sample: map[string]any{
+				"app_token": "app_demo",
+				"table_id":  "tbl_demo",
+				"records": []any{
+					map[string]any{
+						"fields": map[string]any{
+							"Title": "Task A",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func bitableRecordBatchUpdateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Update multiple Feishu Bitable records in one request.",
+		Input: adapter.InputSpec{
+			Required: []string{"app_token", "table_id", "records"},
+			Optional: []string{"user_id_type", "ignore_consistency_check"},
+			Sample: map[string]any{
+				"app_token": "app_demo",
+				"table_id":  "tbl_demo",
+				"records": []any{
+					map[string]any{
+						"record_id": "rec_demo",
+						"fields": map[string]any{
+							"Status": "Done",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func bitableRecordBatchDeleteSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Delete multiple Feishu Bitable records in one request.",
+		Input: adapter.InputSpec{
+			Required: []string{"app_token", "table_id", "records"},
+			Optional: []string{"ignore_consistency_check"},
+			Sample: map[string]any{
+				"app_token": "app_demo",
+				"table_id":  "tbl_demo",
+				"records":   []any{"rec_demo"},
+			},
+		},
+	}
+}
+
 func bitableRecordGetSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Get one Feishu Bitable record.",

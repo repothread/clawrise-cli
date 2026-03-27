@@ -31,3 +31,33 @@ func contactUserSearchSpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func contactDepartmentListSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List child departments under a Feishu department.",
+		Input: adapter.InputSpec{
+			Optional: []string{"department_id", "department_id_type", "user_id_type", "fetch_child", "page_size", "page_token"},
+			Notes: []string{
+				"When `department_id` is omitted, the operation starts from the root department `0`.",
+			},
+			Sample: map[string]any{
+				"department_id": "0",
+				"page_size":     10,
+			},
+		},
+	}
+}
+
+func departmentUserListSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List direct users under a Feishu department.",
+		Input: adapter.InputSpec{
+			Required: []string{"department_id"},
+			Optional: []string{"department_id_type", "user_id_type", "page_size", "page_token"},
+			Sample: map[string]any{
+				"department_id": "od-demo",
+				"page_size":     10,
+			},
+		},
+	}
+}

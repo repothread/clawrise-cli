@@ -33,6 +33,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.page.property_item.get",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionPagePropertyItemGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetPagePropertyItem(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.page.update",
 		Platform:        "notion",
 		Mutating:        true,
@@ -77,6 +88,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.comment.get",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionCommentGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetComment(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.comment.list",
 		Platform:        "notion",
 		Mutating:        false,
@@ -110,6 +132,28 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.data_source.create",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionDataSourceCreateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.CreateDataSource(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.data_source.update",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionDataSourceUpdateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.UpdateDataSource(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.data_source.query",
 		Platform:        "notion",
 		Mutating:        false,
@@ -140,6 +184,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Spec:            notionBlockListChildrenSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ListBlockChildren(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.block.get_descendants",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionBlockGetDescendantsSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetBlockDescendants(ctx, call.Profile, call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -184,6 +239,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Spec:            notionUserGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetUser(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.user.list",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionUserListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListUsers(ctx, call.Profile, call.Input)
 		},
 	})
 }

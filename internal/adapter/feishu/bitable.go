@@ -350,6 +350,156 @@ func (c *Client) DeleteBitableRecord(ctx context.Context, profile config.Profile
 	}, nil
 }
 
+// BatchCreateBitableRecords batch creates records in one Bitable table.
+func (c *Client) BatchCreateBitableRecords(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	appToken, tableID, appErr := requireBitableTableIdentity(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+	records, appErr := buildBitableBatchCreateRecords(input["records"])
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPost,
+		"/open-apis/bitable/v1/apps/"+url.PathEscape(appToken)+"/tables/"+url.PathEscape(tableID)+"/records/batch_create",
+		buildBitableWriteQuery(input),
+		map[string]any{
+			"records": records,
+		},
+		"Bearer "+accessToken,
+		map[string]string{
+			"Content-Type": "application/json; charset=utf-8",
+		},
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	data, appErr := decodeFeishuEnvelope(responseBody, "failed to decode bitable record batch create response")
+	if appErr != nil {
+		return nil, appErr
+	}
+	return normalizeBitableBatchWriteResult(appToken, tableID, data, "created_count"), nil
+}
+
+// BatchUpdateBitableRecords batch updates records in one Bitable table.
+func (c *Client) BatchUpdateBitableRecords(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	appToken, tableID, appErr := requireBitableTableIdentity(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+	records, appErr := buildBitableBatchUpdateRecords(input["records"])
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPost,
+		"/open-apis/bitable/v1/apps/"+url.PathEscape(appToken)+"/tables/"+url.PathEscape(tableID)+"/records/batch_update",
+		buildBitableWriteQuery(input),
+		map[string]any{
+			"records": records,
+		},
+		"Bearer "+accessToken,
+		map[string]string{
+			"Content-Type": "application/json; charset=utf-8",
+		},
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	data, appErr := decodeFeishuEnvelope(responseBody, "failed to decode bitable record batch update response")
+	if appErr != nil {
+		return nil, appErr
+	}
+	return normalizeBitableBatchWriteResult(appToken, tableID, data, "updated_count"), nil
+}
+
+// BatchDeleteBitableRecords batch deletes records in one Bitable table.
+func (c *Client) BatchDeleteBitableRecords(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	appToken, tableID, appErr := requireBitableTableIdentity(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+	recordIDs, appErr := buildBitableBatchDeleteRecords(input["records"])
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPost,
+		"/open-apis/bitable/v1/apps/"+url.PathEscape(appToken)+"/tables/"+url.PathEscape(tableID)+"/records/batch_delete",
+		buildBitableDeleteQuery(input),
+		map[string]any{
+			"records": recordIDs,
+		},
+		"Bearer "+accessToken,
+		map[string]string{
+			"Content-Type": "application/json; charset=utf-8",
+		},
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	data, appErr := decodeFeishuEnvelope(responseBody, "failed to decode bitable record batch delete response")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	items := make([]map[string]any, 0)
+	for _, item := range extractFeishuRecordList(data, "records", "items") {
+		record, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		normalized := map[string]any{
+			"record_id": extractFirstNonEmptyString(record, "record_id"),
+			"deleted":   false,
+			"raw":       cloneFeishuMap(record),
+		}
+		if deleted, ok := asBool(record["deleted"]); ok {
+			normalized["deleted"] = deleted
+		}
+		items = append(items, normalized)
+	}
+
+	deletedCount := 0
+	for _, item := range items {
+		if deleted, ok := item["deleted"].(bool); ok && deleted {
+			deletedCount++
+		}
+	}
+
+	return map[string]any{
+		"app_token":     appToken,
+		"table_id":      tableID,
+		"items":         items,
+		"deleted_count": deletedCount,
+	}, nil
+}
+
 // buildBitablePaginationQuery 统一处理多维表格列表类接口的分页参数。
 func buildBitablePaginationQuery(input map[string]any) url.Values {
 	query := url.Values{}
@@ -361,6 +511,28 @@ func buildBitablePaginationQuery(input map[string]any) url.Values {
 	}
 	if pageToken, ok := asString(input["page_token"]); ok && strings.TrimSpace(pageToken) != "" {
 		query.Set("page_token", strings.TrimSpace(pageToken))
+	}
+	return query
+}
+
+func buildBitableWriteQuery(input map[string]any) url.Values {
+	query := url.Values{}
+	if userIDType, ok := asString(input["user_id_type"]); ok && strings.TrimSpace(userIDType) != "" {
+		query.Set("user_id_type", strings.TrimSpace(userIDType))
+	}
+	if clientToken, ok := asString(input["client_token"]); ok && strings.TrimSpace(clientToken) != "" {
+		query.Set("client_token", strings.TrimSpace(clientToken))
+	}
+	if ignoreConsistencyCheck, ok := asBool(input["ignore_consistency_check"]); ok {
+		query.Set("ignore_consistency_check", strconv.FormatBool(ignoreConsistencyCheck))
+	}
+	return query
+}
+
+func buildBitableDeleteQuery(input map[string]any) url.Values {
+	query := url.Values{}
+	if ignoreConsistencyCheck, ok := asBool(input["ignore_consistency_check"]); ok {
+		query.Set("ignore_consistency_check", strconv.FormatBool(ignoreConsistencyCheck))
 	}
 	return query
 }
@@ -399,6 +571,74 @@ func buildBitableRecordWriteRequest(input map[string]any) (string, string, map[s
 		return "", "", nil, apperr.New("INVALID_INPUT", "fields is required")
 	}
 	return appToken, tableID, cloneFeishuMap(fields), nil
+}
+
+func buildBitableBatchCreateRecords(raw any) ([]map[string]any, *apperr.AppError) {
+	list, ok := asArray(raw)
+	if !ok || len(list) == 0 {
+		return nil, apperr.New("INVALID_INPUT", "records is required")
+	}
+
+	records := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		record, ok := asMap(item)
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "each records item must be an object")
+		}
+		fields, ok := asMap(record["fields"])
+		if !ok || len(fields) == 0 {
+			return nil, apperr.New("INVALID_INPUT", "each records item must include non-empty fields")
+		}
+		records = append(records, map[string]any{
+			"fields": cloneFeishuMap(fields),
+		})
+	}
+	return records, nil
+}
+
+func buildBitableBatchUpdateRecords(raw any) ([]map[string]any, *apperr.AppError) {
+	list, ok := asArray(raw)
+	if !ok || len(list) == 0 {
+		return nil, apperr.New("INVALID_INPUT", "records is required")
+	}
+
+	records := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		record, ok := asMap(item)
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "each records item must be an object")
+		}
+		recordID, ok := asString(record["record_id"])
+		if !ok || strings.TrimSpace(recordID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "each records item must include record_id")
+		}
+		fields, ok := asMap(record["fields"])
+		if !ok || len(fields) == 0 {
+			return nil, apperr.New("INVALID_INPUT", "each records item must include non-empty fields")
+		}
+		records = append(records, map[string]any{
+			"record_id": strings.TrimSpace(recordID),
+			"fields":    cloneFeishuMap(fields),
+		})
+	}
+	return records, nil
+}
+
+func buildBitableBatchDeleteRecords(raw any) ([]string, *apperr.AppError) {
+	list, ok := asArray(raw)
+	if !ok || len(list) == 0 {
+		return nil, apperr.New("INVALID_INPUT", "records is required")
+	}
+
+	recordIDs := make([]string, 0, len(list))
+	for _, item := range list {
+		recordID, ok := asString(item)
+		if !ok || strings.TrimSpace(recordID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "each records item must be a non-empty string")
+		}
+		recordIDs = append(recordIDs, strings.TrimSpace(recordID))
+	}
+	return recordIDs, nil
 }
 
 func normalizeBitableRecord(record map[string]any) map[string]any {
@@ -447,5 +687,24 @@ func normalizeBitableField(field map[string]any) map[string]any {
 	} else if isPrimary, ok := asBool(field["is_primary"]); ok {
 		result["is_primary"] = isPrimary
 	}
+	return result
+}
+
+func normalizeBitableBatchWriteResult(appToken, tableID string, data map[string]any, countKey string) map[string]any {
+	items := make([]map[string]any, 0)
+	for _, item := range extractFeishuRecordList(data, "records", "items") {
+		record, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		items = append(items, normalizeBitableRecord(record))
+	}
+
+	result := map[string]any{
+		"app_token": appToken,
+		"table_id":  tableID,
+		"items":     items,
+	}
+	result[countKey] = len(items)
 	return result
 }

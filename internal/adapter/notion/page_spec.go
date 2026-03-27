@@ -34,6 +34,21 @@ func notionPageGetSpec() adapter.OperationSpec {
 	}
 }
 
+func notionPagePropertyItemGetSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Get a Notion page property item and preserve provider-native structure.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id", "property_id"},
+			Optional: []string{"page_size", "page_token"},
+			Sample: map[string]any{
+				"page_id":     "page_demo",
+				"property_id": "prop_demo",
+				"page_size":   20,
+			},
+		},
+	}
+}
+
 func notionPageUpdateSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Update a Notion page's properties or archive state.",

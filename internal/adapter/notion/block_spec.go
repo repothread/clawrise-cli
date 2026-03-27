@@ -28,6 +28,23 @@ func notionBlockListChildrenSpec() adapter.OperationSpec {
 	}
 }
 
+func notionBlockGetDescendantsSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Recursively collect all descendant blocks under a Notion block.",
+		Input: adapter.InputSpec{
+			Required: []string{"block_id"},
+			Optional: []string{"page_size"},
+			Notes: []string{
+				"The adapter handles pagination and recursion internally and returns a flat depth-first list.",
+			},
+			Sample: map[string]any{
+				"block_id":  "blk_demo",
+				"page_size": 100,
+			},
+		},
+	}
+}
+
 func notionBlockAppendSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Append child blocks to a Notion block.",

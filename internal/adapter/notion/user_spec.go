@@ -16,3 +16,15 @@ func notionUserGetSpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func notionUserListSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List Notion users visible to the current integration.",
+		Input: adapter.InputSpec{
+			Optional: []string{"page_size", "page_token"},
+			Sample: map[string]any{
+				"page_size": 20,
+			},
+		},
+	}
+}

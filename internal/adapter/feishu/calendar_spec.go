@@ -2,6 +2,21 @@ package feishu
 
 import "github.com/clawrise/clawrise-cli/internal/adapter"
 
+func calendarCalendarListSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List calendars visible to the current Feishu identity.",
+		Input: adapter.InputSpec{
+			Optional: []string{"page_size", "page_token", "sync_token"},
+			Notes: []string{
+				"`sync_token` can be used for incremental sync after a full pagination pass finishes.",
+			},
+			Sample: map[string]any{
+				"page_size": 50,
+			},
+		},
+	}
+}
+
 func calendarEventCreateSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Create a Feishu calendar event.",

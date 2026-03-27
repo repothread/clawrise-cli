@@ -228,6 +228,33 @@ func normalizeContactUser(user map[string]any) map[string]any {
 	if status, ok := asMap(user["status"]); ok && len(status) > 0 {
 		result["status"] = cloneFeishuMap(status)
 	}
+	if departmentIDs, ok := asArray(user["department_ids"]); ok && len(departmentIDs) > 0 {
+		cloned := make([]string, 0, len(departmentIDs))
+		for _, item := range departmentIDs {
+			value, ok := asString(item)
+			if !ok || strings.TrimSpace(value) == "" {
+				continue
+			}
+			cloned = append(cloned, strings.TrimSpace(value))
+		}
+		if len(cloned) > 0 {
+			result["department_ids"] = cloned
+		}
+	} else if departmentIDs, ok := user["department_ids"].([]string); ok && len(departmentIDs) > 0 {
+		cloned := make([]string, 0, len(departmentIDs))
+		for _, item := range departmentIDs {
+			if strings.TrimSpace(item) == "" {
+				continue
+			}
+			cloned = append(cloned, strings.TrimSpace(item))
+		}
+		if len(cloned) > 0 {
+			result["department_ids"] = cloned
+		}
+	}
+	if avatar, ok := asMap(user["avatar"]); ok && len(avatar) > 0 {
+		result["avatar"] = cloneFeishuMap(avatar)
+	}
 	return result
 }
 

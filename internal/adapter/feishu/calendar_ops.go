@@ -13,6 +13,62 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
+// ListCalendars lists calendars visible to the current identity.
+func (c *Client) ListCalendars(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	query := url.Values{}
+	if pageSize, ok := asInt(input["page_size"]); ok && pageSize > 0 {
+		query.Set("page_size", strconv.Itoa(pageSize))
+	}
+	if pageToken, ok := asString(input["page_token"]); ok && strings.TrimSpace(pageToken) != "" {
+		query.Set("page_token", strings.TrimSpace(pageToken))
+	}
+	if syncToken, ok := asString(input["sync_token"]); ok && strings.TrimSpace(syncToken) != "" {
+		query.Set("sync_token", strings.TrimSpace(syncToken))
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodGet,
+		"/open-apis/calendar/v4/calendars",
+		query,
+		nil,
+		"Bearer "+accessToken,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	data, appErr := decodeFeishuEnvelope(responseBody, "failed to decode calendar list response")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	items := make([]map[string]any, 0)
+	for _, item := range extractFeishuRecordList(data, "calendar_list", "items") {
+		record, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		items = append(items, normalizeCalendar(record))
+	}
+
+	result := map[string]any{
+		"items":           items,
+		"next_page_token": extractFirstNonEmptyString(data, "page_token", "next_page_token"),
+		"sync_token":      extractFirstNonEmptyString(data, "sync_token"),
+	}
+	if hasMore, ok := asBool(data["has_more"]); ok {
+		result["has_more"] = hasMore
+	}
+	return result, nil
+}
+
 // ListCalendarEvents lists events in the given calendar and time window.
 func (c *Client) ListCalendarEvents(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	calendarID, ok := asString(input["calendar_id"])
@@ -320,6 +376,29 @@ func normalizeCalendarEvent(record map[string]any) map[string]any {
 	}
 	if location, ok := asMap(record["location"]); ok && len(location) > 0 {
 		result["location"] = cloneFeishuMap(location)
+	}
+	return result
+}
+
+func normalizeCalendar(record map[string]any) map[string]any {
+	result := map[string]any{
+		"calendar_id": extractFirstNonEmptyString(record, "calendar_id"),
+		"summary":     extractFirstNonEmptyString(record, "summary"),
+		"raw":         cloneFeishuMap(record),
+	}
+	for _, key := range []string{"description", "permissions", "type", "summary_alias", "role"} {
+		if value, ok := asString(record[key]); ok && strings.TrimSpace(value) != "" {
+			result[key] = strings.TrimSpace(value)
+		}
+	}
+	if color, ok := asInt(record["color"]); ok {
+		result["color"] = color
+	}
+	if isDeleted, ok := asBool(record["is_deleted"]); ok {
+		result["is_deleted"] = isDeleted
+	}
+	if isThirdParty, ok := asBool(record["is_third_party"]); ok {
+		result["is_third_party"] = isThirdParty
 	}
 	return result
 }

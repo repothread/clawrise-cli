@@ -27,3 +27,60 @@ func notionDataSourceGetSpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func notionDataSourceCreateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Create a Notion data source with provider-native payload fields.",
+		Input: adapter.InputSpec{
+			Required: []string{"body"},
+			Notes: []string{
+				"`body` is passed through to the Notion create data source API as-is.",
+			},
+			Sample: map[string]any{
+				"body": map[string]any{
+					"parent": map[string]any{
+						"page_id": "page_demo",
+					},
+					"title": []any{
+						map[string]any{
+							"type": "text",
+							"text": map[string]any{
+								"content": "Project Tasks",
+							},
+						},
+					},
+					"properties": map[string]any{
+						"Name": map[string]any{
+							"title": map[string]any{},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func notionDataSourceUpdateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Update a Notion data source with provider-native payload fields.",
+		Input: adapter.InputSpec{
+			Required: []string{"data_source_id", "body"},
+			Notes: []string{
+				"`body` is passed through to the Notion update data source API as-is.",
+			},
+			Sample: map[string]any{
+				"data_source_id": "ds_demo",
+				"body": map[string]any{
+					"description": []any{
+						map[string]any{
+							"type": "text",
+							"text": map[string]any{
+								"content": "Managed by Clawrise",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}

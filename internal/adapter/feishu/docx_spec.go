@@ -188,3 +188,23 @@ func docsDocumentGetRawContentSpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func docsDocumentShareSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Grant collaborator access to a Feishu docx document.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id", "member_type", "member_id", "perm"},
+			Optional: []string{"perm_type", "type", "need_notification"},
+			Notes: []string{
+				"The document type is fixed to `docx`; input field `type` refers to the collaborator kind such as `user` or `chat`.",
+			},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"member_type": "openid",
+				"member_id":   "ou_demo",
+				"perm":        "edit",
+				"type":        "user",
+			},
+		},
+	}
+}

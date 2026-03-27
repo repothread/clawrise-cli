@@ -2,6 +2,18 @@ package notion
 
 import "github.com/clawrise/clawrise-cli/internal/adapter"
 
+func notionCommentGetSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Get a single Notion comment object.",
+		Input: adapter.InputSpec{
+			Required: []string{"comment_id"},
+			Sample: map[string]any{
+				"comment_id": "cmt_demo",
+			},
+		},
+	}
+}
+
 func notionCommentListSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "List open comments under a Notion page or block.",
