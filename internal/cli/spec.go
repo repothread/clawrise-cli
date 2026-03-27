@@ -51,7 +51,20 @@ func runSpec(args []string, stdout io.Writer, registry *adapter.Registry) error 
 			"ok":   true,
 			"data": result,
 		})
-	case "status", "export":
+	case "status":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: clawrise spec status")
+		}
+
+		result, err := service.Status()
+		if err != nil {
+			return writeSpecError(stdout, err)
+		}
+		return output.WriteJSON(stdout, map[string]any{
+			"ok":   true,
+			"data": result,
+		})
+	case "export":
 		return output.WriteJSON(stdout, map[string]any{
 			"ok": false,
 			"error": map[string]any{

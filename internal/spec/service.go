@@ -6,17 +6,24 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
+	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
 // Service exposes the registry as a structured `spec` view.
 type Service struct {
-	registry *adapter.Registry
+	registry       *adapter.Registry
+	catalogEntries []speccatalog.Entry
 }
 
 // NewService creates a `spec` service.
 func NewService(registry *adapter.Registry) *Service {
+	return newServiceWithCatalog(registry, speccatalog.All())
+}
+
+func newServiceWithCatalog(registry *adapter.Registry, catalogEntries []speccatalog.Entry) *Service {
 	return &Service{
-		registry: registry,
+		registry:       registry,
+		catalogEntries: append([]speccatalog.Entry(nil), catalogEntries...),
 	}
 }
 

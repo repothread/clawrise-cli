@@ -422,7 +422,7 @@ func printProfileHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise profile [use|current|list]")
 }
 
-// 统一识别 CLI 帮助标记，避免各子命令各自维护一套判断逻辑。
+// isHelpToken keeps help-token detection consistent across subcommands.
 func isHelpToken(token string) bool {
 	switch strings.TrimSpace(token) {
 	case "-h", "--help", "help":
