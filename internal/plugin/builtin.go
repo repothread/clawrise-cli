@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
@@ -42,6 +43,23 @@ func NewBuiltinManager(ctx context.Context) (*Manager, error) {
 		return nil, err
 	}
 	return NewManager(ctx, runtimes)
+}
+
+// NewInstalledOrBuiltinManager loads installed process plugins when available,
+// and falls back to builtin runtimes when no external plugin is installed.
+func NewInstalledOrBuiltinManager(ctx context.Context) (*Manager, error) {
+	roots, err := DefaultDiscoveryRoots()
+	if err != nil {
+		return nil, err
+	}
+	manifests, err := DiscoverManifests(roots)
+	if err != nil {
+		return nil, err
+	}
+	if len(manifests) == 0 {
+		return NewBuiltinManager(ctx)
+	}
+	return NewManager(ctx, NewProcessRuntimes(manifests))
 }
 
 type registryRuntime struct {
@@ -124,4 +142,8 @@ func filterCatalogByPrefix(entries []speccatalog.Entry, prefix string) []speccat
 		}
 	}
 	return filtered
+}
+
+func init() {
+	_ = os.PathSeparator
 }

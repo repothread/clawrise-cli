@@ -38,8 +38,8 @@ type ExecuteRequest struct {
 
 // ExecuteResult describes one provider execution result.
 type ExecuteResult struct {
-	Data  map[string]any
-	Error *apperr.AppError
+	Data  map[string]any   `json:"data"`
+	Error *apperr.AppError `json:"error,omitempty"`
 }
 
 // HealthResult describes one provider runtime health result.

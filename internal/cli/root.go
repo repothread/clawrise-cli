@@ -78,7 +78,7 @@ func Run(args []string, deps Dependencies) error {
 }
 
 func newDefaultPluginManager() (*pluginruntime.Manager, error) {
-	return pluginruntime.NewBuiltinManager(context.Background())
+	return pluginruntime.NewInstalledOrBuiltinManager(context.Background())
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
