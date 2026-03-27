@@ -213,6 +213,156 @@ func TestCreatePageDataSourceRequiresTitleProperty(t *testing.T) {
 	}
 }
 
+func TestGetPageMarkdownSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/pages/page_123/markdown" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			if request.Method != http.MethodGet {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+			if request.URL.Query().Get("include_transcript") != "true" {
+				t.Fatalf("unexpected include_transcript: %s", request.URL.Query().Get("include_transcript"))
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"object":            "page_markdown",
+				"id":                "page_123",
+				"markdown":          "# 项目周报\n\n本周完成了接入验证。",
+				"truncated":         false,
+				"unknown_block_ids": []string{"blk_unknown"},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.GetPageMarkdown(context.Background(), testStaticProfile(), map[string]any{
+		"page_id":            "page_123",
+		"include_transcript": true,
+	})
+	if appErr != nil {
+		t.Fatalf("GetPageMarkdown returned error: %+v", appErr)
+	}
+	if data["page_id"] != "page_123" {
+		t.Fatalf("unexpected page_id: %+v", data["page_id"])
+	}
+	if data["truncated"] != false {
+		t.Fatalf("unexpected truncated flag: %+v", data["truncated"])
+	}
+	unknownBlockIDs := data["unknown_block_ids"].([]string)
+	if len(unknownBlockIDs) != 1 || unknownBlockIDs[0] != "blk_unknown" {
+		t.Fatalf("unexpected unknown_block_ids: %+v", data["unknown_block_ids"])
+	}
+}
+
+func TestUpdatePageMarkdownWithUpdateContentSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/pages/page_123/markdown" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			if request.Method != http.MethodPatch {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode update page markdown request: %v", err)
+			}
+			if payload["type"] != "update_content" {
+				t.Fatalf("unexpected type: %+v", payload["type"])
+			}
+			updateContent := payload["update_content"].(map[string]any)
+			if updateContent["allow_deleting_content"] != true {
+				t.Fatalf("unexpected allow_deleting_content: %+v", updateContent["allow_deleting_content"])
+			}
+			updates := updateContent["content_updates"].([]any)
+			first := updates[0].(map[string]any)
+			if first["old_str"] != "旧文案" || first["new_str"] != "新文案" {
+				t.Fatalf("unexpected content update: %+v", first)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"object":            "page_markdown",
+				"id":                "page_123",
+				"markdown":          "# 标题\n\n新文案",
+				"truncated":         false,
+				"unknown_block_ids": []string{},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.UpdatePageMarkdown(context.Background(), testStaticProfile(), map[string]any{
+		"page_id": "page_123",
+		"type":    "update_content",
+		"update_content": map[string]any{
+			"allow_deleting_content": true,
+			"content_updates": []any{
+				map[string]any{
+					"old_str":             "旧文案",
+					"new_str":             "新文案",
+					"replace_all_matches": true,
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("UpdatePageMarkdown returned error: %+v", appErr)
+	}
+	if data["markdown"] != "# 标题\n\n新文案" {
+		t.Fatalf("unexpected markdown: %+v", data["markdown"])
+	}
+}
+
+func TestUpdatePageMarkdownInfersInsertContent(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode update page markdown request: %v", err)
+			}
+			if payload["type"] != "insert_content" {
+				t.Fatalf("unexpected type: %+v", payload["type"])
+			}
+			insertContent := payload["insert_content"].(map[string]any)
+			if insertContent["content"] != "新增段落" || insertContent["after"] != "## 待办" {
+				t.Fatalf("unexpected insert_content payload: %+v", insertContent)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"object":            "page_markdown",
+				"id":                "page_123",
+				"markdown":          "# 标题\n\n## 待办\n新增段落",
+				"truncated":         false,
+				"unknown_block_ids": []string{},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.UpdatePageMarkdown(context.Background(), testStaticProfile(), map[string]any{
+		"page_id": "page_123",
+		"insert_content": map[string]any{
+			"content": "新增段落",
+			"after":   "## 待办",
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("UpdatePageMarkdown returned error: %+v", appErr)
+	}
+	if !strings.Contains(data["markdown"].(string), "新增段落") {
+		t.Fatalf("unexpected markdown: %+v", data["markdown"])
+	}
+}
+
 func TestAppendBlockChildrenSuccess(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

@@ -103,6 +103,10 @@ Feishu：
 
 - `feishu.calendar.event.create`
 - `feishu.calendar.event.list`
+- `feishu.docs.document.get`
+- `feishu.docs.document.list_blocks`
+- `feishu.docs.block.get`
+- `feishu.docs.block.list_children`
 - `feishu.wiki.space.list`
 - `feishu.wiki.node.list`
 - `feishu.wiki.node.create`
@@ -113,8 +117,11 @@ Feishu：
 
 Notion：
 
+- `notion.search.query`
 - `notion.page.create`
 - `notion.page.get`
+- `notion.page.markdown.get`
+- `notion.page.markdown.update`
 - `notion.block.get`
 - `notion.block.list_children`
 - `notion.block.append`
@@ -334,7 +341,111 @@ MVP 限制：
 - `subject=bot`：推荐默认自动化编辑模式
 - `subject=user`：仅在确实需要用户归因时使用
 
-### 4.8 feishu.docs.document.append_blocks
+### 4.8 feishu.docs.document.get
+
+用途：
+
+- 读取文档基础元信息
+- 在结构化读取前确认最新版本号和标题
+
+必填字段：
+
+- `document_id`
+
+允许主体：
+
+- `bot`
+
+成功输出建议包含：
+
+- `document_id`
+- `revision_id`
+- `title`
+
+### 4.9 feishu.docs.document.list_blocks
+
+用途：
+
+- 列出 docx 文档中的所有块
+- 支持智能体工作流中的结构化正文遍历
+
+必填字段：
+
+- `document_id`
+
+可选字段：
+
+- `page_size`
+- `page_token`
+- `document_revision_id`
+
+允许主体：
+
+- `bot`
+
+成功输出建议包含：
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+### 4.10 feishu.docs.block.get
+
+用途：
+
+- 读取单个 docx block
+- 支持精细化结构化内容检查
+
+必填字段：
+
+- `document_id`
+- `block_id`
+
+可选字段：
+
+- `document_revision_id`
+
+允许主体：
+
+- `bot`
+
+成功输出建议包含：
+
+- `block_id`
+- `block_type`
+- `block_type_name`
+- `plain_text`
+
+### 4.11 feishu.docs.block.list_children
+
+用途：
+
+- 列出指定 docx block 下的子块
+- 支持按子树做结构化遍历
+
+必填字段：
+
+- `document_id`
+- `block_id`
+
+可选字段：
+
+- `page_size`
+- `page_token`
+- `document_revision_id`
+- `with_descendants`
+
+允许主体：
+
+- `bot`
+
+成功输出建议包含：
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+### 4.12 feishu.docs.document.append_blocks
 
 用途：
 
@@ -371,7 +482,7 @@ MVP 限制：
 - 默认向文档根节点追加
 - 如不传 `block_id`，会使用 `document_id` 作为根块
 
-### 4.9 feishu.docs.document.get_raw_content
+### 4.13 feishu.docs.document.get_raw_content
 
 用途：
 
@@ -399,7 +510,32 @@ P1 读操作。
 
 ## 5. Notion Operation 规格
 
-### 5.1 notion.page.create
+### 5.1 notion.search.query
+
+用途：
+
+- 搜索当前 integration 可见的页面和数据源
+- 为智能体工作流提供通用发现入口
+
+可选字段：
+
+- `query`
+- `filter`
+- `sort`
+- `page_size`
+- `page_token`
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+### 5.2 notion.page.create
 
 用途：
 
@@ -428,7 +564,7 @@ P1 读操作。
 - `parent`
 - `url`
 
-### 5.2 notion.page.get
+### 5.3 notion.page.get
 
 用途：
 
@@ -451,7 +587,63 @@ P1 读操作。
 - `archived`
 - `properties`
 
-### 5.3 notion.block.append
+### 5.4 notion.page.markdown.get
+
+用途：
+
+- 以增强 markdown 形式读取页面内容
+- 支持更适合智能体消费的正文检查
+
+必填字段：
+
+- `page_id`
+
+可选字段：
+
+- `include_transcript`
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `page_id`
+- `markdown`
+- `truncated`
+- `unknown_block_ids`
+
+### 5.5 notion.page.markdown.update
+
+用途：
+
+- 通过增强 markdown 命令更新页面内容
+- 支持更适合智能体的正文编辑
+
+必填字段：
+
+- `page_id`
+- 一种 markdown 更新命令
+
+支持的命令类型：
+
+- `update_content`
+- `replace_content`
+- `insert_content`
+- `replace_content_range`
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `page_id`
+- `markdown`
+- `truncated`
+- `unknown_block_ids`
+
+### 5.6 notion.block.append
 
 用途：
 
@@ -473,7 +665,7 @@ P1 读操作。
 - `appended_count`
 - 追加后的子 block 标识
 
-### 5.4 notion.block.get
+### 5.7 notion.block.get
 
 用途：
 
@@ -495,7 +687,7 @@ P1 读操作。
 - `has_children`
 - `plain_text`
 
-### 5.5 notion.block.list_children
+### 5.8 notion.block.list_children
 
 用途：
 
@@ -521,7 +713,7 @@ P1 读操作。
 - `next_page_token`
 - `has_more`
 
-### 5.6 notion.block.update
+### 5.9 notion.block.update
 
 用途：
 
@@ -543,7 +735,7 @@ P1 读操作。
 - `type`
 - `plain_text`
 
-### 5.7 notion.block.delete
+### 5.10 notion.block.delete
 
 用途：
 
@@ -564,7 +756,7 @@ P1 读操作。
 - `archived`
 - `in_trash`
 
-### 5.8 notion.user.get
+### 5.11 notion.user.get
 
 P1 读操作。
 
@@ -594,9 +786,16 @@ P1 读操作。
 1. 统一输入读取、输出包络和错误模型
 2. `feishu.calendar.event.create`
 3. `feishu.calendar.event.list`
-4. `notion.page.create`
-5. `notion.page.get`
-6. 幂等与审计存储
-7. `notion.block.append`
-8. `feishu.docs.document.create`
-9. P1 读操作
+4. `feishu.docs.document.get`
+5. `feishu.docs.document.list_blocks`
+6. `feishu.docs.block.get`
+7. `feishu.docs.block.list_children`
+8. `notion.search.query`
+9. `notion.page.create`
+10. `notion.page.get`
+11. `notion.page.markdown.get`
+12. `notion.page.markdown.update`
+13. 幂等与审计存储
+14. `notion.block.append`
+15. `feishu.docs.document.create`
+16. P1 读操作

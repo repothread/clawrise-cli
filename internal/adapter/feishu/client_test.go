@@ -416,6 +416,358 @@ func TestGetDocumentRawContentSuccess(t *testing.T) {
 	}
 }
 
+func TestGetDocumentSuccess(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/open-apis/auth/v3/tenant_access_token/internal":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code":                0,
+					"msg":                 "ok",
+					"tenant_access_token": "tenant-token",
+					"expire":              7200,
+				}), nil
+			case "/open-apis/docx/v1/documents/dox_123":
+				if got := request.Header.Get("Authorization"); got != "Bearer tenant-token" {
+					t.Fatalf("unexpected authorization header: %s", got)
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]any{
+						"document": map[string]any{
+							"document_id": "dox_123",
+							"revision_id": 12,
+							"title":       "项目周报",
+							"display_setting": map[string]any{
+								"show_authors": true,
+							},
+							"cover": map[string]any{
+								"type": "colorful",
+							},
+						},
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: transport,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	data, appErr := client.GetDocument(context.Background(), testBotProfile(), map[string]any{
+		"document_id": "dox_123",
+	})
+	if appErr != nil {
+		t.Fatalf("GetDocument returned error: %+v", appErr)
+	}
+	if data["document_id"] != "dox_123" {
+		t.Fatalf("unexpected document_id: %+v", data["document_id"])
+	}
+	if data["title"] != "项目周报" {
+		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
+func TestListDocumentBlocksSuccess(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/open-apis/auth/v3/tenant_access_token/internal":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code":                0,
+					"msg":                 "ok",
+					"tenant_access_token": "tenant-token",
+					"expire":              7200,
+				}), nil
+			case "/open-apis/docx/v1/documents/dox_123/blocks":
+				if request.URL.Query().Get("page_size") != "100" {
+					t.Fatalf("unexpected page_size: %s", request.URL.Query().Get("page_size"))
+				}
+				if request.URL.Query().Get("page_token") != "token_demo" {
+					t.Fatalf("unexpected page_token: %s", request.URL.Query().Get("page_token"))
+				}
+				if request.URL.Query().Get("document_revision_id") != "-1" {
+					t.Fatalf("unexpected document_revision_id: %s", request.URL.Query().Get("document_revision_id"))
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]any{
+						"items": []map[string]any{
+							{
+								"block_id":   "blk_1",
+								"parent_id":  "",
+								"children":   []string{"blk_2"},
+								"block_type": 3,
+								"heading1": map[string]any{
+									"elements": []map[string]any{
+										{
+											"text_run": map[string]any{
+												"content": "项目概览",
+											},
+										},
+									},
+								},
+							},
+							{
+								"block_id":   "blk_2",
+								"parent_id":  "blk_1",
+								"children":   []string{},
+								"block_type": 2,
+								"text": map[string]any{
+									"elements": []map[string]any{
+										{
+											"text_run": map[string]any{
+												"content": "本周完成了接入验证。",
+											},
+										},
+									},
+								},
+							},
+						},
+						"page_token": "token_next",
+						"has_more":   true,
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: transport,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	data, appErr := client.ListDocumentBlocks(context.Background(), testBotProfile(), map[string]any{
+		"document_id":          "dox_123",
+		"page_size":            100,
+		"page_token":           "token_demo",
+		"document_revision_id": -1,
+	})
+	if appErr != nil {
+		t.Fatalf("ListDocumentBlocks returned error: %+v", appErr)
+	}
+
+	items := data["items"].([]map[string]any)
+	if len(items) != 2 {
+		t.Fatalf("unexpected items length: %d", len(items))
+	}
+	if items[0]["plain_text"] != "项目概览" {
+		t.Fatalf("unexpected first item plain_text: %+v", items[0]["plain_text"])
+	}
+	if items[1]["block_type_name"] != "paragraph" {
+		t.Fatalf("unexpected second item block_type_name: %+v", items[1]["block_type_name"])
+	}
+	if data["next_page_token"] != "token_next" {
+		t.Fatalf("unexpected next_page_token: %+v", data["next_page_token"])
+	}
+}
+
+func TestGetDocumentBlockSuccess(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/open-apis/auth/v3/tenant_access_token/internal":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code":                0,
+					"msg":                 "ok",
+					"tenant_access_token": "tenant-token",
+					"expire":              7200,
+				}), nil
+			case "/open-apis/docx/v1/documents/dox_123/blocks/blk_2":
+				if request.URL.Query().Get("document_revision_id") != "-1" {
+					t.Fatalf("unexpected document_revision_id: %s", request.URL.Query().Get("document_revision_id"))
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]any{
+						"block": map[string]any{
+							"block_id":   "blk_2",
+							"parent_id":  "blk_1",
+							"children":   []string{},
+							"block_type": 2,
+							"text": map[string]any{
+								"elements": []map[string]any{
+									{
+										"text_run": map[string]any{
+											"content": "正文段落",
+										},
+									},
+								},
+							},
+						},
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: transport,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	data, appErr := client.GetDocumentBlock(context.Background(), testBotProfile(), map[string]any{
+		"document_id":          "dox_123",
+		"block_id":             "blk_2",
+		"document_revision_id": -1,
+	})
+	if appErr != nil {
+		t.Fatalf("GetDocumentBlock returned error: %+v", appErr)
+	}
+	if data["plain_text"] != "正文段落" {
+		t.Fatalf("unexpected plain_text: %+v", data["plain_text"])
+	}
+	if data["block_type_name"] != "paragraph" {
+		t.Fatalf("unexpected block_type_name: %+v", data["block_type_name"])
+	}
+}
+
+func TestGetDocumentBlockChildrenSuccess(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/open-apis/auth/v3/tenant_access_token/internal":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code":                0,
+					"msg":                 "ok",
+					"tenant_access_token": "tenant-token",
+					"expire":              7200,
+				}), nil
+			case "/open-apis/docx/v1/documents/dox_123/blocks/blk_1/children":
+				if request.URL.Query().Get("page_size") != "50" {
+					t.Fatalf("unexpected page_size: %s", request.URL.Query().Get("page_size"))
+				}
+				if request.URL.Query().Get("page_token") != "token_demo" {
+					t.Fatalf("unexpected page_token: %s", request.URL.Query().Get("page_token"))
+				}
+				if request.URL.Query().Get("document_revision_id") != "-1" {
+					t.Fatalf("unexpected document_revision_id: %s", request.URL.Query().Get("document_revision_id"))
+				}
+				if request.URL.Query().Get("with_descendants") != "true" {
+					t.Fatalf("unexpected with_descendants: %s", request.URL.Query().Get("with_descendants"))
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]any{
+						"items": []map[string]any{
+							{
+								"block_id":   "blk_2",
+								"parent_id":  "blk_1",
+								"children":   []string{"blk_3"},
+								"block_type": 12,
+								"bullet": map[string]any{
+									"elements": []map[string]any{
+										{
+											"text_run": map[string]any{
+												"content": "任务一",
+											},
+										},
+									},
+								},
+							},
+							{
+								"block_id":   "blk_3",
+								"parent_id":  "blk_2",
+								"children":   []string{},
+								"block_type": 2,
+								"text": map[string]any{
+									"elements": []map[string]any{
+										{
+											"text_run": map[string]any{
+												"content": "任务详情",
+											},
+										},
+									},
+								},
+							},
+						},
+						"page_token": "token_next",
+						"has_more":   true,
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: transport,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	data, appErr := client.GetDocumentBlockChildren(context.Background(), testBotProfile(), map[string]any{
+		"document_id":          "dox_123",
+		"block_id":             "blk_1",
+		"page_size":            50,
+		"page_token":           "token_demo",
+		"document_revision_id": -1,
+		"with_descendants":     true,
+	})
+	if appErr != nil {
+		t.Fatalf("GetDocumentBlockChildren returned error: %+v", appErr)
+	}
+
+	items := data["items"].([]map[string]any)
+	if len(items) != 2 {
+		t.Fatalf("unexpected items length: %d", len(items))
+	}
+	if items[0]["block_type_name"] != "bulleted_list_item" {
+		t.Fatalf("unexpected first item block_type_name: %+v", items[0]["block_type_name"])
+	}
+	if items[1]["plain_text"] != "任务详情" {
+		t.Fatalf("unexpected second item plain_text: %+v", items[1]["plain_text"])
+	}
+}
+
 type roundTripFunc struct {
 	handler func(request *http.Request) (*http.Response, error)
 }

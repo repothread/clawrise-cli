@@ -35,6 +35,46 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "feishu.docs.document.get",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetDocument(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.docs.document.list_blocks",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListDocumentBlocks(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.docs.block.get",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetDocumentBlock(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.docs.block.list_children",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetDocumentBlockChildren(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "feishu.wiki.space.list",
 		Platform:        "feishu",
 		Mutating:        false,

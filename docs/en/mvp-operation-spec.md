@@ -49,6 +49,10 @@ Feishu:
 
 - `feishu.calendar.event.create`
 - `feishu.calendar.event.list`
+- `feishu.docs.document.get`
+- `feishu.docs.document.list_blocks`
+- `feishu.docs.block.get`
+- `feishu.docs.block.list_children`
 - `feishu.wiki.space.list`
 - `feishu.wiki.node.list`
 - `feishu.wiki.node.create`
@@ -59,8 +63,11 @@ Feishu:
 
 Notion:
 
+- `notion.search.query`
 - `notion.page.create`
 - `notion.page.get`
+- `notion.page.markdown.get`
+- `notion.page.markdown.update`
 - `notion.block.get`
 - `notion.block.list_children`
 - `notion.block.append`
@@ -291,6 +298,110 @@ Recommended execution modes:
 - `subject=bot`: recommended default automation edit mode
 - `subject=user`: use only when user attribution is explicitly desired
 
+### feishu.docs.document.get
+
+Purpose:
+
+- read basic document metadata
+- discover latest revision and title before structured reads
+
+Required fields:
+
+- `document_id`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `document_id`
+- `revision_id`
+- `title`
+
+### feishu.docs.document.list_blocks
+
+Purpose:
+
+- list all blocks in a docx document
+- support structured content traversal for agent workflows
+
+Required fields:
+
+- `document_id`
+
+Optional fields:
+
+- `page_size`
+- `page_token`
+- `document_revision_id`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+### feishu.docs.block.get
+
+Purpose:
+
+- read one docx block
+- support precise structured content inspection
+
+Required fields:
+
+- `document_id`
+- `block_id`
+
+Optional fields:
+
+- `document_revision_id`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `block_id`
+- `block_type`
+- `block_type_name`
+- `plain_text`
+
+### feishu.docs.block.list_children
+
+Purpose:
+
+- list children under one docx block
+- support structured traversal by subtree
+
+Required fields:
+
+- `document_id`
+- `block_id`
+
+Optional fields:
+
+- `page_size`
+- `page_token`
+- `document_revision_id`
+- `with_descendants`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `items`
+- `next_page_token`
+- `has_more`
+
 ### feishu.docs.document.append_blocks
 
 Purpose:
@@ -398,6 +509,31 @@ Success output should include:
 - `parent`
 - `url`
 
+### notion.search.query
+
+Purpose:
+
+- search pages and data sources visible to the integration
+- provide a general-purpose discovery entry for agent workflows
+
+Optional fields:
+
+- `query`
+- `filter`
+- `sort`
+- `page_size`
+- `page_token`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `items`
+- `next_page_token`
+- `has_more`
+
 ### notion.page.get
 
 Purpose:
@@ -420,6 +556,62 @@ Success output should include:
 - `url`
 - `archived`
 - `properties`
+
+### notion.page.markdown.get
+
+Purpose:
+
+- read enhanced markdown for a page
+- support agent-friendly content inspection
+
+Required fields:
+
+- `page_id`
+
+Optional fields:
+
+- `include_transcript`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `page_id`
+- `markdown`
+- `truncated`
+- `unknown_block_ids`
+
+### notion.page.markdown.update
+
+Purpose:
+
+- update page content through enhanced markdown commands
+- support agent-friendly content editing
+
+Required fields:
+
+- `page_id`
+- one markdown update command
+
+Supported command types:
+
+- `update_content`
+- `replace_content`
+- `insert_content`
+- `replace_content_range`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `page_id`
+- `markdown`
+- `truncated`
+- `unknown_block_ids`
 
 ### notion.block.append
 
@@ -564,9 +756,16 @@ The following are out of MVP scope:
 1. input loading, output envelope, and error model
 2. `feishu.calendar.event.create`
 3. `feishu.calendar.event.list`
-4. `notion.page.create`
-5. `notion.page.get`
-6. idempotency and audit storage
-7. `notion.block.append`
-8. `feishu.docs.document.create`
-9. P1 read operations
+4. `feishu.docs.document.get`
+5. `feishu.docs.document.list_blocks`
+6. `feishu.docs.block.get`
+7. `feishu.docs.block.list_children`
+8. `notion.search.query`
+9. `notion.page.create`
+10. `notion.page.get`
+11. `notion.page.markdown.get`
+12. `notion.page.markdown.update`
+13. idempotency and audit storage
+14. `notion.block.append`
+15. `feishu.docs.document.create`
+16. P1 read operations

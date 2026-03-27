@@ -226,6 +226,237 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	}
 }
 
+func TestExecutorExecutesNotionPageMarkdownGet(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Profile:  "notion_team_docs",
+		},
+		Profiles: map[string]config.Profile{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				Grant: config.Grant{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		},
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/pages/page_demo/markdown" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"object":            "page_markdown",
+					"id":                "page_demo",
+					"markdown":          "# 执行器验证",
+					"truncated":         false,
+					"unknown_block_ids": []string{},
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, nil, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "page.markdown.get",
+		InputJSON:      `{"page_id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion markdown execution success, got error: %+v", envelope.Error)
+	}
+	data := envelope.Data.(map[string]any)
+	if data["markdown"] != "# 执行器验证" {
+		t.Fatalf("unexpected markdown: %+v", data["markdown"])
+	}
+}
+
+func TestExecutorExecutesNotionSearch(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Profile:  "notion_team_docs",
+		},
+		Profiles: map[string]config.Profile{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				Grant: config.Grant{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		},
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/search" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"results": []map[string]any{
+						{
+							"object": "page",
+							"id":     "page_demo",
+							"properties": map[string]any{
+								"title": map[string]any{
+									"title": []map[string]any{
+										{
+											"type":       "text",
+											"plain_text": "搜索命中",
+											"text": map[string]any{
+												"content": "搜索命中",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					"has_more": false,
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, nil, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "search.query",
+		InputJSON:      `{"query":"搜索"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion search execution success, got error: %+v", envelope.Error)
+	}
+	data := envelope.Data.(map[string]any)
+	items := data["items"].([]map[string]any)
+	if len(items) != 1 || items[0]["title"] != "搜索命中" {
+		t.Fatalf("unexpected items: %+v", data["items"])
+	}
+}
+
+func TestExecutorExecutesFeishuDocumentBlockGet(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "feishu",
+			Profile:  "feishu_bot_ops",
+		},
+		Profiles: map[string]config.Profile{
+			"feishu_bot_ops": {
+				Platform: "feishu",
+				Subject:  "bot",
+				Grant: config.Grant{
+					Type:      "client_credentials",
+					AppID:     "env:FEISHU_APP_ID",
+					AppSecret: "env:FEISHU_APP_SECRET",
+				},
+			},
+		},
+	})
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				switch request.URL.Path {
+				case "/open-apis/auth/v3/tenant_access_token/internal":
+					return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+						"code":                0,
+						"msg":                 "ok",
+						"tenant_access_token": "tenant-token",
+						"expire":              7200,
+					}), nil
+				case "/open-apis/docx/v1/documents/dox_123/blocks/blk_2":
+					return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+						"code": 0,
+						"msg":  "success",
+						"data": map[string]any{
+							"block": map[string]any{
+								"block_id":   "blk_2",
+								"parent_id":  "blk_1",
+								"children":   []string{},
+								"block_type": 2,
+								"text": map[string]any{
+									"elements": []map[string]any{
+										{
+											"text_run": map[string]any{
+												"content": "执行器正文",
+											},
+										},
+									},
+								},
+							},
+						},
+					}), nil
+				default:
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+					return nil, nil
+				}
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, nil),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "docs.block.get",
+		InputJSON:      `{"document_id":"dox_123","block_id":"blk_2"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected feishu execution success, got error: %+v", envelope.Error)
+	}
+	data := envelope.Data.(map[string]any)
+	if data["plain_text"] != "执行器正文" {
+		t.Fatalf("unexpected plain_text: %+v", data["plain_text"])
+	}
+}
+
 func TestExecutorExecutesNotionBlockListChildren(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

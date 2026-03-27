@@ -279,9 +279,16 @@ Current MVP execution matrix:
 - `feishu.calendar.event.create` -> `bot`
 - `feishu.calendar.event.list` -> `bot`
 - `feishu.docs.document.create` -> `bot`
+- `feishu.docs.document.get` -> `bot`
+- `feishu.docs.document.list_blocks` -> `bot`
+- `feishu.docs.block.get` -> `bot`
+- `feishu.docs.block.list_children` -> `bot`
 - `feishu.contact.user.get` -> `bot`
+- `notion.search.query` -> `integration`
 - `notion.page.create` -> `integration`
 - `notion.page.get` -> `integration`
+- `notion.page.markdown.get` -> `integration`
+- `notion.page.markdown.update` -> `integration`
 - `notion.block.get` -> `integration`
 - `notion.block.list_children` -> `integration`
 - `notion.block.append` -> `integration`

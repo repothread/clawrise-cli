@@ -86,6 +86,82 @@ func (c *Client) GetPage(ctx context.Context, profile config.Profile, input map[
 	return mapPageData(response), nil
 }
 
+// GetPageMarkdown 以增强 markdown 形式读取页面或未知子树内容。
+func (c *Client) GetPageMarkdown(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	pageID, appErr := requireIDField(input, "page_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	query := url.Values{}
+	if includeTranscript, ok := asBool(input["include_transcript"]); ok {
+		query.Set("include_transcript", fmt.Sprintf("%t", includeTranscript))
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodGet,
+		"/v1/pages/"+url.PathEscape(pageID)+"/markdown",
+		query,
+		nil,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	response, appErr := decodePageMarkdownResponse(responseBody, "failed to decode Notion page markdown response")
+	if appErr != nil {
+		return nil, appErr
+	}
+	return mapPageMarkdownData(response), nil
+}
+
+// UpdatePageMarkdown 使用增强 markdown 对页面内容做增量或整体更新。
+func (c *Client) UpdatePageMarkdown(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	pageID, appErr := requireIDField(input, "page_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	payload, appErr := buildUpdatePageMarkdownPayload(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPatch,
+		"/v1/pages/"+url.PathEscape(pageID)+"/markdown",
+		nil,
+		payload,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	response, appErr := decodePageMarkdownResponse(responseBody, "failed to decode Notion page markdown update response")
+	if appErr != nil {
+		return nil, appErr
+	}
+	return mapPageMarkdownData(response), nil
+}
+
 // buildCreatePagePayload 构造创建页面的请求体。
 func buildCreatePagePayload(profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	title, ok := asString(input["title"])
@@ -233,6 +309,23 @@ func mapPageData(page notionPage) map[string]any {
 	}
 }
 
+func mapPageMarkdownData(page notionPageMarkdown) map[string]any {
+	unknownBlockIDs := make([]string, 0, len(page.UnknownBlockIDs))
+	for _, blockID := range page.UnknownBlockIDs {
+		if strings.TrimSpace(blockID) != "" {
+			unknownBlockIDs = append(unknownBlockIDs, strings.TrimSpace(blockID))
+		}
+	}
+
+	return map[string]any{
+		"page_id":           page.ID,
+		"object":            page.Object,
+		"markdown":          page.Markdown,
+		"truncated":         page.Truncated,
+		"unknown_block_ids": unknownBlockIDs,
+	}
+}
+
 func normalizeParent(parent map[string]any) map[string]any {
 	if len(parent) == 0 {
 		return nil
@@ -283,4 +376,183 @@ func requireIDField(input map[string]any, field string) (string, *apperr.AppErro
 		return "", apperr.New("INVALID_INPUT", field+" is required")
 	}
 	return strings.TrimSpace(value), nil
+}
+
+func decodePageMarkdownResponse(responseBody []byte, decodeErrorMessage string) (notionPageMarkdown, *apperr.AppError) {
+	var response notionPageMarkdown
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return notionPageMarkdown{}, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("%s: %v", decodeErrorMessage, err))
+	}
+	if strings.TrimSpace(response.ID) == "" {
+		return notionPageMarkdown{}, apperr.New("UPSTREAM_INVALID_RESPONSE", "page markdown id is empty in Notion response")
+	}
+	return response, nil
+}
+
+func buildUpdatePageMarkdownPayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	commandType, ok := asString(input["type"])
+	if !ok || strings.TrimSpace(commandType) == "" {
+		commandType = inferMarkdownUpdateType(input)
+	}
+	commandType = strings.TrimSpace(commandType)
+	if commandType == "" {
+		return nil, apperr.New("INVALID_INPUT", "type is required for page.markdown.update")
+	}
+
+	switch commandType {
+	case "update_content":
+		body, appErr := buildUpdateContentCommand(input["update_content"])
+		if appErr != nil {
+			return nil, appErr
+		}
+		return map[string]any{
+			"type":           "update_content",
+			"update_content": body,
+		}, nil
+	case "replace_content":
+		body, appErr := buildReplaceContentCommand(input["replace_content"])
+		if appErr != nil {
+			return nil, appErr
+		}
+		return map[string]any{
+			"type":            "replace_content",
+			"replace_content": body,
+		}, nil
+	case "insert_content":
+		body, appErr := buildInsertContentCommand(input["insert_content"])
+		if appErr != nil {
+			return nil, appErr
+		}
+		return map[string]any{
+			"type":           "insert_content",
+			"insert_content": body,
+		}, nil
+	case "replace_content_range":
+		body, appErr := buildReplaceContentRangeCommand(input["replace_content_range"])
+		if appErr != nil {
+			return nil, appErr
+		}
+		return map[string]any{
+			"type":                  "replace_content_range",
+			"replace_content_range": body,
+		}, nil
+	default:
+		return nil, apperr.New("INVALID_INPUT", "type must be one of update_content, replace_content, insert_content, or replace_content_range")
+	}
+}
+
+func inferMarkdownUpdateType(input map[string]any) string {
+	for _, commandType := range []string{"update_content", "replace_content", "insert_content", "replace_content_range"} {
+		if _, exists := input[commandType]; exists {
+			return commandType
+		}
+	}
+	return ""
+}
+
+func buildUpdateContentCommand(raw any) (map[string]any, *apperr.AppError) {
+	command, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "update_content must be an object")
+	}
+
+	rawUpdates, ok := asArray(command["content_updates"])
+	if !ok || len(rawUpdates) == 0 {
+		return nil, apperr.New("INVALID_INPUT", "update_content.content_updates must be a non-empty array")
+	}
+
+	updates := make([]map[string]any, 0, len(rawUpdates))
+	for _, rawUpdate := range rawUpdates {
+		record, ok := asMap(rawUpdate)
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "each content update must be an object")
+		}
+		oldStr, ok := asString(record["old_str"])
+		if !ok || strings.TrimSpace(oldStr) == "" {
+			return nil, apperr.New("INVALID_INPUT", "old_str is required for each content update")
+		}
+		newStr, ok := asString(record["new_str"])
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "new_str is required for each content update")
+		}
+
+		update := map[string]any{
+			"old_str": strings.TrimSpace(oldStr),
+			"new_str": newStr,
+		}
+		if replaceAllMatches, ok := asBool(record["replace_all_matches"]); ok {
+			update["replace_all_matches"] = replaceAllMatches
+		}
+		updates = append(updates, update)
+	}
+
+	result := map[string]any{
+		"content_updates": updates,
+	}
+	if allowDeletingContent, ok := asBool(command["allow_deleting_content"]); ok {
+		result["allow_deleting_content"] = allowDeletingContent
+	}
+	return result, nil
+}
+
+func buildReplaceContentCommand(raw any) (map[string]any, *apperr.AppError) {
+	command, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "replace_content must be an object")
+	}
+	newStr, ok := asString(command["new_str"])
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "replace_content.new_str is required")
+	}
+
+	result := map[string]any{
+		"new_str": newStr,
+	}
+	if allowDeletingContent, ok := asBool(command["allow_deleting_content"]); ok {
+		result["allow_deleting_content"] = allowDeletingContent
+	}
+	return result, nil
+}
+
+func buildInsertContentCommand(raw any) (map[string]any, *apperr.AppError) {
+	command, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "insert_content must be an object")
+	}
+	content, ok := asString(command["content"])
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "insert_content.content is required")
+	}
+
+	result := map[string]any{
+		"content": content,
+	}
+	if after, ok := asString(command["after"]); ok && strings.TrimSpace(after) != "" {
+		result["after"] = strings.TrimSpace(after)
+	}
+	return result, nil
+}
+
+func buildReplaceContentRangeCommand(raw any) (map[string]any, *apperr.AppError) {
+	command, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "replace_content_range must be an object")
+	}
+	content, ok := asString(command["content"])
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "replace_content_range.content is required")
+	}
+	contentRange, ok := asString(command["content_range"])
+	if !ok || strings.TrimSpace(contentRange) == "" {
+		return nil, apperr.New("INVALID_INPUT", "replace_content_range.content_range is required")
+	}
+
+	result := map[string]any{
+		"content":       content,
+		"content_range": strings.TrimSpace(contentRange),
+	}
+	if allowDeletingContent, ok := asBool(command["allow_deleting_content"]); ok {
+		result["allow_deleting_content"] = allowDeletingContent
+	}
+	return result, nil
 }

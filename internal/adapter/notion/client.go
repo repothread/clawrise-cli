@@ -353,6 +353,20 @@ type notionPage struct {
 	Properties map[string]any `json:"properties"`
 }
 
+type notionPageMarkdown struct {
+	Object          string   `json:"object"`
+	ID              string   `json:"id"`
+	Markdown        string   `json:"markdown"`
+	Truncated       bool     `json:"truncated"`
+	UnknownBlockIDs []string `json:"unknown_block_ids"`
+}
+
+type notionSearchResponse struct {
+	Results    []map[string]any `json:"results"`
+	HasMore    bool             `json:"has_more"`
+	NextCursor *string          `json:"next_cursor"`
+}
+
 type notionBlockChildrenResponse struct {
 	Results    []map[string]any `json:"results"`
 	HasMore    bool             `json:"has_more"`
