@@ -272,7 +272,7 @@ func TestRunPluginHelpFlag(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|remove]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|info|remove]")) {
 		t.Fatalf("expected plugin help output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {

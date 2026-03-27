@@ -3,8 +3,12 @@ package plugin
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,6 +53,17 @@ func TestInstallListAndRemoveLocalDirectory(t *testing.T) {
 	if len(items) != 1 || items[0].Name != "demo" {
 		t.Fatalf("unexpected installed plugins: %+v", items)
 	}
+	if items[0].Install == nil || items[0].Install.Source == "" || items[0].Install.ChecksumSHA == "" {
+		t.Fatalf("expected install metadata to be recorded, got: %+v", items[0].Install)
+	}
+
+	info, err := InfoInstalled("demo", "0.1.0")
+	if err != nil {
+		t.Fatalf("InfoInstalled returned error: %v", err)
+	}
+	if info.Install == nil || info.Install.ChecksumSHA == "" {
+		t.Fatalf("expected info install metadata, got: %+v", info.Install)
+	}
 
 	removed, err := RemoveInstalled("demo", "0.1.0")
 	if err != nil {
@@ -75,6 +90,125 @@ func TestInstallLocalTarGz(t *testing.T) {
 	if result.Manifest.Name != "demo" || result.Manifest.Version != "0.2.0" {
 		t.Fatalf("unexpected archive install result: %+v", result)
 	}
+}
+
+func TestInstallHTTPSupport(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	archivePath := filepath.Join(t.TempDir(), "demo-plugin.tar.gz")
+	if err := writeTestPluginArchive(archivePath); err != nil {
+		t.Fatalf("failed to write plugin archive: %v", err)
+	}
+
+	data, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("failed to read test archive: %v", err)
+	}
+
+	previousClient := pluginDownloadHTTPClient
+	pluginDownloadHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/gzip"},
+				},
+				Body: io.NopCloser(strings.NewReader(string(data))),
+			}, nil
+		}),
+	}
+	defer func() {
+		pluginDownloadHTTPClient = previousClient
+	}()
+
+	result, err := Install("https://plugins.example.com/demo-plugin.tar.gz")
+	if err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+	if result.Install == nil || result.Install.Source != "https://plugins.example.com/demo-plugin.tar.gz" {
+		t.Fatalf("unexpected install metadata: %+v", result.Install)
+	}
+}
+
+func TestInstallNPMSupport(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	archivePath := filepath.Join(t.TempDir(), "demo-plugin.tar.gz")
+	if err := writeTestPluginArchive(archivePath); err != nil {
+		t.Fatalf("failed to write plugin archive: %v", err)
+	}
+
+	archiveData, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("failed to read npm test archive: %v", err)
+	}
+
+	previousClient := pluginDownloadHTTPClient
+	pluginDownloadHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			switch request.URL.String() {
+			case "https://registry.example.com/@clawrise%2Fplugin-demo":
+				payload, err := json.Marshal(map[string]any{
+					"dist-tags": map[string]any{
+						"latest": "0.2.0",
+					},
+					"versions": map[string]any{
+						"0.2.0": map[string]any{
+							"dist": map[string]any{
+								"tarball": "https://registry.example.com/tarballs/demo-plugin.tar.gz",
+							},
+						},
+					},
+				})
+				if err != nil {
+					t.Fatalf("failed to encode npm metadata payload: %v", err)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(payload))),
+				}, nil
+			case "https://registry.example.com/tarballs/demo-plugin.tar.gz":
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/gzip"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(archiveData))),
+				}, nil
+			default:
+				t.Fatalf("unexpected npm test url: %s", request.URL.String())
+				return nil, nil
+			}
+		}),
+	}
+	defer func() {
+		pluginDownloadHTTPClient = previousClient
+	}()
+
+	previousRegistryURL := npmRegistryBaseURL
+	npmRegistryBaseURL = "https://registry.example.com"
+	defer func() {
+		npmRegistryBaseURL = previousRegistryURL
+	}()
+
+	result, err := Install("npm://@clawrise/plugin-demo")
+	if err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+	if result.Manifest.Name != "demo" || result.Install == nil || result.Install.Source != "npm://@clawrise/plugin-demo" {
+		t.Fatalf("unexpected npm install result: %+v", result)
+	}
+}
+
+type roundTripFunc func(request *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }
 
 func writeTestPluginArchive(path string) error {

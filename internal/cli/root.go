@@ -405,7 +405,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise platform [use|current|unset]")
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise profile [use|current|list]")
-	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|remove]")
+	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")
