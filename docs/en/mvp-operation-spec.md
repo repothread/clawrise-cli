@@ -53,6 +53,7 @@ Feishu:
 - `feishu.docs.document.list_blocks`
 - `feishu.docs.block.get`
 - `feishu.docs.block.list_children`
+- `feishu.docs.block.get_descendants`
 - `feishu.docs.block.update`
 - `feishu.docs.block.batch_delete`
 - `feishu.wiki.space.list`
@@ -66,6 +67,7 @@ Feishu:
 Notion:
 
 - `notion.search.query`
+- `notion.data_source.query`
 - `notion.page.create`
 - `notion.page.get`
 - `notion.page.markdown.get`
@@ -404,6 +406,34 @@ Success output should include:
 - `next_page_token`
 - `has_more`
 
+### feishu.docs.block.get_descendants
+
+Purpose:
+
+- read all descendants under a docx block
+- support subtree traversal in one operation
+
+Required fields:
+
+- `document_id`
+- `block_id`
+
+Optional fields:
+
+- `page_size`
+- `page_token`
+- `document_revision_id`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `items`
+- `next_page_token`
+- `has_more`
+
 ### feishu.docs.block.update
 
 Purpose:
@@ -594,6 +624,36 @@ Allowed subject:
 
 Success output should include:
 
+- `items`
+- `next_page_token`
+- `has_more`
+
+### notion.data_source.query
+
+Purpose:
+
+- query pages and nested data sources under one data source
+- support structured filtering and sorting workflows
+
+Required fields:
+
+- `data_source_id`
+
+Optional fields:
+
+- `filter`
+- `sorts`
+- `page_size`
+- `page_token`
+- `filter_properties`
+
+Allowed subject:
+
+- `integration`
+
+Success output should include:
+
+- `data_source_id`
 - `items`
 - `next_page_token`
 - `has_more`
@@ -824,14 +884,16 @@ The following are out of MVP scope:
 5. `feishu.docs.document.list_blocks`
 6. `feishu.docs.block.get`
 7. `feishu.docs.block.list_children`
-8. `feishu.docs.block.update`
-9. `feishu.docs.block.batch_delete`
-10. `notion.search.query`
-11. `notion.page.create`
-12. `notion.page.get`
-13. `notion.page.markdown.get`
-14. `notion.page.markdown.update`
-15. idempotency and audit storage
-16. `notion.block.append`
-17. `feishu.docs.document.create`
-18. P1 read operations
+8. `feishu.docs.block.get_descendants`
+9. `feishu.docs.block.update`
+10. `feishu.docs.block.batch_delete`
+11. `notion.search.query`
+12. `notion.data_source.query`
+13. `notion.page.create`
+14. `notion.page.get`
+15. `notion.page.markdown.get`
+16. `notion.page.markdown.update`
+17. idempotency and audit storage
+18. `notion.block.append`
+19. `feishu.docs.document.create`
+20. P1 read operations

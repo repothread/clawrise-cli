@@ -107,6 +107,7 @@ Feishu：
 - `feishu.docs.document.list_blocks`
 - `feishu.docs.block.get`
 - `feishu.docs.block.list_children`
+- `feishu.docs.block.get_descendants`
 - `feishu.docs.block.update`
 - `feishu.docs.block.batch_delete`
 - `feishu.wiki.space.list`
@@ -120,6 +121,7 @@ Feishu：
 Notion：
 
 - `notion.search.query`
+- `notion.data_source.query`
 - `notion.page.create`
 - `notion.page.get`
 - `notion.page.markdown.get`
@@ -447,7 +449,35 @@ MVP 限制：
 - `next_page_token`
 - `has_more`
 
-### 4.12 feishu.docs.block.update
+### 4.12 feishu.docs.block.get_descendants
+
+用途：
+
+- 读取指定 docx block 下的所有子孙块
+- 支持一次性按子树遍历内容
+
+必填字段：
+
+- `document_id`
+- `block_id`
+
+可选字段：
+
+- `page_size`
+- `page_token`
+- `document_revision_id`
+
+允许主体：
+
+- `bot`
+
+成功输出建议包含：
+
+- `items`
+- `next_page_token`
+- `has_more`
+
+### 4.13 feishu.docs.block.update
 
 用途：
 
@@ -479,7 +509,7 @@ MVP 限制：
 - `plain_text`
 - `document_revision_id`
 
-### 4.13 feishu.docs.block.batch_delete
+### 4.14 feishu.docs.block.batch_delete
 
 用途：
 
@@ -509,7 +539,7 @@ MVP 限制：
 - `end_index`
 - `document_revision_id`
 
-### 4.14 feishu.docs.document.append_blocks
+### 4.15 feishu.docs.document.append_blocks
 
 用途：
 
@@ -546,7 +576,7 @@ MVP 限制：
 - 默认向文档根节点追加
 - 如不传 `block_id`，会使用 `document_id` 作为根块
 
-### 4.15 feishu.docs.document.get_raw_content
+### 4.16 feishu.docs.document.get_raw_content
 
 用途：
 
@@ -599,7 +629,37 @@ P1 读操作。
 - `next_page_token`
 - `has_more`
 
-### 5.2 notion.page.create
+### 5.2 notion.data_source.query
+
+用途：
+
+- 查询指定 data source 下的页面和嵌套 data source
+- 支持结构化筛选和排序工作流
+
+必填字段：
+
+- `data_source_id`
+
+可选字段：
+
+- `filter`
+- `sorts`
+- `page_size`
+- `page_token`
+- `filter_properties`
+
+允许主体：
+
+- `integration`
+
+成功输出建议包含：
+
+- `data_source_id`
+- `items`
+- `next_page_token`
+- `has_more`
+
+### 5.3 notion.page.create
 
 用途：
 
@@ -628,7 +688,7 @@ P1 读操作。
 - `parent`
 - `url`
 
-### 5.3 notion.page.get
+### 5.4 notion.page.get
 
 用途：
 
@@ -651,7 +711,7 @@ P1 读操作。
 - `archived`
 - `properties`
 
-### 5.4 notion.page.markdown.get
+### 5.5 notion.page.markdown.get
 
 用途：
 
@@ -677,7 +737,7 @@ P1 读操作。
 - `truncated`
 - `unknown_block_ids`
 
-### 5.5 notion.page.markdown.update
+### 5.6 notion.page.markdown.update
 
 用途：
 
@@ -707,7 +767,7 @@ P1 读操作。
 - `truncated`
 - `unknown_block_ids`
 
-### 5.6 notion.block.append
+### 5.7 notion.block.append
 
 用途：
 
@@ -729,7 +789,7 @@ P1 读操作。
 - `appended_count`
 - 追加后的子 block 标识
 
-### 5.7 notion.block.get
+### 5.8 notion.block.get
 
 用途：
 
@@ -751,7 +811,7 @@ P1 读操作。
 - `has_children`
 - `plain_text`
 
-### 5.8 notion.block.list_children
+### 5.9 notion.block.list_children
 
 用途：
 
@@ -777,7 +837,7 @@ P1 读操作。
 - `next_page_token`
 - `has_more`
 
-### 5.9 notion.block.update
+### 5.10 notion.block.update
 
 用途：
 
@@ -799,7 +859,7 @@ P1 读操作。
 - `type`
 - `plain_text`
 
-### 5.10 notion.block.delete
+### 5.11 notion.block.delete
 
 用途：
 
@@ -820,7 +880,7 @@ P1 读操作。
 - `archived`
 - `in_trash`
 
-### 5.11 notion.user.get
+### 5.12 notion.user.get
 
 P1 读操作。
 
@@ -854,14 +914,16 @@ P1 读操作。
 5. `feishu.docs.document.list_blocks`
 6. `feishu.docs.block.get`
 7. `feishu.docs.block.list_children`
-8. `feishu.docs.block.update`
-9. `feishu.docs.block.batch_delete`
-10. `notion.search.query`
-11. `notion.page.create`
-12. `notion.page.get`
-13. `notion.page.markdown.get`
-14. `notion.page.markdown.update`
-15. 幂等与审计存储
-16. `notion.block.append`
-17. `feishu.docs.document.create`
-18. P1 读操作
+8. `feishu.docs.block.get_descendants`
+9. `feishu.docs.block.update`
+10. `feishu.docs.block.batch_delete`
+11. `notion.search.query`
+12. `notion.data_source.query`
+13. `notion.page.create`
+14. `notion.page.get`
+15. `notion.page.markdown.get`
+16. `notion.page.markdown.update`
+17. 幂等与审计存储
+18. `notion.block.append`
+19. `feishu.docs.document.create`
+20. P1 读操作

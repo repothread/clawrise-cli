@@ -367,6 +367,13 @@ type notionSearchResponse struct {
 	NextCursor *string          `json:"next_cursor"`
 }
 
+type notionQueryDataSourceResponse struct {
+	Type       string           `json:"type"`
+	Results    []map[string]any `json:"results"`
+	HasMore    bool             `json:"has_more"`
+	NextCursor *string          `json:"next_cursor"`
+}
+
 type notionBlockChildrenResponse struct {
 	Results    []map[string]any `json:"results"`
 	HasMore    bool             `json:"has_more"`

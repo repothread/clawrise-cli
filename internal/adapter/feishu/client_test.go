@@ -768,6 +768,94 @@ func TestGetDocumentBlockChildrenSuccess(t *testing.T) {
 	}
 }
 
+func TestGetDocumentBlockDescendantsForcesWithDescendants(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/open-apis/auth/v3/tenant_access_token/internal":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code":                0,
+					"msg":                 "ok",
+					"tenant_access_token": "tenant-token",
+					"expire":              7200,
+				}), nil
+			case "/open-apis/docx/v1/documents/dox_123/blocks/blk_root/children":
+				if request.URL.Query().Get("with_descendants") != "true" {
+					t.Fatalf("unexpected with_descendants: %s", request.URL.Query().Get("with_descendants"))
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]any{
+						"items": []map[string]any{
+							{
+								"block_id":   "blk_child",
+								"parent_id":  "blk_root",
+								"children":   []string{"blk_grandchild"},
+								"block_type": 12,
+								"bullet": map[string]any{
+									"elements": []map[string]any{
+										{
+											"text_run": map[string]any{
+												"content": "任务一",
+											},
+										},
+									},
+								},
+							},
+							{
+								"block_id":   "blk_grandchild",
+								"parent_id":  "blk_child",
+								"children":   []string{},
+								"block_type": 2,
+								"text": map[string]any{
+									"elements": []map[string]any{
+										{
+											"text_run": map[string]any{
+												"content": "子任务详情",
+											},
+										},
+									},
+								},
+							},
+						},
+						"page_token": "",
+						"has_more":   false,
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: transport,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	data, appErr := client.GetDocumentBlockDescendants(context.Background(), testBotProfile(), map[string]any{
+		"document_id": "dox_123",
+		"block_id":    "blk_root",
+	})
+	if appErr != nil {
+		t.Fatalf("GetDocumentBlockDescendants returned error: %+v", appErr)
+	}
+	items := data["items"].([]map[string]any)
+	if len(items) != 2 || items[1]["plain_text"] != "子任务详情" {
+		t.Fatalf("unexpected items: %+v", data["items"])
+	}
+}
+
 func TestUpdateDocumentBlockSuccess(t *testing.T) {
 	t.Setenv("FEISHU_APP_ID", "app-id")
 	t.Setenv("FEISHU_APP_SECRET", "app-secret")

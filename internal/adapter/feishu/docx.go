@@ -230,6 +230,13 @@ func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile config.Pr
 	}, nil
 }
 
+// GetDocumentBlockDescendants 获取指定块的所有子孙块。
+func (c *Client) GetDocumentBlockDescendants(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+	descendantsInput := cloneFeishuInputMap(input)
+	descendantsInput["with_descendants"] = true
+	return c.GetDocumentBlockChildren(ctx, profile, descendantsInput)
+}
+
 // UpdateDocumentBlock 更新单个 block 的文本内容。
 func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
@@ -1035,4 +1042,15 @@ func describeDocxBlockType(blockType int) string {
 	default:
 		return ""
 	}
+}
+
+func cloneFeishuInputMap(input map[string]any) map[string]any {
+	if input == nil {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+	return cloned
 }
