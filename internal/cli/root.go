@@ -61,6 +61,8 @@ func Run(args []string, deps Dependencies) error {
 		return runVersion(deps.Version, deps.Stdout)
 	case "doctor":
 		return runDoctor(store, deps.Stdout)
+	case "plugin":
+		return runPlugin(args[1:], deps.Stdout)
 	case "spec":
 		manager, err := resolvePluginManager(deps)
 		if err != nil {
@@ -403,6 +405,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise platform [use|current|unset]")
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise profile [use|current|list]")
+	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|remove]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")

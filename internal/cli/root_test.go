@@ -256,6 +256,30 @@ func TestRunPlatformHelpFlag(t *testing.T) {
 	}
 }
 
+func TestRunPluginHelpFlag(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"plugin", "--help"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|remove]")) {
+		t.Fatalf("expected plugin help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 	t.Helper()
 
