@@ -25,6 +25,12 @@ The repository already has:
 
 - a unified runtime and config model
 - a substantial set of real Feishu and Notion operations
+- open source collaboration baseline documents:
+  - MIT license
+  - contributing guide
+  - code of conduct
+  - security policy
+  - support guide
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
 - `clawrise spec status`
@@ -43,6 +49,7 @@ The repository already has:
   - `file://`
   - `https://`
   - `npm://`
+- GitHub issue templates, pull request template, and baseline CI for `go test ./...` and `go build ./...`
 
 ## 3.1 Progress Update
 
@@ -63,6 +70,11 @@ As of March 27, 2026, the near-term roadmap status is:
   - audit input and output redaction is implemented
 - 4.4 `spec export`, completion, and generated docs:
   - still not implemented
+- repository operations baseline:
+  - MIT license is published
+  - contribution, conduct, security, and support docs are published
+  - GitHub issue templates and pull request template are published
+  - GitHub Actions now runs baseline test and build checks on `main` and pull requests
 
 ## 4. Near-term Must-have
 

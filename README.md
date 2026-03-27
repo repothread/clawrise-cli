@@ -1,5 +1,8 @@
 # Clawrise
 
+[![CI](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 For the Chinese version, see [README.zh.md](README.zh.md).
 
 ## Overview
@@ -16,6 +19,19 @@ The current architecture is plugin-first:
 
 The repository contains both the evolving design documents and the current Go implementation of the core runtime and first-party plugins.
 
+## Open Source Status
+
+Clawrise is developed as an open source project and now includes the baseline collaboration documents expected by external contributors:
+
+- [MIT License](LICENSE)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+- [Support Guide](SUPPORT.md)
+- [Chinese Contributing Guide](CONTRIBUTING.zh.md)
+- [Chinese Security Policy](SECURITY.zh.md)
+- [Public Roadmap](docs/en/roadmap.md)
+
 ## Current Scope
 
 Current first-party plugin platforms:
@@ -26,6 +42,15 @@ Current first-party plugin platforms:
 Next planned platform after MVP:
 
 - `google`
+
+## Quick Start
+
+```bash
+go build ./...
+go test ./...
+go run ./cmd/clawrise version
+go run ./cmd/clawrise doctor
+```
 
 ## Documentation
 
@@ -58,6 +83,24 @@ Clawrise standardizes how operations are executed, not how every SaaS resource i
 ## Example Config
 
 - [examples/config.example.yaml](examples/config.example.yaml)
+
+## Contributing
+
+Contributions are welcome across runtime behavior, plugins, docs, playbooks, examples, and test coverage.
+
+Before opening a pull request:
+
+- read [CONTRIBUTING.md](CONTRIBUTING.md)
+- check [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- follow [SECURITY.md](SECURITY.md) for responsible disclosure
+- check [SUPPORT.md](SUPPORT.md) for the correct help path and issue expectations
+- use the GitHub issue and pull request templates where relevant
+
+## Support
+
+If you need help using or extending Clawrise, start with [SUPPORT.md](SUPPORT.md).
+
+For current project priorities and larger direction questions, see [docs/en/roadmap.md](docs/en/roadmap.md).
 
 ## Status
 
@@ -104,3 +147,7 @@ Still not implemented:
 - `completion`
 - plugin signature policy
 - official packaged first-party plugin distribution workflow
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

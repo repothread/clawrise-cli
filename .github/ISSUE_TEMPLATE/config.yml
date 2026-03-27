@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Support / 使用帮助
+    url: https://github.com/repothread/clawrise-cli/blob/main/SUPPORT.md
+    about: Find the right path for usage questions, bug reports, and onboarding help.
+  - name: Security Policy / 安全策略
+    url: https://github.com/repothread/clawrise-cli/blob/main/SECURITY.md
+    about: Please follow the responsible disclosure process for vulnerabilities.
+  - name: Contributing Guide / 贡献指南
+    url: https://github.com/repothread/clawrise-cli/blob/main/CONTRIBUTING.md
+    about: Read this before opening large changes or asking implementation questions.
+  - name: Public Roadmap / 公开路线图
+    url: https://github.com/repothread/clawrise-cli/blob/main/docs/en/roadmap.md
+    about: Check current priorities before proposing major roadmap changes.

@@ -26,6 +26,12 @@ Clawrise 当前的目标方向是：
 
 - 统一 runtime 和配置模型
 - 一批真实可执行的 Feishu / Notion operation
+- 面向公开协作的基础文档：
+  - MIT 协议
+  - 贡献指南
+  - 行为准则
+  - 安全策略
+  - 支持说明
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
 - `clawrise spec status`
@@ -44,6 +50,7 @@ Clawrise 当前的目标方向是：
   - `file://`
   - `https://`
   - `npm://`
+- GitHub Issue 模板、Pull Request 模板，以及覆盖 `go test ./...` 和 `go build ./...` 的基础 CI
 
 ## 3.1 最新进度
 
@@ -64,6 +71,11 @@ Clawrise 当前的目标方向是：
   - 已落地审计输入输出脱敏
 - 4.4 `spec export`、completion 与文档生成：
   - 仍未完成
+- 仓库公开协作基础：
+  - 已发布 MIT 协议
+  - 已发布贡献、行为准则、安全与支持文档
+  - 已补充 GitHub Issue / Pull Request 模板
+  - GitHub Actions 已开始在 `main` 与 Pull Request 上执行基础 test / build 检查
 
 ## 4. 近期 Must-have
 
