@@ -63,7 +63,9 @@ func Run(args []string, deps Dependencies) error {
 		return runVersion(deps.Version, deps.Stdout)
 	case "doctor":
 		return runDoctor(store, deps.Stdout)
-	case "auth", "config", "batch", "spec", "completion":
+	case "spec":
+		return runSpec(args[1:], deps.Stdout, registry)
+	case "auth", "config", "batch", "completion":
 		return runPlaceholder(args[0], deps.Stdout)
 	default:
 		return runOperation(args, deps.Stdout, deps.Stderr, executor)
@@ -396,6 +398,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise platform [use|current|unset]")
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise profile [use|current|list]")
+	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")
 }

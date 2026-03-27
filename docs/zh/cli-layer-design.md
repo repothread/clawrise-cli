@@ -127,6 +127,15 @@ operation 路径格式：
 - `clawrise version`
 - `clawrise completion`
 
+当前实现状态：
+
+- `clawrise spec list [path]`
+- `clawrise spec get <operation>`
+- `clawrise spec status`
+- `clawrise spec export`
+
+其中当前仅 `list/get` 已实现，`status/export` 仍为后续计划。
+
 ## 5. 输入输出规范
 
 推荐输入方式：

@@ -13,7 +13,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
-// GetDocument 获取文档基础信息。
+// GetDocument fetches basic document metadata.
 func (c *Client) GetDocument(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
 	if appErr != nil {
@@ -60,7 +60,7 @@ func (c *Client) GetDocument(ctx context.Context, profile config.Profile, input 
 	}, nil
 }
 
-// ListDocumentBlocks 获取文档所有块并分页返回。
+// ListDocumentBlocks returns document blocks with pagination support.
 func (c *Client) ListDocumentBlocks(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
 	if appErr != nil {
@@ -117,7 +117,7 @@ func (c *Client) ListDocumentBlocks(ctx context.Context, profile config.Profile,
 	}, nil
 }
 
-// GetDocumentBlock 获取单个块的结构化内容。
+// GetDocumentBlock fetches the structured content of a single block.
 func (c *Client) GetDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
 	if appErr != nil {
@@ -165,7 +165,7 @@ func (c *Client) GetDocumentBlock(ctx context.Context, profile config.Profile, i
 	return normalizeDocxBlock(response.Data.Block), nil
 }
 
-// GetDocumentBlockChildren 获取指定块下的所有子块并分页返回。
+// GetDocumentBlockChildren returns child blocks under the given block with pagination support.
 func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
 	if appErr != nil {
@@ -230,14 +230,14 @@ func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile config.Pr
 	}, nil
 }
 
-// GetDocumentBlockDescendants 获取指定块的所有子孙块。
+// GetDocumentBlockDescendants returns all descendant blocks under the given block.
 func (c *Client) GetDocumentBlockDescendants(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	descendantsInput := cloneFeishuInputMap(input)
 	descendantsInput["with_descendants"] = true
 	return c.GetDocumentBlockChildren(ctx, profile, descendantsInput)
 }
 
-// UpdateDocumentBlock 更新单个 block 的文本内容。
+// UpdateDocumentBlock updates the text content of a single block.
 func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
 	if appErr != nil {
@@ -287,7 +287,7 @@ func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile
 	return data, nil
 }
 
-// BatchDeleteDocumentBlockChildren 删除父块中指定范围的子块。
+// BatchDeleteDocumentBlockChildren deletes a contiguous range of child blocks from a parent block.
 func (c *Client) BatchDeleteDocumentBlockChildren(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
 	if appErr != nil {

@@ -92,6 +92,15 @@ Reserved management commands:
 - `clawrise version`
 - `clawrise completion`
 
+Current implementation status:
+
+- `clawrise spec list [path]`
+- `clawrise spec get <operation>`
+- `clawrise spec status`
+- `clawrise spec export`
+
+At the moment only `list/get` are implemented, while `status/export` remain planned.
+
 ## 4. Input and Output
 
 Preferred input forms:

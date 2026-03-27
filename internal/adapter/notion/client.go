@@ -22,19 +22,19 @@ const (
 	defaultNotionVersion = "2026-03-11"
 )
 
-// Client 是当前 MVP 阶段使用的 Notion API 客户端。
+// Client is the Notion API client used by the current MVP runtime.
 type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 }
 
-// Options 控制 Notion 客户端的构造参数。
+// Options controls Notion client construction.
 type Options struct {
 	BaseURL    string
 	HTTPClient *http.Client
 }
 
-// NewClient 创建 Notion API 客户端。
+// NewClient creates a Notion API client.
 func NewClient(options Options) (*Client, error) {
 	baseURL := strings.TrimSpace(options.BaseURL)
 	if baseURL == "" {
@@ -59,7 +59,7 @@ func NewClient(options Options) (*Client, error) {
 	}, nil
 }
 
-// doJSONRequest 统一处理 Notion 的 JSON 请求和错误归一化。
+// doJSONRequest handles Notion JSON requests and normalized error mapping.
 func (c *Client) doJSONRequest(ctx context.Context, method, rawPath string, query url.Values, body any, authorization string, notionVersion string, extraHeaders map[string]string) ([]byte, *apperr.AppError) {
 	endpoint := *c.baseURL
 	endpoint.Path = path.Join(c.baseURL.Path, rawPath)
@@ -111,7 +111,7 @@ func (c *Client) doJSONRequest(ctx context.Context, method, rawPath string, quer
 	return responseBody, nil
 }
 
-// requireAccessToken 根据 profile 获取可用的访问令牌。
+// requireAccessToken resolves a usable access token from the given profile.
 func (c *Client) requireAccessToken(ctx context.Context, profile config.Profile) (string, string, *apperr.AppError) {
 	if profile.Subject != "integration" {
 		return "", "", apperr.New("SUBJECT_NOT_ALLOWED", "this Notion operation currently requires an integration profile")
@@ -139,7 +139,7 @@ func (c *Client) requireAccessToken(ctx context.Context, profile config.Profile)
 	}
 }
 
-// refreshAccessToken 使用 refresh token 即时换取新的 access token。
+// refreshAccessToken exchanges a refresh token for a new access token.
 func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
 	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
 	if err != nil {
@@ -225,7 +225,7 @@ func normalizeNotionHTTPError(httpStatus int, headers http.Header, responseBody 
 		appErr.Code = "PERMISSION_DENIED"
 	case "object_not_found":
 		appErr.Code = "RESOURCE_NOT_FOUND"
-		// Notion 会把“对象不存在”和“对象未共享给 integration”都归到这个错误码。
+		// Notion uses the same code for both a missing object and an object not shared with the integration.
 		if !strings.Contains(appErr.Message, "integration") {
 			appErr.Message += "; the resource may not exist or may not be shared with the integration"
 		}

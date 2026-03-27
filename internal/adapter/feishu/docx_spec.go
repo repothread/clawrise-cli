@@ -1,0 +1,162 @@
+package feishu
+
+import "github.com/clawrise/clawrise-cli/internal/adapter"
+
+func docsDocumentCreateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Create an empty Feishu document.",
+		Input: adapter.InputSpec{
+			Required: []string{"title"},
+			Optional: []string{"folder_token"},
+			Notes: []string{
+				"The current MVP only creates the document shell.",
+			},
+			Sample: map[string]any{
+				"title": "Project notes",
+			},
+		},
+	}
+}
+
+func docsDocumentGetSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Get Feishu document metadata.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id"},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Get document metadata",
+				Command: `clawrise feishu.docs.document.get --json '{"document_id":"doxcnDemo"}'`,
+			},
+		},
+	}
+}
+
+func docsDocumentListBlocksSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List document blocks in a Feishu docx document.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id"},
+			Optional: []string{"page_size", "page_token", "document_revision_id"},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"page_size":   50,
+			},
+		},
+	}
+}
+
+func docsBlockGetSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Get a single block from a Feishu docx document.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id", "block_id"},
+			Optional: []string{"document_revision_id"},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"block_id":    "blkDemo",
+			},
+		},
+	}
+}
+
+func docsBlockListChildrenSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List child blocks under a Feishu docx block.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id", "block_id"},
+			Optional: []string{"page_size", "page_token", "document_revision_id", "with_descendants"},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"block_id":    "blkDemo",
+				"page_size":   50,
+			},
+		},
+	}
+}
+
+func docsBlockGetDescendantsSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List all descendant blocks under a Feishu docx block.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id", "block_id"},
+			Optional: []string{"page_size", "page_token", "document_revision_id"},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"block_id":    "blkDemo",
+			},
+		},
+	}
+}
+
+func docsBlockUpdateSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Update the text content of a Feishu docx block.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id", "block_id"},
+			Optional: []string{"document_revision_id", "text", "block", "update_task"},
+			Notes: []string{
+				"`checked` and `language` updates are not supported yet.",
+			},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"block_id":    "blkDemo",
+				"text":        "Updated content",
+			},
+		},
+	}
+}
+
+func docsBlockBatchDeleteSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Delete a contiguous range of child blocks.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id", "block_id", "start_index", "end_index"},
+			Optional: []string{"document_revision_id"},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"block_id":    "blkDemo",
+				"start_index": 0,
+				"end_index":   2,
+			},
+		},
+	}
+}
+
+func docsDocumentAppendBlocksSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Append text-oriented blocks to a Feishu docx document.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id", "blocks"},
+			Optional: []string{"block_id"},
+			Notes: []string{
+				"When `block_id` is omitted, blocks are appended under the document root.",
+			},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+				"blocks": []any{
+					map[string]any{
+						"type": "text",
+						"text": "Hello Clawrise",
+					},
+				},
+			},
+		},
+	}
+}
+
+func docsDocumentGetRawContentSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Get plain text content from a Feishu docx document.",
+		Input: adapter.InputSpec{
+			Required: []string{"document_id"},
+			Sample: map[string]any{
+				"document_id": "doxcnDemo",
+			},
+		},
+	}
+}

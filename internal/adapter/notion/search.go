@@ -11,7 +11,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
-// Search 在当前 integration 可见范围内搜索页面和数据源。
+// Search looks up pages and data sources visible to the current integration.
 func (c *Client) Search(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	payload, appErr := buildSearchPayload(input)
 	if appErr != nil {

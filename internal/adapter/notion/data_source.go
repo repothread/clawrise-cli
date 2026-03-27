@@ -12,7 +12,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
-// QueryDataSource 查询一个 data source 下的页面或子数据源。
+// QueryDataSource queries pages or nested data sources under a data source.
 func (c *Client) QueryDataSource(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	dataSourceID, appErr := requireIDField(input, "data_source_id")
 	if appErr != nil {

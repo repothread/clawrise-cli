@@ -8,7 +8,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 )
 
-// RegisterOperations 将 Notion operation 注册到统一 registry。
+// RegisterOperations registers Notion operations into the shared registry.
 func RegisterOperations(registry *adapter.Registry, client *Client) {
 	registry.Register(adapter.Definition{
 		Operation:       "notion.page.create",
@@ -16,6 +16,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionPageCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.CreatePage(ctx, call.Profile, call.Input)
 		},
@@ -26,6 +27,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionPageGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetPage(ctx, call.Profile, call.Input)
 		},
@@ -36,6 +38,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionPageMarkdownGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetPageMarkdown(ctx, call.Profile, call.Input)
 		},
@@ -46,6 +49,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionPageMarkdownUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.UpdatePageMarkdown(ctx, call.Profile, call.Input)
 		},
@@ -56,6 +60,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionSearchQuerySpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.Search(ctx, call.Profile, call.Input)
 		},
@@ -66,6 +71,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionDataSourceQuerySpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.QueryDataSource(ctx, call.Profile, call.Input)
 		},
@@ -76,6 +82,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionBlockGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetBlock(ctx, call.Profile, call.Input)
 		},
@@ -86,6 +93,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionBlockListChildrenSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ListBlockChildren(ctx, call.Profile, call.Input)
 		},
@@ -96,6 +104,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionBlockAppendSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.AppendBlockChildren(ctx, call.Profile, call.Input)
 		},
@@ -106,6 +115,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionBlockUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.UpdateBlock(ctx, call.Profile, call.Input)
 		},
@@ -116,6 +126,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionBlockDeleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.DeleteBlock(ctx, call.Profile, call.Input)
 		},
@@ -126,6 +137,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"integration"},
+		Spec:            notionUserGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetUser(ctx, call.Profile, call.Input)
 		},

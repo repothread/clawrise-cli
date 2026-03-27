@@ -12,7 +12,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
-// GetUser 读取用户对象，支持普通 user_id，也支持 user_id=me 读取当前 bot。
+// GetUser reads a user object and supports both a concrete user_id and user_id=me.
 func (c *Client) GetUser(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	userID, appErr := requireIDField(input, "user_id")
 	if appErr != nil {

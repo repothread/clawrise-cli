@@ -12,7 +12,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
-// CreatePage 创建页面。
+// CreatePage creates a page.
 func (c *Client) CreatePage(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	payload, appErr := buildCreatePagePayload(profile, input)
 	if appErr != nil {
@@ -49,7 +49,7 @@ func (c *Client) CreatePage(ctx context.Context, profile config.Profile, input m
 	return mapPageData(response), nil
 }
 
-// GetPage 读取页面详情。
+// GetPage reads page details.
 func (c *Client) GetPage(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
@@ -86,7 +86,7 @@ func (c *Client) GetPage(ctx context.Context, profile config.Profile, input map[
 	return mapPageData(response), nil
 }
 
-// GetPageMarkdown 以增强 markdown 形式读取页面或未知子树内容。
+// GetPageMarkdown reads page content or unknown subtrees in enhanced markdown form.
 func (c *Client) GetPageMarkdown(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
@@ -124,7 +124,7 @@ func (c *Client) GetPageMarkdown(ctx context.Context, profile config.Profile, in
 	return mapPageMarkdownData(response), nil
 }
 
-// UpdatePageMarkdown 使用增强 markdown 对页面内容做增量或整体更新。
+// UpdatePageMarkdown applies incremental or full-page updates with enhanced markdown commands.
 func (c *Client) UpdatePageMarkdown(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
@@ -162,7 +162,7 @@ func (c *Client) UpdatePageMarkdown(ctx context.Context, profile config.Profile,
 	return mapPageMarkdownData(response), nil
 }
 
-// buildCreatePagePayload 构造创建页面的请求体。
+// buildCreatePagePayload builds the request payload used to create a page.
 func buildCreatePagePayload(profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	title, ok := asString(input["title"])
 	if !ok || strings.TrimSpace(title) == "" {
@@ -195,7 +195,7 @@ func buildCreatePagePayload(profile config.Profile, input map[string]any) (map[s
 }
 
 func buildPageParent(profile config.Profile, raw any) (map[string]any, string, *apperr.AppError) {
-	// 公开集成允许在 workspace 级别建顶层私有页，这里在未传 parent 时做兼容。
+	// Public integrations may create top-level private workspace pages, so missing parent is allowed here.
 	if raw == nil && profile.Grant.Type == "oauth_refreshable" {
 		return map[string]any{
 			"workspace": true,

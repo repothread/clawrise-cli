@@ -24,6 +24,8 @@ Next planned platform after MVP:
 ## Documentation
 
 - [CLI Layer Design](docs/en/cli-layer-design.md)
+- [Roadmap](docs/en/roadmap.md)
+- [`spec` Subsystem Design](docs/en/spec-design.md)
 - [Auth Model](docs/en/auth-model.md)
 - [MVP Operation Spec](docs/en/mvp-operation-spec.md)
 - [Feishu User Auth Setup](docs/en/feishu-user-auth-setup.md)
@@ -52,3 +54,8 @@ Clawrise standardizes how operations are executed, not how every SaaS resource i
 ## Status
 
 This repository contains both design documents and an in-progress Go implementation of the runtime core.
+
+Current discovery support:
+
+- `clawrise spec list [path]`
+- `clawrise spec get <operation>`

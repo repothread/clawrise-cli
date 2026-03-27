@@ -8,7 +8,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 )
 
-// RegisterOperations 将飞书 operation 注册到统一 registry。
+// RegisterOperations registers Feishu operations into the shared registry.
 func RegisterOperations(registry *adapter.Registry, client *Client) {
 	registry.Register(adapter.Definition{
 		Operation:       "feishu.calendar.event.create",
@@ -16,6 +16,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            calendarEventCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.CreateCalendarEvent(ctx, call.Profile, call.Input, call.IdempotencyKey)
 		},
@@ -26,6 +27,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            calendarEventListSpec(),
 	})
 	registry.Register(adapter.Definition{
 		Operation:       "feishu.docs.document.create",
@@ -33,6 +35,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot", "user"},
+		Spec:            docsDocumentCreateSpec(),
 	})
 	registry.Register(adapter.Definition{
 		Operation:       "feishu.docs.document.get",
@@ -40,6 +43,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsDocumentGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetDocument(ctx, call.Profile, call.Input)
 		},
@@ -50,6 +54,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsDocumentListBlocksSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ListDocumentBlocks(ctx, call.Profile, call.Input)
 		},
@@ -60,6 +65,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsBlockGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetDocumentBlock(ctx, call.Profile, call.Input)
 		},
@@ -70,6 +76,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsBlockListChildrenSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetDocumentBlockChildren(ctx, call.Profile, call.Input)
 		},
@@ -80,6 +87,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsBlockGetDescendantsSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetDocumentBlockDescendants(ctx, call.Profile, call.Input)
 		},
@@ -90,6 +98,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsBlockUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.UpdateDocumentBlock(ctx, call.Profile, call.Input, call.IdempotencyKey)
 		},
@@ -100,6 +109,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsBlockBatchDeleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.BatchDeleteDocumentBlockChildren(ctx, call.Profile, call.Input, call.IdempotencyKey)
 		},
@@ -110,6 +120,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            wikiSpaceListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ListWikiSpaces(ctx, call.Profile, call.Input)
 		},
@@ -120,6 +131,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            wikiNodeListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ListWikiNodes(ctx, call.Profile, call.Input)
 		},
@@ -130,6 +142,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            wikiNodeCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.CreateWikiNode(ctx, call.Profile, call.Input)
 		},
@@ -140,6 +153,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsDocumentAppendBlocksSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.AppendDocumentBlocks(ctx, call.Profile, call.Input, call.IdempotencyKey)
 		},
@@ -150,6 +164,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            docsDocumentGetRawContentSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.GetDocumentRawContent(ctx, call.Profile, call.Input)
 		},
@@ -160,5 +175,6 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
 		AllowedSubjects: []string{"bot"},
+		Spec:            contactUserGetSpec(),
 	})
 }

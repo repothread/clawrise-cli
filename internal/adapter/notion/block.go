@@ -12,7 +12,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
-// GetBlock 读取单个 block 的详情。
+// GetBlock reads the details of a single block.
 func (c *Client) GetBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
@@ -45,7 +45,7 @@ func (c *Client) GetBlock(ctx context.Context, profile config.Profile, input map
 	return normalizeBlockData(block), nil
 }
 
-// ListBlockChildren 读取指定 block 下的直接子块列表。
+// ListBlockChildren reads the direct child blocks under the given block.
 func (c *Client) ListBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
@@ -102,7 +102,7 @@ func (c *Client) ListBlockChildren(ctx context.Context, profile config.Profile, 
 	}, nil
 }
 
-// AppendBlockChildren 向页面或块末尾追加子块。
+// AppendBlockChildren appends child blocks to the end of a page or block.
 func (c *Client) AppendBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
@@ -162,7 +162,7 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile config.Profile
 	}, nil
 }
 
-// UpdateBlock 更新指定 block 的正文内容。
+// UpdateBlock updates the content of the specified block.
 func (c *Client) UpdateBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
@@ -200,7 +200,7 @@ func (c *Client) UpdateBlock(ctx context.Context, profile config.Profile, input 
 	return normalizeBlockData(block), nil
 }
 
-// DeleteBlock 将指定 block 移入回收站。
+// DeleteBlock moves the specified block to the trash.
 func (c *Client) DeleteBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
@@ -236,7 +236,7 @@ func (c *Client) DeleteBlock(ctx context.Context, profile config.Profile, input 
 	return data, nil
 }
 
-// buildBlockChildren 将 Clawrise 的简化块结构映射为 Notion 块。
+// buildBlockChildren maps Clawrise's simplified block structure to Notion blocks.
 func buildBlockChildren(raw any) ([]map[string]any, *apperr.AppError) {
 	if raw == nil {
 		return nil, nil
@@ -319,7 +319,7 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 		if toggleable, ok := asBool(input["is_toggleable"]); ok {
 			body["is_toggleable"] = toggleable
 		} else if len(children) > 0 {
-			// 有子块时自动开启 toggleable，避免 Notion 拒绝嵌套标题。
+			// Enable toggleable automatically when nested children exist to satisfy Notion validation.
 			body["is_toggleable"] = true
 		}
 		payload[blockType] = body
