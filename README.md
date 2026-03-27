@@ -32,6 +32,7 @@ Next planned platform after MVP:
 - [CLI Layer Design](docs/en/cli-layer-design.md)
 - [Plugin System Design](docs/en/plugin-system-design.md)
 - [Roadmap](docs/en/roadmap.md)
+- [Local Playbooks Index](docs/playbooks/index.yaml)
 - [`spec` Subsystem Design](docs/en/spec-design.md)
 - [Auth Model](docs/en/auth-model.md)
 - [MVP Operation Spec](docs/en/mvp-operation-spec.md)
@@ -70,6 +71,18 @@ The current repository state includes:
   - `clawrise plugin install <source>`
   - `clawrise plugin info <name> <version>`
   - `clawrise plugin remove <name> <version>`
+  - `clawrise plugin verify <name> <version>`
+  - `clawrise plugin verify --all`
+- minimal onboarding helpers:
+  - `clawrise config init`
+  - `clawrise auth list`
+  - `clawrise auth inspect <profile>`
+  - `clawrise auth check [profile]`
+  - `clawrise doctor`
+- local searchable playbooks:
+  - `docs/playbooks/index.yaml`
+  - `docs/playbooks/zh/*.md`
+  - `docs/playbooks/en/*.md`
 - current install sources:
   - local directory
   - `file://`
@@ -79,10 +92,15 @@ The current repository state includes:
   - `clawrise spec list [path]`
   - `clawrise spec get <operation>`
   - `clawrise spec status`
+- current runtime governance:
+  - persisted local idempotency state for write operations
+  - local JSONL audit logs
+  - config-driven retry policy
+  - redaction for audit input and output
 
 Still not implemented:
 
 - `clawrise spec export`
 - `completion`
-- plugin verification and signature policy
+- plugin signature policy
 - official packaged first-party plugin distribution workflow

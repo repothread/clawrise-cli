@@ -1,0 +1,75 @@
+version: 1
+updated_at: "2026-03-27"
+playbooks:
+  - id: feishu-document-update
+    title: 更新飞书文档
+    title_en: Update a Feishu document
+    platform: feishu
+    operations:
+      - feishu.docs.document.edit
+      - feishu.docs.document.get
+      - feishu.docs.document.get_raw_content
+    tags:
+      - docs
+      - write
+      - dry-run
+    zh_path: docs/playbooks/zh/feishu-document-update.md
+    en_path: docs/playbooks/en/feishu-document-update.md
+  - id: feishu-bitable-record-upsert
+    title: 创建或更新飞书多维表格记录
+    title_en: Create or update a Feishu Bitable record
+    platform: feishu
+    operations:
+      - feishu.bitable.record.list
+      - feishu.bitable.record.create
+      - feishu.bitable.record.update
+    tags:
+      - bitable
+      - record
+      - write
+    zh_path: docs/playbooks/zh/feishu-bitable-record-upsert.md
+    en_path: docs/playbooks/en/feishu-bitable-record-upsert.md
+  - id: feishu-calendar-event-upsert
+    title: 创建或更新飞书日历事件
+    title_en: Create or update a Feishu calendar event
+    platform: feishu
+    operations:
+      - feishu.calendar.event.create
+      - feishu.calendar.event.get
+      - feishu.calendar.event.update
+    tags:
+      - calendar
+      - event
+      - write
+    zh_path: docs/playbooks/zh/feishu-calendar-event-upsert.md
+    en_path: docs/playbooks/en/feishu-calendar-event-upsert.md
+  - id: notion-page-update
+    title: 更新 Notion 页面
+    title_en: Update a Notion page
+    platform: notion
+    operations:
+      - notion.page.update
+      - notion.page.markdown.update
+      - notion.page.get
+      - notion.page.markdown.get
+    tags:
+      - notion
+      - page
+      - markdown
+      - write
+    zh_path: docs/playbooks/zh/notion-page-update.md
+    en_path: docs/playbooks/en/notion-page-update.md
+  - id: notion-data-source-query
+    title: 查询 Notion data source
+    title_en: Query a Notion data source
+    platform: notion
+    operations:
+      - notion.data_source.get
+      - notion.data_source.query
+    tags:
+      - notion
+      - data-source
+      - query
+      - read
+    zh_path: docs/playbooks/zh/notion-data-source-query.md
+    en_path: docs/playbooks/en/notion-data-source-query.md

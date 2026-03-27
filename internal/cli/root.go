@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -60,9 +61,15 @@ func Run(args []string, deps Dependencies) error {
 	case "version":
 		return runVersion(deps.Version, deps.Stdout)
 	case "doctor":
-		return runDoctor(store, deps.Stdout)
+		var manager *pluginruntime.Manager
+		if deps.PluginManager != nil {
+			manager = deps.PluginManager
+		} else {
+			manager, _ = resolvePluginManager(deps)
+		}
+		return runDoctor(store, deps.Stdout, manager)
 	case "plugin":
-		return runPlugin(args[1:], deps.Stdout)
+		return runPlugin(args[1:], deps.Stdout, deps.Version)
 	case "spec":
 		manager, err := resolvePluginManager(deps)
 		if err != nil {
@@ -70,7 +77,17 @@ func Run(args []string, deps Dependencies) error {
 		}
 		specService := spec.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runSpec(args[1:], deps.Stdout, specService)
-	case "auth", "config", "batch", "completion":
+	case "auth":
+		var manager *pluginruntime.Manager
+		if deps.PluginManager != nil {
+			manager = deps.PluginManager
+		} else {
+			manager, _ = resolvePluginManager(deps)
+		}
+		return runAuth(args[1:], store, deps.Stdout, manager)
+	case "config":
+		return runConfig(args[1:], store, deps.Stdout)
+	case "batch", "completion":
 		return runPlaceholder(args[0], deps.Stdout)
 	default:
 		manager, err := resolvePluginManager(deps)
@@ -368,22 +385,108 @@ func runVersion(version string, stdout io.Writer) error {
 	})
 }
 
-func runDoctor(store *config.Store, stdout io.Writer) error {
+func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
 	cfg, err := store.Load()
 	if err != nil {
 		return err
 	}
 
+	discovery, err := pluginruntime.InspectDiscovery(context.Background())
+	if err != nil {
+		return err
+	}
+
+	profileInspections := config.SortedProfileInspections(cfg)
+	checks := make([]map[string]any, 0)
+	nextSteps := make([]string, 0)
+
+	if len(discovery.Plugins) == 0 {
+		checks = append(checks, map[string]any{
+			"code":    "NO_DISCOVERED_PLUGINS",
+			"status":  "warn",
+			"message": "no discoverable plugins were found in the active plugin roots",
+		})
+		nextSteps = append(nextSteps, "run `clawrise plugin install <source>` to install at least one provider plugin")
+	}
+
+	defaultProfileOK := true
+	if cfg.Defaults.Profile == "" {
+		defaultProfileOK = false
+		checks = append(checks, map[string]any{
+			"code":    "DEFAULT_PROFILE_MISSING",
+			"status":  "warn",
+			"message": "no default profile is configured",
+		})
+		nextSteps = append(nextSteps, "run `clawrise config init` or `clawrise profile use <name>` to set a default profile")
+	} else if _, ok := cfg.Profiles[cfg.Defaults.Profile]; !ok {
+		defaultProfileOK = false
+		checks = append(checks, map[string]any{
+			"code":    "DEFAULT_PROFILE_NOT_FOUND",
+			"status":  "error",
+			"message": fmt.Sprintf("default profile %s does not exist in config", cfg.Defaults.Profile),
+		})
+		nextSteps = append(nextSteps, "update the config file or run `clawrise profile use <name>` to select an existing profile")
+	}
+
+	invalidProfiles := 0
+	for _, inspection := range profileInspections {
+		if inspection.ShapeValid && inspection.ResolvedValid {
+			continue
+		}
+		invalidProfiles++
+	}
+	if invalidProfiles > 0 {
+		checks = append(checks, map[string]any{
+			"code":    "INVALID_PROFILES",
+			"status":  "warn",
+			"message": fmt.Sprintf("%d configured profiles have invalid or unresolved auth fields", invalidProfiles),
+		})
+		nextSteps = append(nextSteps, "run `clawrise auth check <profile>` to inspect invalid profile details")
+	}
+
+	runtimeSummary := map[string]any{
+		"registered_operation_count": 0,
+		"catalog_entry_count":        0,
+		"storage": map[string]any{
+			"root_dir":        filepath.Join(filepath.Dir(store.Path()), "runtime"),
+			"idempotency_dir": filepath.Join(filepath.Dir(store.Path()), "runtime", "idempotency"),
+			"audit_dir":       filepath.Join(filepath.Dir(store.Path()), "runtime", "audit"),
+		},
+		"retry_policy": map[string]any{
+			"max_attempts":  cfg.Runtime.Retry.MaxAttempts,
+			"base_delay_ms": cfg.Runtime.Retry.BaseDelayMS,
+			"max_delay_ms":  cfg.Runtime.Retry.MaxDelayMS,
+		},
+	}
+	if manager != nil {
+		runtimeSummary["registered_operation_count"] = len(manager.Registry().Definitions())
+		runtimeSummary["catalog_entry_count"] = len(manager.CatalogEntries())
+	}
+
 	return output.WriteJSON(stdout, map[string]any{
-		"ok":               true,
-		"config_path":      store.Path(),
-		"default_platform": cfg.Defaults.Platform,
-		"default_subject":  cfg.Defaults.Subject,
-		"default_profile":  cfg.Defaults.Profile,
-		"profile_count":    len(cfg.Profiles),
-		"go_version":       runtimeVersion(),
-		"os":               runtimeOS(),
-		"arch":             runtimeArch(),
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"defaults": map[string]any{
+				"platform":           cfg.Defaults.Platform,
+				"subject":            cfg.Defaults.Subject,
+				"profile":            cfg.Defaults.Profile,
+				"default_profile_ok": defaultProfileOK,
+			},
+			"profiles": map[string]any{
+				"count": len(profileInspections),
+				"items": profileInspections,
+			},
+			"plugins": discovery,
+			"runtime": runtimeSummary,
+			"environment": map[string]any{
+				"go_version": runtimeVersion(),
+				"os":         runtimeOS(),
+				"arch":       runtimeArch(),
+			},
+			"checks":     checks,
+			"next_steps": nextSteps,
+		},
 	})
 }
 
@@ -405,7 +508,9 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise platform [use|current|unset]")
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise profile [use|current|list]")
-	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove]")
+	_, _ = fmt.Fprintln(w, "  clawrise auth [list|inspect|check]")
+	_, _ = fmt.Fprintln(w, "  clawrise config init")
+	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")

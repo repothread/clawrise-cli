@@ -55,8 +55,10 @@ type Meta struct {
 
 // IdempotencyState describes the idempotency state of the current request.
 type IdempotencyState struct {
-	Key    string `json:"key"`
-	Status string `json:"status"`
+	Key       string `json:"key"`
+	Status    string `json:"status"`
+	Persisted bool   `json:"persisted,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // ExecutionProfile is the resolved execution identity at runtime.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -190,6 +191,36 @@ func (r *ProcessRuntime) ensureStarted(ctx context.Context) error {
 	r.stdout = bufio.NewReader(stdout)
 	r.started = true
 	return nil
+}
+
+// Close 主动回收 plugin 子进程，供诊断类命令复用。
+func (r *ProcessRuntime) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.started {
+		return nil
+	}
+
+	if r.stdin != nil {
+		_ = r.stdin.Close()
+	}
+
+	var waitErr error
+	if r.command != nil && r.command.Process != nil {
+		if killErr := r.command.Process.Kill(); killErr != nil && killErr != os.ErrProcessDone {
+			waitErr = killErr
+		}
+		if err := r.command.Wait(); err != nil && waitErr == nil {
+			waitErr = err
+		}
+	}
+
+	r.command = nil
+	r.stdin = nil
+	r.stdout = nil
+	r.started = false
+	return waitErr
 }
 
 // NewProcessRuntimes creates process runtimes from discovered manifests.

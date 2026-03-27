@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
 	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
+	"github.com/clawrise/clawrise-cli/internal/apperr"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
@@ -807,6 +811,299 @@ func TestExecutorExecutesNotionBlockListChildren(t *testing.T) {
 	}
 	if items[0]["plain_text"] != "结构化正文" {
 		t.Fatalf("unexpected plain_text: %+v", items[0]["plain_text"])
+	}
+}
+
+func TestExecutorPersistsIdempotencyAndReplaysWrite(t *testing.T) {
+	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
+	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "feishu",
+			Profile:  "feishu_bot_ops",
+		},
+		Runtime: config.RuntimeConfig{
+			Retry: config.RetryConfig{
+				MaxAttempts: 0,
+			},
+		},
+		Profiles: map[string]config.Profile{
+			"feishu_bot_ops": {
+				Platform: "feishu",
+				Subject:  "bot",
+				Grant: config.Grant{
+					Type:      "client_credentials",
+					AppID:     "env:FEISHU_BOT_OPS_APP_ID",
+					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	callCount := 0
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.demo.write",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec: adapter.OperationSpec{
+			Summary: "测试写操作。",
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			callCount++
+			return map[string]any{
+				"message": call.Input["message"],
+				"id":      "demo_1",
+			}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	firstEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.write",
+		InputJSON:      `{"message":"hello"}`,
+	})
+	if err != nil {
+		t.Fatalf("first ExecuteContext returned error: %v", err)
+	}
+	if !firstEnvelope.OK {
+		t.Fatalf("expected first execution to succeed, got: %+v", firstEnvelope.Error)
+	}
+	if firstEnvelope.Idempotency == nil || firstEnvelope.Idempotency.Status != "executed" || !firstEnvelope.Idempotency.Persisted {
+		t.Fatalf("unexpected first idempotency state: %+v", firstEnvelope.Idempotency)
+	}
+
+	secondEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.write",
+		InputJSON:      `{"message":"hello"}`,
+	})
+	if err != nil {
+		t.Fatalf("second ExecuteContext returned error: %v", err)
+	}
+	if !secondEnvelope.OK {
+		t.Fatalf("expected second execution to succeed, got: %+v", secondEnvelope.Error)
+	}
+	if secondEnvelope.Idempotency == nil || secondEnvelope.Idempotency.Status != "replayed" || !secondEnvelope.Idempotency.Persisted {
+		t.Fatalf("unexpected replay idempotency state: %+v", secondEnvelope.Idempotency)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected handler to run once, got %d", callCount)
+	}
+
+	idempotencyDir := filepath.Join(filepath.Dir(store.Path()), "runtime", "idempotency")
+	entries, err := os.ReadDir(idempotencyDir)
+	if err != nil {
+		t.Fatalf("failed to read idempotency dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected one idempotency record, got %d", len(entries))
+	}
+}
+
+func TestExecutorRejectsIdempotencyConflict(t *testing.T) {
+	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
+	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "feishu",
+			Profile:  "feishu_bot_ops",
+		},
+		Profiles: map[string]config.Profile{
+			"feishu_bot_ops": {
+				Platform: "feishu",
+				Subject:  "bot",
+				Grant: config.Grant{
+					Type:      "client_credentials",
+					AppID:     "env:FEISHU_BOT_OPS_APP_ID",
+					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	callCount := 0
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.demo.write",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec: adapter.OperationSpec{
+			Summary: "测试写操作。",
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			callCount++
+			return map[string]any{
+				"message": call.Input["message"],
+			}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	if _, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.write",
+		IdempotencyKey: "idem-fixed",
+		InputJSON:      `{"message":"hello"}`,
+	}); err != nil {
+		t.Fatalf("first ExecuteContext returned error: %v", err)
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.write",
+		IdempotencyKey: "idem-fixed",
+		InputJSON:      `{"message":"world"}`,
+	})
+	if err != nil {
+		t.Fatalf("second ExecuteContext returned error: %v", err)
+	}
+	if envelope.OK {
+		t.Fatal("expected idempotency conflict to fail")
+	}
+	if envelope.Error == nil || envelope.Error.Code != "IDEMPOTENCY_KEY_CONFLICT" {
+		t.Fatalf("unexpected conflict error: %+v", envelope.Error)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected handler to run once, got %d", callCount)
+	}
+}
+
+func TestExecutorRetriesRetryableReadByConfig(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Profile:  "notion_team_docs",
+		},
+		Runtime: config.RuntimeConfig{
+			Retry: config.RetryConfig{
+				MaxAttempts: 1,
+				BaseDelayMS: 1,
+				MaxDelayMS:  1,
+			},
+		},
+		Profiles: map[string]config.Profile{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				Grant: config.Grant{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	callCount := 0
+	registry.Register(adapter.Definition{
+		Operation:       "notion.demo.get",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "测试读操作。",
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			callCount++
+			if callCount == 1 {
+				return nil, apperr.New("TEMPORARY", "temporary upstream error").WithRetryable(true)
+			}
+			return map[string]any{
+				"id": "ok",
+			}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.get",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected retry to succeed, got: %+v", envelope.Error)
+	}
+	if envelope.Meta.RetryCount != 1 {
+		t.Fatalf("expected retry_count=1, got %+v", envelope.Meta)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected handler to run twice, got %d", callCount)
+	}
+}
+
+func TestExecutorWritesRedactedAuditLog(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Profile:  "notion_team_docs",
+		},
+		Profiles: map[string]config.Profile{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				Grant: config.Grant{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "notion.demo.get",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "测试审计。",
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{
+				"access_token":  "secret-token",
+				"authorization": "Bearer top-secret",
+				"message":       "safe",
+			}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.get",
+		InputJSON:      `{"token":"very-secret","note":"visible"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected audit test execution to succeed, got: %+v", envelope.Error)
+	}
+
+	auditFile := filepath.Join(filepath.Dir(store.Path()), "runtime", "audit", time.Now().UTC().Format("2006-01-02")+".jsonl")
+	data, err := os.ReadFile(auditFile)
+	if err != nil {
+		t.Fatalf("failed to read audit file: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "very-secret") || strings.Contains(content, "secret-token") || strings.Contains(content, "top-secret") {
+		t.Fatalf("expected audit log to redact secrets, got: %s", content)
+	}
+	if !strings.Contains(content, `"note":"visible"`) {
+		t.Fatalf("expected audit log to keep non-sensitive fields, got: %s", content)
+	}
+	if !strings.Contains(content, `"authorization":"***"`) {
+		t.Fatalf("expected audit log to redact authorization field, got: %s", content)
 	}
 }
 

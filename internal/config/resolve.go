@@ -31,50 +31,21 @@ func ResolveSecret(raw string) (string, error) {
 
 // ValidateGrant validates grant completeness without exposing secret values.
 func ValidateGrant(profile Profile) error {
-	if profile.Platform == "notion" && profile.Subject != "integration" {
-		return fmt.Errorf("notion profiles must use subject integration")
+	if err := ValidateGrantShape(profile); err != nil {
+		return err
 	}
 
-	switch profile.Grant.Type {
-	case "client_credentials":
-		if profile.Platform == "notion" {
-			return fmt.Errorf("notion does not support grant type: %s", profile.Grant.Type)
+	requiredFields, err := requiredGrantFieldSpecs(profile)
+	if err != nil {
+		return err
+	}
+	for _, field := range requiredFields {
+		if !field.Secret {
+			continue
 		}
-		if _, err := ResolveSecret(profile.Grant.AppID); err != nil {
-			return fmt.Errorf("missing app_id: %w", err)
+		if _, err := ResolveSecret(field.Value(profile.Grant)); err != nil {
+			return fmt.Errorf("missing %s: %w", field.Name, err)
 		}
-		if _, err := ResolveSecret(profile.Grant.AppSecret); err != nil {
-			return fmt.Errorf("missing app_secret: %w", err)
-		}
-	case "static_token":
-		if _, err := ResolveSecret(profile.Grant.Token); err != nil {
-			return fmt.Errorf("missing token: %w", err)
-		}
-	case "oauth_user":
-		if profile.Platform == "notion" {
-			return fmt.Errorf("notion does not support grant type: %s", profile.Grant.Type)
-		}
-		if _, err := ResolveSecret(profile.Grant.ClientID); err != nil {
-			return fmt.Errorf("missing client_id: %w", err)
-		}
-		if _, err := ResolveSecret(profile.Grant.ClientSecret); err != nil {
-			return fmt.Errorf("missing client_secret: %w", err)
-		}
-		if _, err := ResolveSecret(profile.Grant.RefreshToken); err != nil {
-			return fmt.Errorf("missing refresh_token: %w", err)
-		}
-	case "oauth_refreshable":
-		if _, err := ResolveSecret(profile.Grant.ClientID); err != nil {
-			return fmt.Errorf("missing client_id: %w", err)
-		}
-		if _, err := ResolveSecret(profile.Grant.ClientSecret); err != nil {
-			return fmt.Errorf("missing client_secret: %w", err)
-		}
-		if _, err := ResolveSecret(profile.Grant.RefreshToken); err != nil {
-			return fmt.Errorf("missing refresh_token: %w", err)
-		}
-	default:
-		return fmt.Errorf("unsupported grant type: %s", profile.Grant.Type)
 	}
 	return nil
 }

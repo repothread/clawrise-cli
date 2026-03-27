@@ -45,11 +45,35 @@ Clawrise 当前的目标方向是：
   - `https://`
   - `npm://`
 
+## 3.1 最新进度
+
+截至 2026-03-27，近期 roadmap 的推进情况是：
+
+- 4.1 接入友好度和第一方 Plugin UX：
+  - 已落地 `plugin verify`
+  - 已落地 `config init`
+  - 已落地 `auth list|inspect|check`
+  - `doctor` 已补充 plugin 发现、profile 检查、runtime 存储路径与 next steps
+- 4.2 本地 Recipes / Playbooks：
+  - 已落地 `docs/playbooks/index.yaml`
+  - 已补充首批 Feishu / Notion 常用 playbooks
+- 4.3 运行时治理：
+  - 已落地写操作幂等状态本地持久化
+  - 已落地基础审计记录
+  - 已落地可配置自动重试
+  - 已落地审计输入输出脱敏
+- 4.4 `spec export`、completion 与文档生成：
+  - 仍未完成
+
 ## 4. 近期 Must-have
 
-这些是当前剩余的最高优先级事项。
+这些是近期 must-have 事项，其中 4.1 到 4.3 已完成第一轮交付，4.4 仍待实现。
 
 ### 4.1 接入友好度和第一方 Plugin UX
+
+状态：
+
+- 已完成第一轮交付
 
 原因：
 
@@ -71,6 +95,10 @@ Clawrise 当前的目标方向是：
 - 常见接入失败可以不依赖阅读源码进行定位
 
 ### 4.2 本地 Recipes / Playbooks
+
+状态：
+
+- 已完成第一批交付
 
 原因：
 
@@ -95,6 +123,10 @@ Clawrise 当前的目标方向是：
 
 ### 4.3 运行时治理
 
+状态：
+
+- 已完成第一轮交付
+
 原因：
 
 - 写操作在广泛使用前仍需更强的运行时保障
@@ -113,6 +145,10 @@ Clawrise 当前的目标方向是：
 - 重试行为进入标准元信息
 
 ### 4.4 `spec export`、Completion 与文档生成
+
+状态：
+
+- 当前仍未完成
 
 原因：
 

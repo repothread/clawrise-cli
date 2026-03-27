@@ -1,0 +1,39 @@
+# Query a Notion Data Source
+
+Operations:
+
+- `notion.data_source.get`
+- `notion.data_source.query`
+
+## Read schema
+
+```bash
+clawrise notion.data_source.get --json '{
+  "data_source_id":"ds_demo"
+}'
+```
+
+## Run a basic query
+
+```bash
+clawrise notion.data_source.query --json '{
+  "data_source_id":"ds_demo",
+  "page_size":20
+}'
+```
+
+## Query with filter and sorts
+
+```bash
+clawrise notion.data_source.query --json '{
+  "data_source_id":"ds_demo",
+  "filter":{
+    "property":"Status",
+    "status":{"equals":"In Progress"}
+  },
+  "sorts":[
+    {"property":"Last edited time","direction":"descending"}
+  ],
+  "page_size":20
+}'
+```

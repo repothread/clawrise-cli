@@ -9,7 +9,7 @@ import (
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
-func runPlugin(args []string, stdout io.Writer) error {
+func runPlugin(args []string, stdout io.Writer, coreVersion string) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
 		printPluginHelp(stdout)
 		return nil
@@ -63,13 +63,57 @@ func runPlugin(args []string, stdout io.Writer) error {
 			"ok":   true,
 			"data": result,
 		})
+	case "verify":
+		if len(args) == 2 && strings.TrimSpace(args[1]) == "--all" {
+			results, err := pluginruntime.VerifyAllInstalled(coreVersion)
+			if err != nil {
+				return err
+			}
+			allVerified := true
+			for _, item := range results {
+				if !item.Verified {
+					allVerified = false
+					break
+				}
+			}
+			if err := output.WriteJSON(stdout, map[string]any{
+				"ok": allVerified,
+				"data": map[string]any{
+					"all_verified": allVerified,
+					"plugins":      results,
+				},
+			}); err != nil {
+				return err
+			}
+			if !allVerified {
+				return ExitError{Code: 1}
+			}
+			return nil
+		}
+		if len(args) != 3 {
+			return fmt.Errorf("usage: clawrise plugin verify <name> <version> | clawrise plugin verify --all")
+		}
+		result, err := pluginruntime.VerifyInstalled(args[1], args[2], coreVersion)
+		if err != nil {
+			return err
+		}
+		if err := output.WriteJSON(stdout, map[string]any{
+			"ok":   result.Verified,
+			"data": result,
+		}); err != nil {
+			return err
+		}
+		if !result.Verified {
+			return ExitError{Code: 1}
+		}
+		return nil
 	default:
 		return fmt.Errorf("unknown plugin command: %s", args[0])
 	}
 }
 
 func printPluginHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise plugin [list|install|info|remove]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(stdout, "")
 	_, _ = fmt.Fprintln(stdout, "Examples:")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin list")
@@ -77,5 +121,7 @@ func printPluginHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install file:///tmp/demo-plugin.tar.gz")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install https://example.com/demo-plugin.tar.gz")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install npm://@clawrise/plugin-feishu")
+	_, _ = fmt.Fprintln(stdout, "  clawrise plugin verify demo 0.1.0")
+	_, _ = fmt.Fprintln(stdout, "  clawrise plugin verify --all")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin remove demo 0.1.0")
 }

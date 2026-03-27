@@ -44,11 +44,35 @@ The repository already has:
   - `https://`
   - `npm://`
 
+## 3.1 Progress Update
+
+As of March 27, 2026, the near-term roadmap status is:
+
+- 4.1 onboarding and first-party plugin UX:
+  - `plugin verify` is implemented
+  - `config init` is implemented
+  - `auth list|inspect|check` is implemented
+  - `doctor` now reports plugin discovery, profile checks, runtime storage paths, and next steps
+- 4.2 local recipes / playbooks:
+  - `docs/playbooks/index.yaml` is implemented
+  - the first batch of Feishu and Notion playbooks is available
+- 4.3 runtime governance:
+  - persisted local idempotency state is implemented for write operations
+  - basic audit records are implemented
+  - configurable automatic retries are implemented
+  - audit input and output redaction is implemented
+- 4.4 `spec export`, completion, and generated docs:
+  - still not implemented
+
 ## 4. Near-term Must-have
 
-These are the highest-priority remaining tasks.
+These are the near-term must-have items. The first delivery for 4.1 through 4.3 is complete, while 4.4 is still pending.
 
 ### 4.1 Onboarding and First-party Plugin UX
+
+Status:
+
+- first delivery is complete
 
 Why:
 
@@ -70,6 +94,10 @@ Completion signal:
 - common setup failures can be diagnosed without reading implementation details
 
 ### 4.2 Local Recipes / Playbooks
+
+Status:
+
+- first delivery is complete
 
 Why:
 
@@ -94,6 +122,10 @@ Completion signal:
 
 ### 4.3 Runtime Governance
 
+Status:
+
+- first delivery is complete
+
 Why:
 
 - write paths still need stronger operational guarantees before broad use
@@ -112,6 +144,10 @@ Completion signal:
 - retry behavior is visible in normalized metadata
 
 ### 4.4 `spec export`, Completion, and Generated Docs
+
+Status:
+
+- still pending
 
 Why:
 

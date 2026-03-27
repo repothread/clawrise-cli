@@ -3,6 +3,12 @@ defaults:
   subject: bot
   profile: feishu_bot_ops
 
+runtime:
+  retry:
+    max_attempts: 1
+    base_delay_ms: 200
+    max_delay_ms: 1000
+
 profiles:
   # Feishu bot profile for general operations.
   feishu_bot_ops:

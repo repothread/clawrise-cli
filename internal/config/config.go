@@ -13,6 +13,7 @@ import (
 // Config is the top-level structure of the main Clawrise config file.
 type Config struct {
 	Defaults Defaults           `yaml:"defaults"`
+	Runtime  RuntimeConfig      `yaml:"runtime,omitempty"`
 	Profiles map[string]Profile `yaml:"profiles"`
 }
 
@@ -41,6 +42,18 @@ type Grant struct {
 	AccessToken  string `yaml:"access_token,omitempty"`
 	RefreshToken string `yaml:"refresh_token,omitempty"`
 	NotionVer    string `yaml:"notion_version,omitempty"`
+}
+
+// RuntimeConfig 描述运行时治理相关配置。
+type RuntimeConfig struct {
+	Retry RetryConfig `yaml:"retry,omitempty"`
+}
+
+// RetryConfig 描述自动重试策略。
+type RetryConfig struct {
+	MaxAttempts int `yaml:"max_attempts,omitempty"`
+	BaseDelayMS int `yaml:"base_delay_ms,omitempty"`
+	MaxDelayMS  int `yaml:"max_delay_ms,omitempty"`
 }
 
 // NamedProfile is a profile value paired with its config key.

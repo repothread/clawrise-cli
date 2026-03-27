@@ -83,3 +83,28 @@ func TestValidateGrantNotionOAuthRefreshable(t *testing.T) {
 		t.Fatalf("ValidateGrant returned error: %v", err)
 	}
 }
+
+func TestInspectProfileRedactsResolvedSecrets(t *testing.T) {
+	t.Setenv("CLAWRISE_TEST_APP_ID", "app-id")
+	t.Setenv("CLAWRISE_TEST_APP_SECRET", "app-secret")
+
+	inspection := InspectProfile("feishu_bot_ops", Profile{
+		Platform: "feishu",
+		Subject:  "bot",
+		Grant: Grant{
+			Type:      "client_credentials",
+			AppID:     "env:CLAWRISE_TEST_APP_ID",
+			AppSecret: "env:CLAWRISE_TEST_APP_SECRET",
+		},
+	})
+
+	if !inspection.ShapeValid || !inspection.ResolvedValid {
+		t.Fatalf("expected inspection to be valid: %+v", inspection)
+	}
+	if len(inspection.Fields) != 2 {
+		t.Fatalf("unexpected inspection fields: %+v", inspection.Fields)
+	}
+	if inspection.Fields[0].ResolvedValue == "app-id" || inspection.Fields[1].ResolvedValue == "app-secret" {
+		t.Fatalf("expected resolved values to be redacted: %+v", inspection.Fields)
+	}
+}

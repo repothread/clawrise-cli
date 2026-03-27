@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -35,40 +36,43 @@ func NewExecutor(store *config.Store, registry *adapter.Registry) *Executor {
 func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, error) {
 	startAt := e.now()
 	requestID := buildRequestID(startAt)
+	governance := newRuntimeGovernance(e.store.Path(), config.RuntimeConfig{}, e.now)
+	var input map[string]any
 
 	cfg, err := e.store.Load()
 	if err != nil {
-		return e.buildFatalEnvelope(requestID, opts.DryRun, "", "", apperr.New("CONFIG_LOAD_FAILED", err.Error())), nil
+		return e.auditEnvelope(governance, e.buildFatalEnvelope(requestID, opts.DryRun, "", "", apperr.New("CONFIG_LOAD_FAILED", err.Error())), input), nil
 	}
+	governance = newRuntimeGovernance(e.store.Path(), cfg.Runtime, e.now)
 
 	operation, err := ParseOperation(opts.OperationInput, strings.TrimSpace(cfg.Defaults.Platform))
 	if err != nil {
-		return e.buildFatalEnvelope(requestID, opts.DryRun, "", opts.OperationInput, apperr.New("INVALID_OPERATION", err.Error())), nil
+		return e.auditEnvelope(governance, e.buildFatalEnvelope(requestID, opts.DryRun, "", opts.OperationInput, apperr.New("INVALID_OPERATION", err.Error())), input), nil
 	}
 
 	definition, ok := e.registry.Resolve(operation.Normalized)
 	if !ok {
-		return e.finish(startAt, requestID, operation.Normalized, operation.Platform, opts.DryRun, nil, nil, apperr.New("OPERATION_NOT_FOUND", "operation is not registered"), ExecutionProfile{}), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, operation.Normalized, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("OPERATION_NOT_FOUND", "operation is not registered"), ExecutionProfile{}), input), nil
 	}
 	canonicalOperation := definition.Operation
 
 	profileName, profile, appErr := resolveProfile(cfg, operation.Platform, opts.ProfileName, opts.SubjectName)
 	if appErr != nil {
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, appErr, ExecutionProfile{}), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, appErr, ExecutionProfile{}), input), nil
 	}
 
 	if err := config.ValidateGrant(profile); err != nil {
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, apperr.New("INVALID_AUTH_CONFIG", err.Error()), ExecutionProfile{}), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("INVALID_AUTH_CONFIG", err.Error()), ExecutionProfile{}), input), nil
 	}
 
 	stdinReader, _ := opts.Stdin.(io.Reader)
-	input, err := ReadInput(opts.InputJSON, opts.InputFile, stdinReader)
+	input, err = ReadInput(opts.InputJSON, opts.InputFile, stdinReader)
 	if err != nil {
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, apperr.New("INVALID_INPUT", err.Error()), ExecutionProfile{}), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("INVALID_INPUT", err.Error()), ExecutionProfile{}), input), nil
 	}
 
 	if !contains(definition.AllowedSubjects, profile.Subject) {
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("profile %s with subject %s is not allowed to call %s", profileName, profile.Subject, canonicalOperation)), ExecutionProfile{}), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("profile %s with subject %s is not allowed to call %s", profileName, profile.Subject, canonicalOperation)), ExecutionProfile{}), input), nil
 	}
 
 	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
@@ -98,7 +102,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		if idempotency != nil {
 			idempotency.Status = "dry_run"
 		}
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, nil, executionProfile), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, 0, nil, executionProfile), input), nil
 	}
 
 	timeout := definition.DefaultTimeout
@@ -112,7 +116,28 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	}
 
 	if definition.Handler == nil {
-		return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), input), nil
+	}
+
+	var idempotencyRecord *persistedIdempotencyRecord
+	if idempotency != nil {
+		record, existed, err := governance.startIdempotency(idempotency, canonicalOperation, requestID, input)
+		if err != nil {
+			return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("IDEMPOTENCY_STORE_FAILED", err.Error()), executionProfile), input), nil
+		}
+		idempotencyRecord = record
+		if existed {
+			if appErr := governance.validateIdempotencyConflict(idempotency, record, canonicalOperation, input); appErr != nil {
+				return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, appErr, executionProfile), input), nil
+			}
+			if record.Status == "in_progress" {
+				idempotency.Status = record.Status
+				idempotency.Persisted = true
+				idempotency.UpdatedAt = record.UpdatedAt
+				return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, record.RetryCount, apperr.New("IDEMPOTENCY_IN_PROGRESS", "write request with the same idempotency key is already in progress"), executionProfile), input), nil
+			}
+			return e.auditEnvelope(governance, governance.buildReplayEnvelope(startAt, requestID, executionProfile, idempotency, record), input), nil
+		}
 	}
 
 	idempotencyKey := ""
@@ -120,12 +145,32 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		idempotencyKey = idempotency.Key
 	}
 
-	data, appErr := definition.Handler(ctx, adapter.Call{
-		Profile:        profile,
-		Input:          input,
-		IdempotencyKey: idempotencyKey,
-	})
-	return e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, appErr, executionProfile), nil
+	retryCount := 0
+	var data map[string]any
+	for {
+		data, appErr = definition.Handler(ctx, adapter.Call{
+			Profile:        profile,
+			Input:          input,
+			IdempotencyKey: idempotencyKey,
+		})
+		if !governance.shouldRetry(definition, appErr, retryCount) {
+			break
+		}
+
+		retryCount++
+		if err := governance.waitBeforeRetry(ctx, retryCount); err != nil {
+			appErr = buildRetryAbortError(err)
+			break
+		}
+	}
+
+	envelope := e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, retryCount, appErr, executionProfile)
+	if idempotencyRecord != nil {
+		if err := governance.finishIdempotency(idempotency, idempotencyRecord, envelope); err != nil {
+			idempotency.Persisted = false
+		}
+	}
+	return e.auditEnvelope(governance, envelope, input), nil
 }
 
 func (e *Executor) buildFatalEnvelope(requestID string, dryRun bool, platform string, operation string, appErr *apperr.AppError) Envelope {
@@ -150,7 +195,7 @@ func (e *Executor) buildFatalEnvelope(requestID string, dryRun bool, platform st
 	}
 }
 
-func (e *Executor) finish(startAt time.Time, requestID, operation, platform string, dryRun bool, data any, idempotency *IdempotencyState, appErr *apperr.AppError, profile ExecutionProfile) Envelope {
+func (e *Executor) finish(startAt time.Time, requestID, operation, platform string, dryRun bool, data any, idempotency *IdempotencyState, retryCount int, appErr *apperr.AppError, profile ExecutionProfile) Envelope {
 	envelope := Envelope{
 		OK:        appErr == nil,
 		Operation: operation,
@@ -160,7 +205,7 @@ func (e *Executor) finish(startAt time.Time, requestID, operation, platform stri
 		Meta: Meta{
 			Platform:   platform,
 			DurationMS: time.Since(startAt).Milliseconds(),
-			RetryCount: 0,
+			RetryCount: retryCount,
 			DryRun:     dryRun,
 		},
 		Idempotency: idempotency,
@@ -183,6 +228,14 @@ func (e *Executor) finish(startAt time.Time, requestID, operation, platform stri
 			HTTPStatus:   appErr.HTTPStatus,
 		}
 	}
+	return envelope
+}
+
+func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelope, input map[string]any) Envelope {
+	if governance == nil || envelope.Meta.DryRun {
+		return envelope
+	}
+	_ = governance.writeAudit(envelope, input)
 	return envelope
 }
 
@@ -245,7 +298,11 @@ func buildIdempotency(definition adapter.Definition, explicitKey string, operati
 
 	key := strings.TrimSpace(explicitKey)
 	if key == "" {
-		hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%v", operation, input)))
+		encoded, err := json.Marshal(input)
+		if err != nil {
+			encoded = []byte(fmt.Sprintf("%s:%v", operation, input))
+		}
+		hash := sha256.Sum256([]byte(operation + ":" + string(encoded)))
 		key = "idem_" + hex.EncodeToString(hash[:])
 	}
 

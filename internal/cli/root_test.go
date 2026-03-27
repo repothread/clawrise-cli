@@ -34,6 +34,9 @@ func TestRunRootHelpFlag(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise spec [list|get|status|export]")) {
 		t.Fatalf("expected spec usage in root help, got: %s", stdout.String())
 	}
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|inspect|check]")) {
+		t.Fatalf("expected auth usage in root help, got: %s", stdout.String())
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
@@ -272,8 +275,100 @@ func TestRunPluginHelpFlag(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|info|remove]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|info|remove|verify]")) {
 		t.Fatalf("expected plugin help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunConfigInit(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{
+		"config",
+		"init",
+		"--platform", "notion",
+		"--subject", "integration",
+		"--profile", "notion_team_docs",
+	}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"profile_name": "notion_team_docs"`)) {
+		t.Fatalf("expected profile name in output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"grant_type": "static_token"`)) {
+		t.Fatalf("expected grant type in output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunAuthCheck(t *testing.T) {
+	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
+	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
+	t.Setenv("CLAWRISE_CONFIG", "../../examples/config.example.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"auth", "check", "feishu_bot_ops"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"resolved_valid": true`)) {
+		t.Fatalf("expected valid auth check output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subject_allowed_operation_count"`)) {
+		t.Fatalf("expected operation summary in auth output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunDoctor(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", t.TempDir())
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"checks"`)) {
+		t.Fatalf("expected checks in doctor output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"next_steps"`)) {
+		t.Fatalf("expected next steps in doctor output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
