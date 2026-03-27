@@ -57,3 +57,34 @@ type OperationView struct {
 	Examples         []adapter.ExampleSpec   `json:"examples,omitempty"`
 	RuntimeStatus    string                  `json:"runtime_status"`
 }
+
+// OperationExport 描述一个可导出的 operation 详情记录。
+type OperationExport struct {
+	OperationView
+	CatalogStatus string `json:"catalog_status"`
+}
+
+// ExportSummary 聚合导出结果中的摘要信息。
+type ExportSummary struct {
+	Runtime                StatusRuntimeSummary `json:"runtime"`
+	Catalog                StatusCatalogSummary `json:"catalog"`
+	Issues                 StatusIssueSummary   `json:"issues"`
+	ExportedOperationCount int                  `json:"exported_operation_count"`
+}
+
+// ExportResult 描述一个完整的结构化导出结果。
+type ExportResult struct {
+	Path                             string            `json:"path"`
+	NodeType                         string            `json:"node_type"`
+	Summary                          ExportSummary     `json:"summary"`
+	Operations                       []OperationExport `json:"operations,omitempty"`
+	RegisteredButStubbed             []StatusItem      `json:"registered_but_stubbed,omitempty"`
+	CatalogDeclaredButRuntimeMissing []StatusItem      `json:"catalog_declared_but_runtime_missing,omitempty"`
+	RuntimePresentButCatalogMissing  []StatusItem      `json:"runtime_present_but_catalog_missing,omitempty"`
+}
+
+// CompletionData 描述 completion 生成所需的最小事实集。
+type CompletionData struct {
+	Operations []string `json:"operations"`
+	SpecPaths  []string `json:"spec_paths"`
+}

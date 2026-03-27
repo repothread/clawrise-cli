@@ -69,7 +69,9 @@ As of March 27, 2026, the near-term roadmap status is:
   - configurable automatic retries are implemented
   - audit input and output redaction is implemented
 - 4.4 `spec export`, completion, and generated docs:
-  - still not implemented
+  - `clawrise spec export` is implemented
+  - `clawrise completion <bash|zsh|fish>` is implemented
+  - Markdown doc export now reuses the same metadata layer
 - repository operations baseline:
   - MIT license is published
   - contribution, conduct, security, and support docs are published
@@ -78,7 +80,7 @@ As of March 27, 2026, the near-term roadmap status is:
 
 ## 4. Near-term Must-have
 
-These are the near-term must-have items. The first delivery for 4.1 through 4.3 is complete, while 4.4 is still pending.
+These are the near-term must-have items. The first delivery for 4.1 through 4.4 is now complete.
 
 ### 4.1 Onboarding and First-party Plugin UX
 
@@ -159,11 +161,11 @@ Completion signal:
 
 Status:
 
-- still pending
+- first delivery is complete
 
 Why:
 
-- `spec` discovery is now in place, but machine-readable export and generated consumers are still missing
+- `spec` discovery was already in place, and the missing export / consumer layer has now been added
 
 Deliverables:
 

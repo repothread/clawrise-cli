@@ -20,15 +20,12 @@
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
 - `clawrise spec status`
+- `clawrise spec export [path] [--format json|markdown]`
+- `clawrise completion <bash|zsh|fish>`
 - 基于当前 runtime registry 的层级发现
 - 基于 catalog 的 runtime 漂移对账
+- 基于同一元数据层的 Markdown 文档导出
 - 元数据完整性测试
-
-当前仍未实现：
-
-- `clawrise spec export`
-- 直接复用 `spec` 元数据的 completion
-- 基于 provider 元数据的渐进式文档生成
 
 ## 3. 当前运行时模型
 
@@ -69,7 +66,7 @@ Clawrise 现在已经转向 plugin-first 的 provider 架构。
 - `list` 已实现
 - `get` 已实现
 - `status` 已实现
-- `export` 仍待实现
+- `export` 已实现
 
 ## 6. 层级浏览模型
 
@@ -236,9 +233,9 @@ operation 文档应逐步转向从 provider 元数据和 catalog 生成，而不
 
 在当前实现基础上，下一步主要是：
 
-- 实现 `clawrise spec export`
-- 让 completion 复用同一套 provider 元数据
-- 让文档逐步向 metadata-driven 方向收敛
+- 继续扩充 `spec export` 的消费场景
+- 让更多文档直接复用导出元数据
+- 保持 completion 与文档生成继续收敛到同一层事实源
 
 ## 14. 完成标志
 

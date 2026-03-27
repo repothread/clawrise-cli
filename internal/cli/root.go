@@ -87,7 +87,14 @@ func Run(args []string, deps Dependencies) error {
 		return runAuth(args[1:], store, deps.Stdout, manager)
 	case "config":
 		return runConfig(args[1:], store, deps.Stdout)
-	case "batch", "completion":
+	case "completion":
+		manager, err := resolvePluginManager(deps)
+		if err != nil {
+			return err
+		}
+		specService := spec.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
+		return runCompletion(args[1:], deps.Stdout, specService)
+	case "batch":
 		return runPlaceholder(args[0], deps.Stdout)
 	default:
 		manager, err := resolvePluginManager(deps)
@@ -512,6 +519,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise config init")
 	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
+	_, _ = fmt.Fprintln(w, "  clawrise completion [bash|zsh|fish]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")
 }

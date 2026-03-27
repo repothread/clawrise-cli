@@ -20,15 +20,12 @@ Implemented today:
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
 - `clawrise spec status`
+- `clawrise spec export [path] [--format json|markdown]`
+- `clawrise completion <bash|zsh|fish>`
 - hierarchical discovery over the current runtime registry
 - catalog-backed runtime drift analysis
+- Markdown doc export from the same metadata layer
 - metadata completeness checks in tests
-
-Still planned:
-
-- `clawrise spec export`
-- completion driven directly by `spec`
-- progressively generated docs from provider metadata
 
 ## 3. Current Runtime Model
 
@@ -69,7 +66,7 @@ Current behavior:
 - `list` is implemented
 - `get` is implemented
 - `status` is implemented
-- `export` is still planned
+- `export` is implemented
 
 ## 6. Hierarchical Browse Model
 
@@ -236,9 +233,9 @@ Tests should cover:
 
 The next major step after the current implementation is:
 
-- implement `clawrise spec export`
-- drive completion from the same provider metadata
-- let docs gradually converge on generated or metadata-driven content
+- broaden the downstream uses of `spec export`
+- let more docs consume the exported metadata directly
+- keep completion and generated docs converging on the same metadata layer
 
 ## 14. Completion Signal
 

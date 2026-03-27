@@ -135,6 +135,8 @@ The current repository state includes:
   - `clawrise spec list [path]`
   - `clawrise spec get <operation>`
   - `clawrise spec status`
+  - `clawrise spec export [path] [--format json|markdown]`
+  - `clawrise completion <bash|zsh|fish>`
 - current runtime governance:
   - persisted local idempotency state for write operations
   - local JSONL audit logs
@@ -143,8 +145,6 @@ The current repository state includes:
 
 Still not implemented:
 
-- `clawrise spec export`
-- `completion`
 - plugin signature policy
 - official packaged first-party plugin distribution workflow
 

@@ -104,12 +104,13 @@ Current implementation status:
 - `clawrise spec get <operation>`
 - `clawrise spec status`
 - `clawrise spec export`
+- `clawrise completion <bash|zsh|fish>`
 
 At the moment:
 
 - `plugin list/install/info/remove` are implemented
-- `spec list/get/status` are implemented
-- `spec export` is still planned
+- `spec list/get/status/export` are implemented
+- `completion` is implemented
 
 ## 4. Input and Output
 

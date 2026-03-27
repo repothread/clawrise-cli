@@ -131,24 +131,40 @@ func (s *Service) Get(operation string) (OperationView, error) {
 		return OperationView{}, newError("OPERATION_NOT_FOUND", fmt.Sprintf("operation %s is not registered", operation))
 	}
 
-	implemented := definition.Handler != nil
-	return OperationView{
-		Operation:        definition.Operation,
-		Platform:         parts[0],
-		ResourcePath:     strings.Join(parts[1:len(parts)-1], "."),
-		Action:           parts[len(parts)-1],
-		Summary:          definition.Spec.Summary,
-		Description:      definition.Spec.Description,
-		AllowedSubjects:  append([]string(nil), definition.AllowedSubjects...),
-		Mutating:         definition.Mutating,
-		Implemented:      implemented,
-		DryRunSupported:  definition.Spec.DryRunSupported,
-		DefaultTimeoutMS: definition.DefaultTimeout.Milliseconds(),
-		Idempotency:      definition.Spec.Idempotency,
-		Input:            definition.Spec.Input,
-		Examples:         append([]adapter.ExampleSpec(nil), definition.Spec.Examples...),
-		RuntimeStatus:    runtimeStatusForDefinition(definition),
-	}, nil
+	return buildOperationView(definition), nil
+}
+
+// CompletionData 返回 completion 所需的结构化事实集。
+func (s *Service) CompletionData() CompletionData {
+	operations := make([]string, 0)
+	operationIndex := map[string]struct{}{}
+	pathIndex := map[string]struct{}{}
+
+	// 运行时 operation 是真正可执行的命令集合，直接用于主命令补全。
+	for _, definition := range s.registry.Definitions() {
+		if _, exists := operationIndex[definition.Operation]; !exists {
+			operationIndex[definition.Operation] = struct{}{}
+			operations = append(operations, definition.Operation)
+		}
+		addSpecPaths(pathIndex, definition.Operation)
+	}
+
+	// catalog 中声明但暂未实现的路径也纳入 spec 路径补全，便于浏览和导出。
+	for _, entry := range s.catalogEntries {
+		addSpecPaths(pathIndex, entry.Operation)
+	}
+
+	paths := make([]string, 0, len(pathIndex))
+	for path := range pathIndex {
+		paths = append(paths, path)
+	}
+
+	sort.Strings(operations)
+	sort.Strings(paths)
+	return CompletionData{
+		Operations: operations,
+		SpecPaths:  paths,
+	}
 }
 
 func normalizePath(path string) (string, []string, error) {
@@ -207,4 +223,38 @@ func runtimeStatusForDefinition(definition adapter.Definition) string {
 		return "registered_but_stubbed"
 	}
 	return "registered_and_implemented"
+}
+
+func buildOperationView(definition adapter.Definition) OperationView {
+	parts := strings.Split(definition.Operation, ".")
+	implemented := definition.Handler != nil
+	return OperationView{
+		Operation:        definition.Operation,
+		Platform:         parts[0],
+		ResourcePath:     strings.Join(parts[1:len(parts)-1], "."),
+		Action:           parts[len(parts)-1],
+		Summary:          definition.Spec.Summary,
+		Description:      definition.Spec.Description,
+		AllowedSubjects:  append([]string(nil), definition.AllowedSubjects...),
+		Mutating:         definition.Mutating,
+		Implemented:      implemented,
+		DryRunSupported:  definition.Spec.DryRunSupported,
+		DefaultTimeoutMS: definition.DefaultTimeout.Milliseconds(),
+		Idempotency:      definition.Spec.Idempotency,
+		Input:            definition.Spec.Input,
+		Examples:         append([]adapter.ExampleSpec(nil), definition.Spec.Examples...),
+		RuntimeStatus:    runtimeStatusForDefinition(definition),
+	}
+}
+
+func addSpecPaths(index map[string]struct{}, operation string) {
+	operation = strings.TrimSpace(operation)
+	if operation == "" {
+		return
+	}
+
+	parts := strings.Split(operation, ".")
+	for depth := 1; depth <= len(parts); depth++ {
+		index[strings.Join(parts[:depth], ".")] = struct{}{}
+	}
 }

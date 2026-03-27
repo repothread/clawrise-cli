@@ -139,12 +139,13 @@ operation 路径格式：
 - `clawrise spec get <operation>`
 - `clawrise spec status`
 - `clawrise spec export`
+- `clawrise completion <bash|zsh|fish>`
 
 其中当前：
 
 - `plugin list/install/info/remove` 已实现
-- `spec list/get/status` 已实现
-- `spec export` 仍待实现
+- `spec list/get/status/export` 已实现
+- `completion` 已实现
 
 ## 5. 输入输出规范
 
