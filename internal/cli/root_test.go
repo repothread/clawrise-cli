@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
@@ -121,6 +122,59 @@ func TestRunSubjectUse(t *testing.T) {
 
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "bot"`)) {
 		t.Fatalf("expected subject output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunProfileUseSynchronizesPlatformForBareOperation(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("NOTION_TEAM_DOCS_TOKEN", "notion-token")
+
+	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
+	if err != nil {
+		t.Fatalf("failed to read example config: %v", err)
+	}
+	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err = Run([]string{"profile", "use", "notion_team_docs"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	err = Run([]string{"page.get", "--dry-run", "--json", `{}`}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"normalized": "notion.page.get"`)) {
+		t.Fatalf("expected bare operation to resolve with notion platform, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"profile": "notion_team_docs"`)) {
+		t.Fatalf("expected notion profile in output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "integration"`)) {
+		t.Fatalf("expected integration subject in output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

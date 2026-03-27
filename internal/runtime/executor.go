@@ -149,6 +149,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	var data map[string]any
 	for {
 		data, appErr = definition.Handler(ctx, adapter.Call{
+			ProfileName:    profileName,
 			Profile:        profile,
 			Input:          input,
 			IdempotencyKey: idempotencyKey,

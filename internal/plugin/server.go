@@ -94,6 +94,7 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 
 			result, err := runtime.Execute(ctx, ExecuteRequest{
 				Operation:      params.Request.Operation,
+				ProfileName:    params.Identity.ProfileName,
 				Profile:        buildProfileFromIdentity(params.Identity),
 				Input:          params.Request.Input,
 				IdempotencyKey: params.Request.IdempotencyKey,

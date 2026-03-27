@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,7 +94,7 @@ func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (Execu
 			IdempotencyKey: req.IdempotencyKey,
 			DryRun:         false,
 		},
-		Identity: buildExecuteIdentity(req.Profile),
+		Identity: buildExecuteIdentity(req.ProfileName, req.Profile),
 	}, &result); err != nil {
 		return ExecuteResult{}, err
 	}
@@ -232,11 +233,12 @@ func NewProcessRuntimes(manifests []Manifest) []Runtime {
 	return runtimes
 }
 
-func buildExecuteIdentity(profile config.Profile) ExecuteIdentity {
+func buildExecuteIdentity(profileName string, profile config.Profile) ExecuteIdentity {
 	return ExecuteIdentity{
-		Platform: profile.Platform,
-		Subject:  profile.Subject,
-		Auth:     buildResolvedAuthPayload(profile),
+		Platform:    profile.Platform,
+		Subject:     profile.Subject,
+		ProfileName: strings.TrimSpace(profileName),
+		Auth:        buildResolvedAuthPayload(profile),
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
@@ -23,14 +24,17 @@ const (
 
 // Client is a minimal Feishu API client used by the current MVP runtime.
 type Client struct {
-	baseURL    *url.URL
-	httpClient *http.Client
+	baseURL      *url.URL
+	httpClient   *http.Client
+	sessionStore authcache.Store
+	now          func() time.Time
 }
 
 // Options controls Feishu client construction.
 type Options struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL      string
+	HTTPClient   *http.Client
+	SessionStore authcache.Store
 }
 
 // NewClient creates a Feishu API client.
@@ -52,9 +56,16 @@ func NewClient(options Options) (*Client, error) {
 		}
 	}
 
+	sessionStore := options.SessionStore
+	if sessionStore == nil {
+		sessionStore = newDefaultSessionStore()
+	}
+
 	return &Client{
-		baseURL:    parsed,
-		httpClient: httpClient,
+		baseURL:      parsed,
+		httpClient:   httpClient,
+		sessionStore: sessionStore,
+		now:          time.Now,
 	}, nil
 }
 

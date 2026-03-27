@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
@@ -40,24 +42,35 @@ func (c *Client) requireUserAccessToken(ctx context.Context, profile config.Prof
 		return "", apperr.New("UNSUPPORTED_GRANT", "this Feishu operation currently supports only oauth_user for user subject")
 	}
 
+	cachedSession, ok := c.loadCachedSession(ctx, profile)
+	if ok && cachedSession.UsableAt(c.now(), authcache.DefaultRefreshSkew) {
+		return strings.TrimSpace(cachedSession.AccessToken), nil
+	}
+
+	refreshedSession, appErr := c.refreshUserAccessToken(ctx, profile, cachedSession)
+	if appErr == nil {
+		c.saveCachedSession(ctx, profile, *refreshedSession)
+		return strings.TrimSpace(refreshedSession.AccessToken), nil
+	}
+
 	if token, err := config.ResolveSecret(profile.Grant.AccessToken); err == nil && strings.TrimSpace(token) != "" {
 		return strings.TrimSpace(token), nil
 	}
-	return c.refreshUserAccessToken(ctx, profile)
+	return "", appErr
 }
 
-func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
+func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Profile, currentSession *authcache.Session) (*authcache.Session, *apperr.AppError) {
 	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
 	if err != nil {
-		return "", apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_id: %v", err))
+		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_id: %v", err))
 	}
 	clientSecret, err := config.ResolveSecret(profile.Grant.ClientSecret)
 	if err != nil {
-		return "", apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_secret: %v", err))
+		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_secret: %v", err))
 	}
-	refreshToken, err := config.ResolveSecret(profile.Grant.RefreshToken)
+	refreshToken, err := resolveFeishuRefreshToken(profile, currentSession)
 	if err != nil {
-		return "", apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing refresh_token: %v", err))
+		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing refresh_token: %v", err))
 	}
 
 	responseBody, appErr := c.doJSONRequest(
@@ -77,26 +90,69 @@ func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Prof
 		},
 	)
 	if appErr != nil {
-		return "", appErr
+		return nil, appErr
 	}
 
 	var response map[string]any
 	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return "", apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Feishu user token response: %v", err))
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Feishu user token response: %v", err))
 	}
 
 	if code, ok := asInt(response["code"]); ok && code != 0 {
 		message, _ := asString(response["msg"])
-		return "", normalizeFeishuError(code, message, 0)
+		return nil, normalizeFeishuError(code, message, 0)
 	}
 
-	if token, ok := asString(response["access_token"]); ok && strings.TrimSpace(token) != "" {
-		return strings.TrimSpace(token), nil
-	}
+	payload := response
 	if data, ok := asMap(response["data"]); ok {
-		if token, ok := asString(data["access_token"]); ok && strings.TrimSpace(token) != "" {
-			return strings.TrimSpace(token), nil
-		}
+		payload = data
 	}
-	return "", apperr.New("UPSTREAM_INVALID_RESPONSE", "access_token is empty in Feishu user token response")
+
+	accessToken := extractFirstNonEmptyString(payload, "access_token")
+	if accessToken == "" {
+		accessToken = extractFirstNonEmptyString(response, "access_token")
+	}
+	if accessToken == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "access_token is empty in Feishu user token response")
+	}
+
+	nextRefreshToken := extractFirstNonEmptyString(payload, "refresh_token")
+	if nextRefreshToken == "" {
+		nextRefreshToken = extractFirstNonEmptyString(response, "refresh_token")
+	}
+	if nextRefreshToken == "" {
+		nextRefreshToken = strings.TrimSpace(refreshToken)
+	}
+
+	tokenType := extractFirstNonEmptyString(payload, "token_type")
+	if tokenType == "" {
+		tokenType = extractFirstNonEmptyString(response, "token_type")
+	}
+
+	profileName := adapter.ProfileNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), profileName, profile, accessToken, nextRefreshToken, tokenType, extractFeishuExpiresInSeconds(response, payload))
+	return &session, nil
+}
+
+func resolveFeishuRefreshToken(profile config.Profile, currentSession *authcache.Session) (string, error) {
+	if currentSession != nil && strings.TrimSpace(currentSession.RefreshToken) != "" {
+		return strings.TrimSpace(currentSession.RefreshToken), nil
+	}
+	return config.ResolveSecret(profile.Grant.RefreshToken)
+}
+
+func extractFeishuExpiresInSeconds(response map[string]any, payload map[string]any) int {
+	if value, ok := asInt(payload["expires_in"]); ok && value > 0 {
+		return value
+	}
+	if value, ok := asInt(response["expires_in"]); ok && value > 0 {
+		return value
+	}
+	if value, ok := asInt(payload["expire"]); ok && value > 0 {
+		return value
+	}
+	if value, ok := asInt(response["expire"]); ok && value > 0 {
+		return value
+	}
+	return 0
 }

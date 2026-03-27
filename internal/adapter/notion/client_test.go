@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/clawrise/clawrise-cli/internal/adapter"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
@@ -185,6 +188,116 @@ func TestCreatePageWithOAuthRefreshableProfile(t *testing.T) {
 	}
 	if data["title"] != "Public Root Page" {
 		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
+func TestGetPageWithOAuthRefreshableProfileUsesSessionCache(t *testing.T) {
+	t.Setenv("NOTION_CLIENT_ID", "client-id")
+	t.Setenv("NOTION_CLIENT_SECRET", "client-secret")
+	t.Setenv("NOTION_REFRESH_TOKEN", "refresh-token")
+
+	sessionStore := authcache.NewFileStore(filepath.Join(t.TempDir(), "config.yaml"))
+	refreshCalls := 0
+	pageCalls := 0
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/v1/oauth/token":
+				refreshCalls++
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"access_token":  "fresh-token",
+					"token_type":    "bearer",
+					"refresh_token": "refresh-token-2",
+					"expires_in":    3600,
+				}), nil
+			case "/v1/pages/page_123":
+				pageCalls++
+				if got := request.Header.Get("Authorization"); got != "Bearer fresh-token" {
+					t.Fatalf("unexpected authorization header: %s", got)
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":       "page_123",
+					"url":      "https://www.notion.so/page_123",
+					"in_trash": false,
+					"parent": map[string]any{
+						"type":      "workspace",
+						"workspace": true,
+					},
+					"properties": map[string]any{
+						"title": map[string]any{
+							"title": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "Cached Page",
+									"text": map[string]any{
+										"content": "Cached Page",
+									},
+								},
+							},
+						},
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL:      "https://api.notion.com",
+		HTTPClient:   &http.Client{Transport: transport},
+		SessionStore: sessionStore,
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	ctx := adapter.WithProfileName(context.Background(), "notion_public_workspace_a")
+	profile := config.Profile{
+		Platform: "notion",
+		Subject:  "integration",
+		Grant: config.Grant{
+			Type:         "oauth_refreshable",
+			ClientID:     "env:NOTION_CLIENT_ID",
+			ClientSecret: "env:NOTION_CLIENT_SECRET",
+			RefreshToken: "env:NOTION_REFRESH_TOKEN",
+		},
+	}
+
+	_, appErr := client.GetPage(ctx, profile, map[string]any{
+		"page_id": "page_123",
+	})
+	if appErr != nil {
+		t.Fatalf("GetPage returned error: %+v", appErr)
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("expected one refresh call, got: %d", refreshCalls)
+	}
+
+	session, err := sessionStore.Load("notion_public_workspace_a")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if session.AccessToken != "fresh-token" {
+		t.Fatalf("unexpected cached access token: %s", session.AccessToken)
+	}
+	if session.RefreshToken != "refresh-token-2" {
+		t.Fatalf("unexpected cached refresh token: %s", session.RefreshToken)
+	}
+
+	_, appErr = client.GetPage(ctx, profile, map[string]any{
+		"page_id": "page_123",
+	})
+	if appErr != nil {
+		t.Fatalf("GetPage returned error on cached call: %+v", appErr)
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("expected cached call to skip refresh, got refresh count: %d", refreshCalls)
+	}
+	if pageCalls != 2 {
+		t.Fatalf("expected two page calls, got: %d", pageCalls)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 // Call describes one adapter invocation context.
 type Call struct {
+	ProfileName    string
 	Profile        config.Profile
 	Input          map[string]any
 	IdempotencyKey string
@@ -68,6 +69,10 @@ type Registry struct {
 	definitions map[string]Definition
 }
 
+type callContextKey string
+
+const profileNameContextKey callContextKey = "profile_name"
+
 // NewRegistry creates an empty registry.
 func NewRegistry() *Registry {
 	return &Registry{
@@ -110,4 +115,22 @@ func (r *Registry) Definitions() []Definition {
 		definitions = append(definitions, r.definitions[operation])
 	}
 	return definitions
+}
+
+// WithProfileName 把当前执行的 profile 名附加到 context，供 provider auth 逻辑复用。
+func WithProfileName(ctx context.Context, profileName string) context.Context {
+	profileName = strings.TrimSpace(profileName)
+	if profileName == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, profileNameContextKey, profileName)
+}
+
+// ProfileNameFromContext 读取当前执行上下文中的 profile 名。
+func ProfileNameFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	profileName, _ := ctx.Value(profileNameContextKey).(string)
+	return strings.TrimSpace(profileName)
 }

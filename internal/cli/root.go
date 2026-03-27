@@ -336,9 +336,9 @@ func runProfile(args []string, store *config.Store, stdout io.Writer) error {
 		}
 
 		cfg.Defaults.Profile = args[1]
-		if cfg.Defaults.Platform == "" {
-			cfg.Defaults.Platform = profile.Platform
-		}
+		// profile 是唯一能完整表达执行身份的默认值，切换后需要同步平台，
+		// 否则裸 operation 会继续沿用旧平台并产生平台漂移。
+		cfg.Defaults.Platform = profile.Platform
 		cfg.Defaults.Subject = profile.Subject
 		if err := store.Save(cfg); err != nil {
 			return err

@@ -31,6 +31,7 @@ type HandshakeResult struct {
 // ExecuteRequest describes one normalized provider execution request.
 type ExecuteRequest struct {
 	Operation      string
+	ProfileName    string
 	Profile        config.Profile
 	Input          map[string]any
 	IdempotencyKey string
@@ -84,6 +85,7 @@ func NewManager(ctx context.Context, runtimes []Runtime) (*Manager, error) {
 			definition.Handler = func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 				result, err := runtimeRef.Execute(ctx, ExecuteRequest{
 					Operation:      operation,
+					ProfileName:    call.ProfileName,
 					Profile:        call.Profile,
 					Input:          call.Input,
 					IdempotencyKey: call.IdempotencyKey,

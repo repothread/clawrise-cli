@@ -88,7 +88,9 @@ func (r *registryRuntime) Execute(ctx context.Context, req ExecuteRequest) (Exec
 		}, nil
 	}
 
+	ctx = adapter.WithProfileName(ctx, req.ProfileName)
 	data, appErr := definition.Handler(ctx, adapter.Call{
+		ProfileName:    req.ProfileName,
 		Profile:        req.Profile,
 		Input:          req.Input,
 		IdempotencyKey: req.IdempotencyKey,

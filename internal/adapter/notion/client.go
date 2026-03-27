@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
@@ -24,14 +26,17 @@ const (
 
 // Client is the Notion API client used by the current MVP runtime.
 type Client struct {
-	baseURL    *url.URL
-	httpClient *http.Client
+	baseURL      *url.URL
+	httpClient   *http.Client
+	sessionStore authcache.Store
+	now          func() time.Time
 }
 
 // Options controls Notion client construction.
 type Options struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL      string
+	HTTPClient   *http.Client
+	SessionStore authcache.Store
 }
 
 // NewClient creates a Notion API client.
@@ -53,9 +58,16 @@ func NewClient(options Options) (*Client, error) {
 		}
 	}
 
+	sessionStore := options.SessionStore
+	if sessionStore == nil {
+		sessionStore = newDefaultSessionStore()
+	}
+
 	return &Client{
-		baseURL:    parsed,
-		httpClient: httpClient,
+		baseURL:      parsed,
+		httpClient:   httpClient,
+		sessionStore: sessionStore,
+		now:          time.Now,
 	}, nil
 }
 
@@ -129,29 +141,39 @@ func (c *Client) requireAccessToken(ctx context.Context, profile config.Profile)
 		}
 		return token, notionVersion, nil
 	case "oauth_refreshable":
-		token, appErr := c.refreshAccessToken(ctx, profile)
-		if appErr != nil {
-			return "", "", appErr
+		cachedSession, ok := c.loadCachedSession(ctx, profile)
+		if ok && cachedSession.UsableAt(c.now(), authcache.DefaultRefreshSkew) {
+			return strings.TrimSpace(cachedSession.AccessToken), notionVersion, nil
 		}
-		return token, notionVersion, nil
+
+		refreshedSession, appErr := c.refreshAccessToken(ctx, profile, cachedSession)
+		if appErr == nil {
+			c.saveCachedSession(ctx, profile, *refreshedSession)
+			return strings.TrimSpace(refreshedSession.AccessToken), notionVersion, nil
+		}
+
+		if token, err := config.ResolveSecret(profile.Grant.AccessToken); err == nil && strings.TrimSpace(token) != "" {
+			return strings.TrimSpace(token), notionVersion, nil
+		}
+		return "", "", appErr
 	default:
 		return "", "", apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion operation does not support grant type %s", profile.Grant.Type))
 	}
 }
 
 // refreshAccessToken exchanges a refresh token for a new access token.
-func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
+func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile, currentSession *authcache.Session) (*authcache.Session, *apperr.AppError) {
 	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
 	if err != nil {
-		return "", apperr.New("INVALID_AUTH_CONFIG", err.Error())
+		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
 	}
 	clientSecret, err := config.ResolveSecret(profile.Grant.ClientSecret)
 	if err != nil {
-		return "", apperr.New("INVALID_AUTH_CONFIG", err.Error())
+		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
 	}
-	refreshToken, err := config.ResolveSecret(profile.Grant.RefreshToken)
+	refreshToken, err := resolveNotionRefreshToken(profile, currentSession)
 	if err != nil {
-		return "", apperr.New("INVALID_AUTH_CONFIG", err.Error())
+		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
 	}
 
 	credentials := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + clientSecret))
@@ -174,17 +196,24 @@ func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile)
 		if appErr.Code == "AUTH_FAILED" {
 			appErr.Code = "AUTH_REFRESH_FAILED"
 		}
-		return "", appErr
+		return nil, appErr
 	}
 
 	var response notionOAuthTokenResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return "", apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion token response: %v", err))
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion token response: %v", err))
 	}
 	if strings.TrimSpace(response.AccessToken) == "" {
-		return "", apperr.New("UPSTREAM_INVALID_RESPONSE", "access_token is empty in Notion token response")
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "access_token is empty in Notion token response")
 	}
-	return response.AccessToken, nil
+	nextRefreshToken := strings.TrimSpace(response.RefreshToken)
+	if nextRefreshToken == "" {
+		nextRefreshToken = strings.TrimSpace(refreshToken)
+	}
+
+	profileName := adapter.ProfileNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), profileName, profile, response.AccessToken, nextRefreshToken, response.TokenType, response.ExpiresIn)
+	return &session, nil
 }
 
 func resolveNotionVersion(profile config.Profile) string {
@@ -342,6 +371,7 @@ type notionOAuthTokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
 	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
 }
 
 type notionPage struct {

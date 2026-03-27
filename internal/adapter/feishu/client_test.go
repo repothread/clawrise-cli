@@ -6,9 +6,13 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/clawrise/clawrise-cli/internal/adapter"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
@@ -147,6 +151,136 @@ func TestCreateCalendarEventRejectsAttendees(t *testing.T) {
 	}
 	if appErr.Code != "UNSUPPORTED_FIELD" {
 		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
+func TestRequireUserAccessTokenUsesSessionCacheAndRotatedRefreshToken(t *testing.T) {
+	t.Setenv("FEISHU_CLIENT_ID", "client-id")
+	t.Setenv("FEISHU_CLIENT_SECRET", "client-secret")
+	t.Setenv("FEISHU_REFRESH_TOKEN", "refresh-token-1")
+
+	sessionStore := authcache.NewFileStore(filepath.Join(t.TempDir(), "config.yaml"))
+	refreshCalls := 0
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/open-apis/authen/v2/oauth/token" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+
+			refreshCalls++
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode oauth token request: %v", err)
+			}
+
+			switch refreshCalls {
+			case 1:
+				if payload["refresh_token"] != "refresh-token-1" {
+					t.Fatalf("unexpected first refresh token: %+v", payload["refresh_token"])
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]any{
+						"access_token":  "user-token-1",
+						"refresh_token": "refresh-token-2",
+						"token_type":    "bearer",
+						"expires_in":    7200,
+					},
+				}), nil
+			case 2:
+				if payload["refresh_token"] != "refresh-token-2" {
+					t.Fatalf("unexpected rotated refresh token: %+v", payload["refresh_token"])
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]any{
+						"access_token":  "user-token-2",
+						"refresh_token": "refresh-token-3",
+						"token_type":    "bearer",
+						"expires_in":    7200,
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected refresh call count: %d", refreshCalls)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL:      "https://open.feishu.cn",
+		HTTPClient:   &http.Client{Transport: transport},
+		SessionStore: sessionStore,
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	now := time.Date(2026, 3, 28, 10, 0, 0, 0, time.UTC)
+	client.now = func() time.Time {
+		return now
+	}
+
+	ctx := adapter.WithProfileName(context.Background(), "feishu_user_alice")
+	profile := config.Profile{
+		Platform: "feishu",
+		Subject:  "user",
+		Grant: config.Grant{
+			Type:         "oauth_user",
+			ClientID:     "env:FEISHU_CLIENT_ID",
+			ClientSecret: "env:FEISHU_CLIENT_SECRET",
+			RefreshToken: "env:FEISHU_REFRESH_TOKEN",
+		},
+	}
+
+	token, appErr := client.requireUserAccessToken(ctx, profile)
+	if appErr != nil {
+		t.Fatalf("requireUserAccessToken returned error: %+v", appErr)
+	}
+	if token != "user-token-1" {
+		t.Fatalf("unexpected access token: %s", token)
+	}
+
+	session, err := sessionStore.Load("feishu_user_alice")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if session.RefreshToken != "refresh-token-2" {
+		t.Fatalf("unexpected cached refresh token: %s", session.RefreshToken)
+	}
+
+	token, appErr = client.requireUserAccessToken(ctx, profile)
+	if appErr != nil {
+		t.Fatalf("requireUserAccessToken returned error on cached call: %+v", appErr)
+	}
+	if token != "user-token-1" {
+		t.Fatalf("unexpected cached access token: %s", token)
+	}
+	if refreshCalls != 1 {
+		t.Fatalf("expected cached call to skip refresh, got: %d", refreshCalls)
+	}
+
+	now = now.Add(3 * time.Hour)
+	token, appErr = client.requireUserAccessToken(ctx, profile)
+	if appErr != nil {
+		t.Fatalf("requireUserAccessToken returned error after expiry: %+v", appErr)
+	}
+	if token != "user-token-2" {
+		t.Fatalf("unexpected refreshed access token: %s", token)
+	}
+	if refreshCalls != 2 {
+		t.Fatalf("expected second refresh after expiry, got: %d", refreshCalls)
+	}
+
+	session, err = sessionStore.Load("feishu_user_alice")
+	if err != nil {
+		t.Fatalf("Load returned error after refresh: %v", err)
+	}
+	if session.RefreshToken != "refresh-token-3" {
+		t.Fatalf("unexpected rotated cached refresh token: %s", session.RefreshToken)
 	}
 }
 
