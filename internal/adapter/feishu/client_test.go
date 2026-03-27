@@ -768,6 +768,176 @@ func TestGetDocumentBlockChildrenSuccess(t *testing.T) {
 	}
 }
 
+func TestUpdateDocumentBlockSuccess(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/open-apis/auth/v3/tenant_access_token/internal":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code":                0,
+					"msg":                 "ok",
+					"tenant_access_token": "tenant-token",
+					"expire":              7200,
+				}), nil
+			case "/open-apis/docx/v1/documents/dox_123/blocks/blk_2":
+				if request.Method != http.MethodPatch {
+					t.Fatalf("unexpected method: %s", request.Method)
+				}
+				if request.URL.Query().Get("document_revision_id") != "-1" {
+					t.Fatalf("unexpected document_revision_id: %s", request.URL.Query().Get("document_revision_id"))
+				}
+				if request.URL.Query().Get("client_token") != "client-demo" {
+					t.Fatalf("unexpected client_token: %s", request.URL.Query().Get("client_token"))
+				}
+
+				var payload map[string]any
+				if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+					t.Fatalf("failed to decode update block request: %v", err)
+				}
+				if payload["block_id"] != "blk_2" {
+					t.Fatalf("unexpected block_id: %+v", payload["block_id"])
+				}
+				updateText := payload["update_text"].(map[string]any)
+				elements := updateText["elements"].([]any)
+				text := elements[0].(map[string]any)["text_run"].(map[string]any)["content"]
+				if text != "更新后的正文" {
+					t.Fatalf("unexpected update text: %+v", text)
+				}
+
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]any{
+						"block": map[string]any{
+							"block_id":   "blk_2",
+							"parent_id":  "blk_1",
+							"children":   []string{},
+							"block_type": 2,
+							"text": map[string]any{
+								"elements": []map[string]any{
+									{
+										"text_run": map[string]any{
+											"content": "更新后的正文",
+										},
+									},
+								},
+							},
+						},
+						"document_revision_id": 22,
+						"client_token":         "client-demo",
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: transport,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	data, appErr := client.UpdateDocumentBlock(context.Background(), testBotProfile(), map[string]any{
+		"document_id": "dox_123",
+		"block_id":    "blk_2",
+		"text":        "更新后的正文",
+	}, "client-demo")
+	if appErr != nil {
+		t.Fatalf("UpdateDocumentBlock returned error: %+v", appErr)
+	}
+	if data["plain_text"] != "更新后的正文" {
+		t.Fatalf("unexpected plain_text: %+v", data["plain_text"])
+	}
+	if data["document_revision_id"] != 22 {
+		t.Fatalf("unexpected document_revision_id: %+v", data["document_revision_id"])
+	}
+}
+
+func TestBatchDeleteDocumentBlockChildrenSuccess(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/open-apis/auth/v3/tenant_access_token/internal":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code":                0,
+					"msg":                 "ok",
+					"tenant_access_token": "tenant-token",
+					"expire":              7200,
+				}), nil
+			case "/open-apis/docx/v1/documents/dox_123/blocks/blk_1/children/batch_delete":
+				if request.Method != http.MethodDelete {
+					t.Fatalf("unexpected method: %s", request.Method)
+				}
+				if request.URL.Query().Get("document_revision_id") != "-1" {
+					t.Fatalf("unexpected document_revision_id: %s", request.URL.Query().Get("document_revision_id"))
+				}
+				if request.URL.Query().Get("client_token") != "delete-demo" {
+					t.Fatalf("unexpected client_token: %s", request.URL.Query().Get("client_token"))
+				}
+
+				var payload map[string]any
+				if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+					t.Fatalf("failed to decode batch delete request: %v", err)
+				}
+				if payload["start_index"] != float64(0) || payload["end_index"] != float64(2) {
+					t.Fatalf("unexpected delete payload: %+v", payload)
+				}
+
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]any{
+						"document_revision_id": 23,
+						"client_token":         "delete-demo",
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: transport,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	data, appErr := client.BatchDeleteDocumentBlockChildren(context.Background(), testBotProfile(), map[string]any{
+		"document_id": "dox_123",
+		"block_id":    "blk_1",
+		"start_index": 0,
+		"end_index":   2,
+	}, "delete-demo")
+	if appErr != nil {
+		t.Fatalf("BatchDeleteDocumentBlockChildren returned error: %+v", appErr)
+	}
+	if data["document_revision_id"] != 23 {
+		t.Fatalf("unexpected document_revision_id: %+v", data["document_revision_id"])
+	}
+	if data["end_index"] != 2 {
+		t.Fatalf("unexpected end_index: %+v", data["end_index"])
+	}
+}
+
 type roundTripFunc struct {
 	handler func(request *http.Request) (*http.Response, error)
 }

@@ -107,6 +107,8 @@ Feishu：
 - `feishu.docs.document.list_blocks`
 - `feishu.docs.block.get`
 - `feishu.docs.block.list_children`
+- `feishu.docs.block.update`
+- `feishu.docs.block.batch_delete`
 - `feishu.wiki.space.list`
 - `feishu.wiki.node.list`
 - `feishu.wiki.node.create`
@@ -445,7 +447,69 @@ MVP 限制：
 - `next_page_token`
 - `has_more`
 
-### 4.12 feishu.docs.document.append_blocks
+### 4.12 feishu.docs.block.update
+
+用途：
+
+- 更新单个 docx block
+- 支持精细化结构化内容编辑
+
+必填字段：
+
+- `document_id`
+- `block_id`
+
+当前已实现输入子集：
+
+- 通过 `text` 更新文本内容
+- 显式透传 `update_task`
+
+可选字段：
+
+- `document_revision_id`
+
+允许主体：
+
+- `bot`
+
+成功输出建议包含：
+
+- `block_id`
+- `block_type_name`
+- `plain_text`
+- `document_revision_id`
+
+### 4.13 feishu.docs.block.batch_delete
+
+用途：
+
+- 删除父块下指定范围的子块
+- 支持结构化子树清理
+
+必填字段：
+
+- `document_id`
+- `block_id`
+- `start_index`
+- `end_index`
+
+可选字段：
+
+- `document_revision_id`
+
+允许主体：
+
+- `bot`
+
+成功输出建议包含：
+
+- `document_id`
+- `block_id`
+- `start_index`
+- `end_index`
+- `document_revision_id`
+
+### 4.14 feishu.docs.document.append_blocks
 
 用途：
 
@@ -482,7 +546,7 @@ MVP 限制：
 - 默认向文档根节点追加
 - 如不传 `block_id`，会使用 `document_id` 作为根块
 
-### 4.13 feishu.docs.document.get_raw_content
+### 4.15 feishu.docs.document.get_raw_content
 
 用途：
 
@@ -790,12 +854,14 @@ P1 读操作。
 5. `feishu.docs.document.list_blocks`
 6. `feishu.docs.block.get`
 7. `feishu.docs.block.list_children`
-8. `notion.search.query`
-9. `notion.page.create`
-10. `notion.page.get`
-11. `notion.page.markdown.get`
-12. `notion.page.markdown.update`
-13. 幂等与审计存储
-14. `notion.block.append`
-15. `feishu.docs.document.create`
-16. P1 读操作
+8. `feishu.docs.block.update`
+9. `feishu.docs.block.batch_delete`
+10. `notion.search.query`
+11. `notion.page.create`
+12. `notion.page.get`
+13. `notion.page.markdown.get`
+14. `notion.page.markdown.update`
+15. 幂等与审计存储
+16. `notion.block.append`
+17. `feishu.docs.document.create`
+18. P1 读操作

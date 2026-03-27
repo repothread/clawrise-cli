@@ -283,6 +283,8 @@ Current MVP execution matrix:
 - `feishu.docs.document.list_blocks` -> `bot`
 - `feishu.docs.block.get` -> `bot`
 - `feishu.docs.block.list_children` -> `bot`
+- `feishu.docs.block.update` -> `bot`
+- `feishu.docs.block.batch_delete` -> `bot`
 - `feishu.contact.user.get` -> `bot`
 - `notion.search.query` -> `integration`
 - `notion.page.create` -> `integration`

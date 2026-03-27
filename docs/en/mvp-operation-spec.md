@@ -53,6 +53,8 @@ Feishu:
 - `feishu.docs.document.list_blocks`
 - `feishu.docs.block.get`
 - `feishu.docs.block.list_children`
+- `feishu.docs.block.update`
+- `feishu.docs.block.batch_delete`
 - `feishu.wiki.space.list`
 - `feishu.wiki.node.list`
 - `feishu.wiki.node.create`
@@ -401,6 +403,68 @@ Success output should include:
 - `items`
 - `next_page_token`
 - `has_more`
+
+### feishu.docs.block.update
+
+Purpose:
+
+- update one docx block
+- support precise structured content editing
+
+Required fields:
+
+- `document_id`
+- `block_id`
+
+Current implemented input subset:
+
+- text content update through `text`
+- explicit `update_task` passthrough
+
+Optional fields:
+
+- `document_revision_id`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `block_id`
+- `block_type_name`
+- `plain_text`
+- `document_revision_id`
+
+### feishu.docs.block.batch_delete
+
+Purpose:
+
+- delete a range of child blocks under a parent block
+- support structured subtree cleanup
+
+Required fields:
+
+- `document_id`
+- `block_id`
+- `start_index`
+- `end_index`
+
+Optional fields:
+
+- `document_revision_id`
+
+Allowed subject:
+
+- `bot`
+
+Success output should include:
+
+- `document_id`
+- `block_id`
+- `start_index`
+- `end_index`
+- `document_revision_id`
 
 ### feishu.docs.document.append_blocks
 
@@ -760,12 +824,14 @@ The following are out of MVP scope:
 5. `feishu.docs.document.list_blocks`
 6. `feishu.docs.block.get`
 7. `feishu.docs.block.list_children`
-8. `notion.search.query`
-9. `notion.page.create`
-10. `notion.page.get`
-11. `notion.page.markdown.get`
-12. `notion.page.markdown.update`
-13. idempotency and audit storage
-14. `notion.block.append`
-15. `feishu.docs.document.create`
-16. P1 read operations
+8. `feishu.docs.block.update`
+9. `feishu.docs.block.batch_delete`
+10. `notion.search.query`
+11. `notion.page.create`
+12. `notion.page.get`
+13. `notion.page.markdown.get`
+14. `notion.page.markdown.update`
+15. idempotency and audit storage
+16. `notion.block.append`
+17. `feishu.docs.document.create`
+18. P1 read operations

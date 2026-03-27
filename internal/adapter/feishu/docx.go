@@ -230,6 +230,110 @@ func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile config.Pr
 	}, nil
 }
 
+// UpdateDocumentBlock 更新单个 block 的文本内容。
+func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
+	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	request, appErr := buildUpdateDocumentBlockRequest(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	query := url.Values{}
+	query.Set("document_revision_id", strconv.Itoa(request.DocumentRevisionID))
+	if strings.TrimSpace(clientToken) != "" {
+		query.Set("client_token", strings.TrimSpace(clientToken))
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPatch,
+		"/open-apis/docx/v1/documents/"+url.PathEscape(request.DocumentID)+"/blocks/"+url.PathEscape(request.BlockID),
+		query,
+		request.Body,
+		"Bearer "+accessToken,
+		map[string]string{
+			"Content-Type": "application/json; charset=utf-8",
+		},
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response patchDocumentBlockResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode document block patch response: %v", err))
+	}
+	if response.Code != 0 {
+		return nil, normalizeFeishuError(response.Code, response.Msg, 0)
+	}
+
+	data := normalizeDocxBlock(response.Data.Block)
+	data["document_id"] = request.DocumentID
+	data["document_revision_id"] = response.Data.DocumentRevisionID
+	if strings.TrimSpace(response.Data.ClientToken) != "" {
+		data["client_token"] = response.Data.ClientToken
+	}
+	return data, nil
+}
+
+// BatchDeleteDocumentBlockChildren 删除父块中指定范围的子块。
+func (c *Client) BatchDeleteDocumentBlockChildren(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
+	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	request, appErr := buildBatchDeleteDocumentBlockChildrenRequest(input)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	query := url.Values{}
+	query.Set("document_revision_id", strconv.Itoa(request.DocumentRevisionID))
+	if strings.TrimSpace(clientToken) != "" {
+		query.Set("client_token", strings.TrimSpace(clientToken))
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodDelete,
+		"/open-apis/docx/v1/documents/"+url.PathEscape(request.DocumentID)+"/blocks/"+url.PathEscape(request.BlockID)+"/children/batch_delete",
+		query,
+		request.Body,
+		"Bearer "+accessToken,
+		map[string]string{
+			"Content-Type": "application/json; charset=utf-8",
+		},
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response batchDeleteDocumentBlockChildrenResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode document block children delete response: %v", err))
+	}
+	if response.Code != 0 {
+		return nil, normalizeFeishuError(response.Code, response.Msg, 0)
+	}
+
+	data := map[string]any{
+		"document_id":          request.DocumentID,
+		"block_id":             request.BlockID,
+		"start_index":          request.Body.StartIndex,
+		"end_index":            request.Body.EndIndex,
+		"document_revision_id": response.Data.DocumentRevisionID,
+	}
+	if strings.TrimSpace(response.Data.ClientToken) != "" {
+		data["client_token"] = response.Data.ClientToken
+	}
+	return data, nil
+}
+
 // AppendDocumentBlocks appends text-oriented blocks to a docx document.
 func (c *Client) AppendDocumentBlocks(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
@@ -332,6 +436,20 @@ type appendBlocksRequest struct {
 	Body       appendBlocksPayload
 }
 
+type updateDocumentBlockRequest struct {
+	DocumentID         string
+	BlockID            string
+	DocumentRevisionID int
+	Body               updateDocumentBlockPayload
+}
+
+type batchDeleteDocumentBlockChildrenRequest struct {
+	DocumentID         string
+	BlockID            string
+	DocumentRevisionID int
+	Body               batchDeleteDocumentBlockChildrenPayload
+}
+
 type documentGetResponse struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
@@ -368,6 +486,25 @@ type documentBlockChildrenResponse struct {
 	} `json:"data"`
 }
 
+type patchDocumentBlockResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Block              docxBlockNode `json:"block"`
+		DocumentRevisionID int           `json:"document_revision_id"`
+		ClientToken        string        `json:"client_token"`
+	} `json:"data"`
+}
+
+type batchDeleteDocumentBlockChildrenResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		DocumentRevisionID int    `json:"document_revision_id"`
+		ClientToken        string `json:"client_token"`
+	} `json:"data"`
+}
+
 type docxDocument struct {
 	DocumentID     string         `json:"document_id"`
 	RevisionID     int            `json:"revision_id"`
@@ -378,6 +515,26 @@ type docxDocument struct {
 
 type appendBlocksPayload struct {
 	Children []docxBlock `json:"children"`
+}
+
+type updateDocumentBlockPayload struct {
+	BlockID    string                 `json:"block_id,omitempty"`
+	UpdateText *updateDocxTextRequest `json:"update_text,omitempty"`
+	UpdateTask *updateDocxTaskRequest `json:"update_task,omitempty"`
+}
+
+type updateDocxTextRequest struct {
+	Elements []docxTextElement `json:"elements,omitempty"`
+}
+
+type updateDocxTaskRequest struct {
+	TaskID string `json:"task_id,omitempty"`
+	Folded *bool  `json:"folded,omitempty"`
+}
+
+type batchDeleteDocumentBlockChildrenPayload struct {
+	StartIndex int `json:"start_index"`
+	EndIndex   int `json:"end_index"`
 }
 
 type docxBlock struct {
@@ -493,6 +650,124 @@ func buildAppendBlocksRequest(input map[string]any) (*appendBlocksRequest, *appe
 			Children: children,
 		},
 	}, nil
+}
+
+func buildUpdateDocumentBlockRequest(input map[string]any) (*updateDocumentBlockRequest, *apperr.AppError) {
+	documentID, ok := asString(input["document_id"])
+	if !ok || strings.TrimSpace(documentID) == "" {
+		return nil, apperr.New("INVALID_INPUT", "document_id is required")
+	}
+	blockID, ok := asString(input["block_id"])
+	if !ok || strings.TrimSpace(blockID) == "" {
+		return nil, apperr.New("INVALID_INPUT", "block_id is required")
+	}
+
+	documentRevisionID := -1
+	if value, ok := asInt(input["document_revision_id"]); ok {
+		documentRevisionID = value
+	}
+
+	payload := updateDocumentBlockPayload{
+		BlockID: strings.TrimSpace(blockID),
+	}
+
+	if updateTask, exists := input["update_task"]; exists {
+		taskRequest, appErr := buildUpdateDocxTaskRequest(updateTask)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload.UpdateTask = taskRequest
+		return &updateDocumentBlockRequest{
+			DocumentID:         strings.TrimSpace(documentID),
+			BlockID:            strings.TrimSpace(blockID),
+			DocumentRevisionID: documentRevisionID,
+			Body:               payload,
+		}, nil
+	}
+
+	blockInput := input
+	if rawBlock, exists := input["block"]; exists {
+		record, ok := rawBlock.(map[string]any)
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "block must be an object")
+		}
+		blockInput = record
+	}
+
+	if _, exists := blockInput["checked"]; exists {
+		return nil, apperr.New("UNSUPPORTED_FIELD", "checked updates are not supported in feishu.docs.block.update yet")
+	}
+	if _, exists := blockInput["language"]; exists {
+		return nil, apperr.New("UNSUPPORTED_FIELD", "language updates are not supported in feishu.docs.block.update yet")
+	}
+
+	textBody, appErr := buildDocxTextBody(blockInput["text"])
+	if appErr != nil {
+		return nil, appErr
+	}
+	payload.UpdateText = &updateDocxTextRequest{
+		Elements: textBody.Elements,
+	}
+
+	return &updateDocumentBlockRequest{
+		DocumentID:         strings.TrimSpace(documentID),
+		BlockID:            strings.TrimSpace(blockID),
+		DocumentRevisionID: documentRevisionID,
+		Body:               payload,
+	}, nil
+}
+
+func buildBatchDeleteDocumentBlockChildrenRequest(input map[string]any) (*batchDeleteDocumentBlockChildrenRequest, *apperr.AppError) {
+	documentID, ok := asString(input["document_id"])
+	if !ok || strings.TrimSpace(documentID) == "" {
+		return nil, apperr.New("INVALID_INPUT", "document_id is required")
+	}
+	blockID, ok := asString(input["block_id"])
+	if !ok || strings.TrimSpace(blockID) == "" {
+		return nil, apperr.New("INVALID_INPUT", "block_id is required")
+	}
+	startIndex, ok := asInt(input["start_index"])
+	if !ok || startIndex < 0 {
+		return nil, apperr.New("INVALID_INPUT", "start_index must be a non-negative integer")
+	}
+	endIndex, ok := asInt(input["end_index"])
+	if !ok || endIndex <= startIndex {
+		return nil, apperr.New("INVALID_INPUT", "end_index must be greater than start_index")
+	}
+
+	documentRevisionID := -1
+	if value, ok := asInt(input["document_revision_id"]); ok {
+		documentRevisionID = value
+	}
+
+	return &batchDeleteDocumentBlockChildrenRequest{
+		DocumentID:         strings.TrimSpace(documentID),
+		BlockID:            strings.TrimSpace(blockID),
+		DocumentRevisionID: documentRevisionID,
+		Body: batchDeleteDocumentBlockChildrenPayload{
+			StartIndex: startIndex,
+			EndIndex:   endIndex,
+		},
+	}, nil
+}
+
+func buildUpdateDocxTaskRequest(raw any) (*updateDocxTaskRequest, *apperr.AppError) {
+	record, ok := raw.(map[string]any)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "update_task must be an object")
+	}
+
+	request := &updateDocxTaskRequest{}
+	if taskID, ok := asString(record["task_id"]); ok && strings.TrimSpace(taskID) != "" {
+		request.TaskID = strings.TrimSpace(taskID)
+	}
+	if folded, ok := record["folded"].(bool); ok {
+		request.Folded = &folded
+	}
+	if request.TaskID == "" && request.Folded == nil {
+		return nil, apperr.New("INVALID_INPUT", "update_task requires at least one of task_id or folded")
+	}
+	return request, nil
 }
 
 func buildDocxBlock(input map[string]any) (docxBlock, *apperr.AppError) {

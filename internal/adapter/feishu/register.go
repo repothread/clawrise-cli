@@ -75,6 +75,26 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "feishu.docs.block.update",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.UpdateDocumentBlock(ctx, call.Profile, call.Input, call.IdempotencyKey)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.docs.block.batch_delete",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.BatchDeleteDocumentBlockChildren(ctx, call.Profile, call.Input, call.IdempotencyKey)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "feishu.wiki.space.list",
 		Platform:        "feishu",
 		Mutating:        false,
