@@ -39,9 +39,14 @@ Current first-party plugin platforms:
 - `feishu`
 - `notion`
 
-Next planned platform after MVP:
+Candidate next platform after core hardening:
 
 - `google`
+
+Roadmap scope:
+
+- [docs/en/roadmap.md](docs/en/roadmap.md) tracks forward-looking OSS core work only
+- shipped capabilities are summarized in the `Status` section below
 
 ## Quick Start
 
@@ -145,8 +150,8 @@ The current repository state includes:
 
 Still not implemented:
 
-- plugin signature policy
-- official packaged first-party plugin distribution workflow
+- remote-source trust policy hardening beyond the current verify surface
+- official packaged first-party plugin release workflow
 
 ## License
 

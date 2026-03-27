@@ -1,220 +1,141 @@
-# Clawrise Roadmap
+# Clawrise OSS Roadmap
 
 ## 1. 文档目的
 
-这份文档用于描述 Clawrise 在转向 plugin-first 架构之后的近期推进重点。
+这份文档只跟踪未来一段时间的 OSS core 优先事项。
 
-它区分三类事项：
+它刻意不再重复已经交付的内容。已落地能力应放在项目简介和 `README` 的 `当前状态` 中，而不是长期留在 roadmap 里反复占位。
 
-- 已经完成的基础能力
-- 接下来最应该做的事项
-- 仍然可以明确后置的事项
+## 2. 当前 OSS 产品边界
 
-## 2. 当前方向
+在当前仓库里，Clawrise 应继续聚焦：
 
-Clawrise 当前的目标方向是：
+- core runtime 和 CLI
+- provider plugin 协议与第一方 plugin 基线
+- `spec`、completion 和基于元数据的参考文档面
+- 本地治理、诊断和 playbook 支持
 
-- `clawrise` 作为 core runtime 和 CLI
-- 平台能力通过外部 provider plugin 交付
-- Feishu 和 Notion 作为第一方 provider plugin 交付
-- 运行时外壳、`spec` 能力和治理模型保持统一
-- 业务资源字段继续保持 provider-native
+## 3. 近期 Must-have
 
-## 3. 已完成基础
-
-当前仓库已经具备：
-
-- 统一 runtime 和配置模型
-- 一批真实可执行的 Feishu / Notion operation
-- 面向公开协作的基础文档：
-  - MIT 协议
-  - 贡献指南
-  - 行为准则
-  - 安全策略
-  - 支持说明
-- `clawrise spec list [path]`
-- `clawrise spec get <operation>`
-- `clawrise spec status`
-- 结构化 operation catalog 与 runtime/catalog 对账
-- 元数据完整性测试
-- core 内的 provider runtime 抽象
-- 基于 `stdio + JSON-RPC` 的外部进程 plugin runtime
-- Feishu / Notion 第一方 plugin binary
-- 插件管理命令：
-  - `clawrise plugin list`
-  - `clawrise plugin install <source>`
-  - `clawrise plugin info <name> <version>`
-  - `clawrise plugin remove <name> <version>`
-- 当前安装源支持：
-  - 本地目录
-  - `file://`
-  - `https://`
-  - `npm://`
-- GitHub Issue 模板、Pull Request 模板，以及覆盖 `go test ./...` 和 `go build ./...` 的基础 CI
-
-## 3.1 最新进度
-
-截至 2026-03-27，近期 roadmap 的推进情况是：
-
-- 4.1 接入友好度和第一方 Plugin UX：
-  - 已落地 `plugin verify`
-  - 已落地 `config init`
-  - 已落地 `auth list|inspect|check`
-  - `doctor` 已补充 plugin 发现、profile 检查、runtime 存储路径与 next steps
-- 4.2 本地 Recipes / Playbooks：
-  - 已落地 `docs/playbooks/index.yaml`
-  - 已补充首批 Feishu / Notion 常用 playbooks
-- 4.3 运行时治理：
-  - 已落地写操作幂等状态本地持久化
-  - 已落地基础审计记录
-  - 已落地可配置自动重试
-  - 已落地审计输入输出脱敏
-- 4.4 `spec export`、completion 与文档生成：
-  - 已落地 `clawrise spec export`
-  - 已落地 `clawrise completion <bash|zsh|fish>`
-  - 已落地基于同一元数据层的 Markdown 文档导出
-- 仓库公开协作基础：
-  - 已发布 MIT 协议
-  - 已发布贡献、行为准则、安全与支持文档
-  - 已补充 GitHub Issue / Pull Request 模板
-  - GitHub Actions 已开始在 `main` 与 Pull Request 上执行基础 test / build 检查
-
-## 4. 近期 Must-have
-
-这些是近期 must-have 事项，目前 4.1 到 4.4 都已完成第一轮交付。
-
-### 4.1 接入友好度和第一方 Plugin UX
-
-状态：
-
-- 已完成第一轮交付
+### 3.1 第一方 Plugin 的正式发布工作流
 
 原因：
 
-- 现在架构已经转向 plugin-first，安装和首次使用体验比之前更关键
-- 当前实现已经可用，但对非开发者仍然偏手工
+- plugin-first runtime 已经成立，但第一方 plugin 的官方交付方式仍然偏临时
+- 用户仍缺一条清晰、可文档化的安装、升级和兼容性检查路径
 
 交付物：
 
-- 更清晰的 core + plugin quickstart
-- 第一方 plugin 的官方打包约定
-- 更强的 `doctor`
-- `plugin verify` 或等价的 checksum / trust 能力
-- 最小可用的 `auth` 辅助命令
-- `config init` 或等价初始化引导
+- 带版本的第一方 plugin 发布产物
+- 明确的 release manifest 结构
+- core 与 plugin 之间的兼容性字段
+- 第一方 plugin 的安装与升级文档路径
+- 能消费官方发布元数据的 `plugin verify` 行为
 
 完成标志：
 
-- 新用户可以按短路径安装一个官方 plugin 并完成一次真实调用
-- 常见接入失败可以不依赖阅读源码进行定位
+- 用户可以通过一条较短文档路径安装并升级第一方 plugin
+- 兼容性不匹配可以在真实执行前被看见
 
-### 4.2 本地 Recipes / Playbooks
-
-状态：
-
-- 已完成第一批交付
+### 3.2 远程安装源的 Trust 与 Verify 策略
 
 原因：
 
-- 现在已经有能力发现，但还缺从 capability 到 task 的桥梁
-- 这同时服务人和 agent
+- `https://` 和 `npm://` 安装源已经存在，但 trust policy 仍不完整
+- 只有“能装”还不够，必须补齐“为什么可信、校验了什么、何时拒绝”
 
 交付物：
 
-- `docs/recipes` 或 `docs/playbooks`
-- 可搜索索引，例如 `index.yaml`
-- 可复用的任务 recipes，例如：
-  - 更新飞书文档
-  - 更新飞书多维表格记录
-  - 创建或更新飞书日历事件
-  - 更新 Notion 页面内容
-  - 查询 Notion data source
+- 面向远程插件安装源的 trust model 文档
+- checksum policy 与更明确的 verify 语义
+- 在 plugin inspect 或 verify 输出中可见的 trust / verify 结果
+- 对篡改、兼容性不匹配、产物不完整等情况的明确失败行为
+- 为后续更强签名策略预留扩展点
 
 完成标志：
 
-- 常见任务可以通过本地搜索快速找到
-- recipe 中的命令模板和输入样例可复用、可验证
+- 远程插件安装与 verify 可以解释：检查了什么、信任了什么、为什么拒绝某个插件
 
-### 4.3 运行时治理
-
-状态：
-
-- 已完成第一轮交付
+### 3.3 从安装到第一条成功调用的接入路径
 
 原因：
 
-- 写操作在广泛使用前仍需更强的运行时保障
+- 当前命令面已经可用，但第一次真正跑通仍然偏手工
+- 项目需要一条更短的路径，把用户从 fresh install 带到一次真实成功调用
 
 交付物：
 
-- 幂等状态持久化
-- 基础审计记录
-- 可配置重试策略
-- 更明确的敏感信息脱敏规则
+- 更紧凑的 core + 第一方 plugin quickstart
+- 一条经过文档化的 `config init`、`auth check`、`doctor` 到真实调用的短路径
+- 与当前 CLI 输入形状一致的样例输入
+- playbooks 与第一批可执行 operation 之间更清晰的链接
 
 完成标志：
 
-- 写操作可查询持久化幂等状态
-- 审计输出不泄露敏感信息
-- 重试行为进入标准元信息
+- 新用户无需先读设计文档，就能通过一条较短路径完成一次真实调用
 
-### 4.4 `spec export`、Completion 与文档生成
-
-状态：
-
-- 已完成第一轮交付
+### 3.4 Plugin Authoring 与兼容性 DX
 
 原因：
 
-- `spec` 发现能力已经到位，当前已补齐机器可读导出与消费层的第一轮能力
+- 如果第三方插件作者需要反向阅读 core 才能接入，公开生态很难增长
+- 插件协议已经存在，但 authoring path 还缺产品化整理
 
 交付物：
 
-- `clawrise spec export`
-- 复用同一套 provider 元数据的 `completion`
-- 基于 registry/catalog 元数据逐步生成 operation 文档
+- 精简的 plugin author guide
+- manifest 与兼容性参考文档
+- 面向插件作者的本地校验或兼容性检查路径
+- 更明确的 handshake、catalog 和 execute 测试指引
 
 完成标志：
 
-- 机器消费者可以获取完整结构化导出
-- completion 不再维护另一套独立命令树
-- operation 文档逐步从结构化元数据生成，而不是手工漂移
+- 第三方作者可以不逐行阅读 core 内部实现，就完成一个最小 plugin 的构建和校验
 
-## 5. Should-have
-
-这些事项有价值，但应排在 Must-have 之后。
-
-### 5.1 官方 `clawrise-operator` skill
+### 3.5 基于同一元数据层的 Operation Reference
 
 原因：
 
-- 有助于 agent 更稳定地使用 Clawrise
-- 应建立在 `spec`、catalog、recipes 和 plugin-aware onboarding 之上
+- `spec export` 与 completion 已经存在，但下游文档仍有继续漂移的风险
+- 元数据层应继续成为 runtime、docs 与 discovery 的共同事实源
 
-### 5.2 开发者向 `clawrise-builder` skill
+交付物：
+
+- 面向下游消费者的稳定导出元数据契约
+- 基于与 `spec` 相同元数据层生成的 operation reference 材料
+- runtime registry 事实、catalog 声明、completion 与生成文档之间更明确的对应关系
+
+完成标志：
+
+- operation reference 直接派生自 `spec export` 与 completion 所在的同一元数据层，而不是独立手工维护
+
+## 4. Must-have 之后的 Should-have
+
+### 4.1 更宽的第一方 Provider 覆盖面
 
 原因：
 
-- 适合帮助 AI 参与 provider 扩展和 adapter/plugin 开发
-- 但优先级低于 operator-facing 材料
+- 增加 provider 很有价值，但应排在发布工作流、trust policy 和 onboarding 更稳定之后
 
-### 5.3 Plugin Hardening 与分发运营
+说明：
+
+- `google` 仍然是下一候选 provider
+- 但它不应在 plugin-first core 仍待 hardening 时就变成最近里程碑
+
+### 4.2 继续扩展本地可搜索 Playbooks
 
 原因：
 
-- plugin 架构已经存在，但 release、trust 和升级策略还没有完全产品化
+- 当前 playbooks 已经形成不错的起点，但仍应继续围绕现有第一方 provider 扩展任务覆盖面
 
-建议范围：
+范围：
 
-- plugin release manifest
-- checksum policy
-- signature policy
-- upgrade strategy
-- 官方分发渠道
+- 为 Feishu 和 Notion 增加更多高信号任务 playbook
+- 保持样例尽量贴近真实 CLI 输入形状与可验证路径
 
-## 6. Can Wait
+## 5. Can Wait
 
-这些事项仍然可以明确后置：
+这些方向并不是无效，而是应明确排在上面的 Must-have 之后：
 
 - 公共 plugin marketplace
 - 不可信 plugin 的沙箱隔离
@@ -222,40 +143,40 @@ Clawrise 当前的目标方向是：
 - 完整 JSON Schema 框架
 - 跨平台 workflow engine
 
-## 7. 推荐顺序
+## 6. 推荐顺序
 
-1. 接入友好度和第一方 plugin UX
-2. 本地 recipes / playbooks
-3. 运行时治理
-4. `spec export`、completion 与文档生成
-5. 官方 `clawrise-operator` skill
-6. plugin hardening 与分发运营
-7. 开发者向 `clawrise-builder` skill
+1. 第一方 plugin 的正式发布工作流
+2. 远程安装源的 trust 与 verify 策略
+3. 从安装到第一条成功调用的接入路径
+4. plugin authoring 与兼容性 DX
+5. 基于同一元数据层的 operation reference
+6. 更宽的第一方 provider 覆盖面
+7. 继续扩展本地可搜索 playbooks
 
-## 8. 风险与注意事项
+## 7. 风险与注意事项
 
-### 8.1 不要把平台重新硬编码回 Core
+### 7.1 不要把平台重新硬编码回 Core
 
-plugin-first 应保持为默认架构方向。
+plugin-first 应继续保持为默认架构方向。
 
-### 8.2 不要重新制造多套元数据事实源
+### 7.2 不要重新制造多套元数据事实源
 
-`spec`、catalog、docs、completion、recipes 应继续收敛到同一层结构化元数据。
+runtime facts、`spec`、生成文档、completion 和 playbooks 应继续收敛到同一层元数据，而不是重新分叉。
 
-### 8.3 不要在缺少信任策略时把远程安装当成“完成”
+### 7.3 不要把“支持远程安装”误判成“trust model 已完成”
 
-`https://` 和 `npm://` 已经可用，但 release 与 trust policy 仍需产品化。
+远程安装源虽然已经可用，但 release 和 trust hardening 仍需明确推进。
 
-### 8.4 不要把“安装成功”当成“接入完成”
+### 7.4 不要在打包和接入路径未稳定前过早扩平台面
 
-plugin 安装只是第一步。认证、profile 选择、样例输入和诊断路径仍然决定实际可用性。
+如果过早增加 provider，会在 first-run 和 release path 仍不完整时继续放大复杂度。
 
-## 9. 完成标志
+## 8. 下一阶段完成标志
 
-可以认为当前近期 roadmap 完成的标志是：
+可以认为下一阶段 OSS core 工作完成的标志是：
 
-- 用户可以方便地安装并校验官方第一方 plugin
-- 常见任务具备本地可搜索 playbooks
-- 写操作具备更强的幂等与审计保证
-- `spec export` 与 completion 复用同一套 provider 元数据
-- operator-facing 材料开始复用结构化元数据，而不是继续手工维护命令知识
+- 第一方 plugin 具备清晰的 release、install 和 upgrade 路径
+- 远程安装具备明确的 trust 与 verify 行为
+- 新用户可以通过较短路径完成一次真实调用
+- 第三方插件作者可以根据文档化兼容性契约完成最小 plugin 的构建与校验
+- 生成的 operation reference 复用与 `spec export` 和 completion 相同的元数据层

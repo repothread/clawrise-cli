@@ -1,219 +1,141 @@
-# Clawrise Roadmap
+# Clawrise OSS Roadmap
 
 ## 1. Purpose
 
-This document tracks Clawrise's current near-term priorities after the plugin-first architecture shift.
+This document tracks forward-looking OSS core priorities only.
 
-It separates:
+It intentionally does not repeat shipped work. Completed capabilities should live in the repository introduction and `README` status instead of staying in the roadmap forever.
 
-- foundations that are already in place
-- near-term work that should happen next
-- work that still belongs later
+## 2. Current OSS Product Boundary
 
-## 2. Current Direction
+In this repository, Clawrise should stay focused on:
 
-Clawrise is now moving toward:
+- the core runtime and CLI
+- the provider plugin protocol and first-party plugin baseline
+- `spec`, completion, and metadata-driven reference surfaces
+- local governance, diagnostics, and playbook support
 
-- `clawrise` as the core runtime and CLI
-- provider capabilities delivered through external plugins
-- first-party Feishu and Notion shipped as first-party provider plugins
-- one unified runtime envelope, one unified `spec` surface, and provider-native business schemas
+## 3. Near-term Must-have
 
-## 3. Completed Foundations
-
-The repository already has:
-
-- a unified runtime and config model
-- a substantial set of real Feishu and Notion operations
-- open source collaboration baseline documents:
-  - MIT license
-  - contributing guide
-  - code of conduct
-  - security policy
-  - support guide
-- `clawrise spec list [path]`
-- `clawrise spec get <operation>`
-- `clawrise spec status`
-- structured operation catalog and registry-to-catalog drift checks
-- metadata completeness tests
-- provider runtime abstraction in the core
-- external-process plugin runtime over `stdio + JSON-RPC`
-- first-party Feishu and Notion plugin binaries
-- plugin management commands:
-  - `clawrise plugin list`
-  - `clawrise plugin install <source>`
-  - `clawrise plugin info <name> <version>`
-  - `clawrise plugin remove <name> <version>`
-- current plugin install sources:
-  - local directory
-  - `file://`
-  - `https://`
-  - `npm://`
-- GitHub issue templates, pull request template, and baseline CI for `go test ./...` and `go build ./...`
-
-## 3.1 Progress Update
-
-As of March 27, 2026, the near-term roadmap status is:
-
-- 4.1 onboarding and first-party plugin UX:
-  - `plugin verify` is implemented
-  - `config init` is implemented
-  - `auth list|inspect|check` is implemented
-  - `doctor` now reports plugin discovery, profile checks, runtime storage paths, and next steps
-- 4.2 local recipes / playbooks:
-  - `docs/playbooks/index.yaml` is implemented
-  - the first batch of Feishu and Notion playbooks is available
-- 4.3 runtime governance:
-  - persisted local idempotency state is implemented for write operations
-  - basic audit records are implemented
-  - configurable automatic retries are implemented
-  - audit input and output redaction is implemented
-- 4.4 `spec export`, completion, and generated docs:
-  - `clawrise spec export` is implemented
-  - `clawrise completion <bash|zsh|fish>` is implemented
-  - Markdown doc export now reuses the same metadata layer
-- repository operations baseline:
-  - MIT license is published
-  - contribution, conduct, security, and support docs are published
-  - GitHub issue templates and pull request template are published
-  - GitHub Actions now runs baseline test and build checks on `main` and pull requests
-
-## 4. Near-term Must-have
-
-These are the near-term must-have items. The first delivery for 4.1 through 4.4 is now complete.
-
-### 4.1 Onboarding and First-party Plugin UX
-
-Status:
-
-- first delivery is complete
+### 3.1 Official First-party Plugin Release Workflow
 
 Why:
 
-- the architecture is now plugin-first, so installation and first-run experience matter more than before
-- the current implementation is usable, but still too manual for non-developers
+- the plugin-first runtime is already real, but official plugin delivery is still too ad hoc
+- users still need a clear, documented path for install, upgrade, and compatibility checks
 
 Deliverables:
 
-- clearer quickstart for core + plugin installation
-- official packaging conventions for first-party plugins
-- stronger `doctor`
-- `plugin verify` or an equivalent checksum / trust surface
-- a minimal `auth` helper surface for inspection and setup checks
-- `config init` or an equivalent bootstrap flow
+- versioned first-party plugin release artifacts
+- a documented release manifest shape
+- compatibility fields between core and plugin versions
+- a documented install and upgrade path for official first-party plugins
+- `plugin verify` behavior that can consume published release metadata cleanly
 
 Completion signal:
 
-- a new user can install one official plugin and complete one real call through a short documented path
-- common setup failures can be diagnosed without reading implementation details
+- a user can install and upgrade an official first-party plugin through a short documented path
+- compatibility mismatches are visible before a real execution attempt
 
-### 4.2 Local Recipes / Playbooks
-
-Status:
-
-- first delivery is complete
+### 3.2 Remote-source Trust and Verification Policy
 
 Why:
 
-- task-oriented guidance is still missing even though capability discovery now exists
-- this is the bridge from operation discovery to real task execution for both humans and agents
+- `https://` and `npm://` sources already exist, but trust policy is still incomplete
+- remote install support without a clearer trust model is not enough for broader adoption
 
 Deliverables:
 
-- `docs/recipes` or `docs/playbooks`
-- a searchable index such as `index.yaml`
-- reusable recipes for:
-  - updating a Feishu document
-  - updating a Feishu Bitable record
-  - creating or updating a Feishu calendar event
-  - updating Notion page content
-  - querying a Notion data source
+- a documented trust model for remote plugin sources
+- checksum policy and clearer verification semantics
+- visible trust and verification results in plugin inspection or verify output
+- explicit failure behavior for tampered, incompatible, or incomplete plugin artifacts
+- reserved extension points for stronger signature policy later
 
 Completion signal:
 
-- common tasks can be found through local search
-- recipe inputs and command templates are reusable and verifiable
+- remote plugin install and verify can explain what was checked, what was trusted, and why a plugin was rejected
 
-### 4.3 Runtime Governance
-
-Status:
-
-- first delivery is complete
+### 3.3 Onboarding to the First Successful Call
 
 Why:
 
-- write paths still need stronger operational guarantees before broad use
+- the command surface is usable now, but the first practical path is still too manual
+- the project needs a shorter path from fresh install to one successful real call
 
 Deliverables:
 
-- persisted idempotency state
-- basic audit records
-- configurable retry behavior
-- clearer secret redaction rules
+- a tighter quickstart for core plus first-party plugin setup
+- a short documented flow through `config init`, `auth check`, `doctor`, and one real call
+- sample inputs that match the current CLI shapes
+- clearer links between playbooks and the first runnable operations
 
 Completion signal:
 
-- write paths can report persisted idempotency state
-- audit output does not leak secrets
-- retry behavior is visible in normalized metadata
+- a new user can get from fresh install to one real call without reading the design documents first
 
-### 4.4 `spec export`, Completion, and Generated Docs
-
-Status:
-
-- first delivery is complete
+### 3.4 Plugin Authoring and Compatibility DX
 
 Why:
 
-- `spec` discovery was already in place, and the missing export / consumer layer has now been added
+- the open ecosystem cannot grow if third-party plugin authors must reverse-engineer the core
+- the plugin protocol exists, but the authoring path still needs better productization
 
 Deliverables:
 
-- `clawrise spec export`
-- `completion` driven by the same provider metadata used by `spec`
-- progressively generated operation docs from registry and catalog metadata
+- a concise plugin author guide
+- manifest and compatibility reference docs
+- a local validation or compatibility-check flow for plugin authors
+- clearer test guidance for plugin handshake, catalog, and execution behavior
 
 Completion signal:
 
-- machine consumers can fetch a complete export
-- completion no longer depends on a separate hand-maintained command tree
-- operation docs start converging on structured metadata instead of manual drift
+- a third-party author can build and validate a minimal plugin without reading core internals line by line
 
-## 5. Should-have
-
-These are valuable, but they should sit after the Must-have layer above.
-
-### 5.1 Official `clawrise-operator` Skill
+### 3.5 Metadata-driven Operation Reference
 
 Why:
 
-- helpful for agents using Clawrise reliably
-- should be built on top of `spec`, catalog, recipes, and plugin-aware onboarding
+- `spec export` and completion already exist, but downstream docs can still drift from runtime facts
+- the metadata layer should keep becoming the shared source for runtime, docs, and discovery
 
-### 5.2 Developer-facing `clawrise-builder` Skill
+Deliverables:
+
+- a stable exported metadata contract for downstream consumers
+- generated operation reference material from the same metadata layer used by `spec`
+- clearer linkage between runtime registry facts, catalog declarations, completion, and generated docs
+
+Completion signal:
+
+- operation reference material is derived from the same metadata layer as `spec export` and completion rather than maintained separately
+
+## 4. Should-have After the Must-have Layer
+
+### 4.1 Broader First-party Provider Surface
 
 Why:
 
-- useful for provider extension work
-- still lower priority than operator-facing and onboarding-facing material
+- broader provider coverage is useful, but it should come after release workflow, trust policy, and onboarding are stable
 
-### 5.3 Plugin Hardening and Distribution Ops
+Notes:
+
+- `google` remains a candidate next provider
+- it should not become the immediate next milestone before the plugin-first core is better hardened
+
+### 4.2 Expanded Locally Searchable Playbooks
 
 Why:
 
-- plugin architecture now exists, but release operations and trust policy still need stronger productization
+- the current playbooks are a good baseline, but task coverage should continue to expand around the existing first-party providers
 
-Suggested scope:
+Scope:
 
-- plugin release manifests
-- checksum policy
-- signature policy
-- upgrade strategy
-- official distribution channels
+- add more high-signal task playbooks for Feishu and Notion
+- keep examples close to real CLI input shapes and verifiable paths
 
-## 6. Can Wait
+## 5. Can Wait
 
-These can still be deferred explicitly:
+These are still valid ideas, but they should stay clearly behind the Must-have layer above:
 
 - a public plugin marketplace
 - untrusted plugin sandboxing
@@ -221,40 +143,40 @@ These can still be deferred explicitly:
 - a full JSON Schema framework
 - a cross-platform workflow engine
 
-## 7. Recommended Order
+## 6. Recommended Order
 
-1. onboarding and first-party plugin UX
-2. local recipes / playbooks
-3. runtime governance
-4. `spec export`, completion, and generated docs
-5. official `clawrise-operator` skill
-6. plugin hardening and distribution ops
-7. developer-facing `clawrise-builder` skill
+1. official first-party plugin release workflow
+2. remote-source trust and verification policy
+3. onboarding to the first successful call
+4. plugin authoring and compatibility DX
+5. metadata-driven operation reference
+6. broader first-party provider surface
+7. expanded locally searchable playbooks
 
-## 8. Risks and Cautions
+## 7. Risks and Cautions
 
-### 8.1 Do Not Reintroduce Hard-coded Providers into the Core
+### 7.1 Do Not Reintroduce Hard-coded Providers into the Core
 
 The plugin-first direction should remain the default architecture.
 
-### 8.2 Do Not Fork Discovery Metadata Across Core, Plugins, Docs, and Recipes
+### 7.2 Do Not Fork Metadata Across Runtime, `spec`, Docs, and Completion
 
-`spec`, catalog, docs, completion, and recipes should keep converging on the same metadata layer.
+Runtime facts, `spec`, generated docs, completion, and playbooks should keep converging on the same metadata layer instead of drifting apart.
 
-### 8.3 Do Not Ship Remote Installation Without Trust Policy
+### 7.3 Do Not Treat Remote Install Support as a Finished Trust Model
 
-`https://` and `npm://` support now exist, but release and trust policy still need productization.
+Remote sources already work, but release and trust hardening still need deliberate product work.
 
-### 8.4 Do Not Treat Plugin Install as the End of Onboarding
+### 7.4 Do Not Expand Provider Surface Before Packaging and Onboarding Are Stable
 
-Installation alone is not enough. Auth setup, profile selection, sample inputs, and diagnostics still determine practical usability.
+Adding more providers too early risks increasing surface area while the first-run and release path still feel unfinished.
 
-## 9. Completion Signal
+## 8. Completion Signal for the Next Phase
 
-The current near-term roadmap can be considered complete when:
+The next OSS-core phase can be considered complete when:
 
-- users can install and verify official first-party plugins easily
-- common tasks are covered by local searchable playbooks
-- write paths have stronger idempotency and audit guarantees
-- `spec export` and completion are driven by the same provider metadata as `spec`
-- official operator-facing material reuses structured metadata instead of hand-maintained command lists
+- official first-party plugins have a documented release, install, and upgrade path
+- remote install has clear trust and verification behavior
+- a new user can reach one real call through a short documented path
+- a third-party plugin author can build and validate against a documented compatibility contract
+- generated operation reference material reuses the same metadata layer as `spec export` and completion
