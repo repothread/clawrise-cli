@@ -2,70 +2,52 @@
 
 ## 1. Purpose
 
-This document captures Clawrise's near-term delivery priorities and clarifies:
+This document captures Clawrise's near-term priorities and separates them into:
 
-- which gaps matter most right now
-- what each milestone is meant to complete
-- what is intentionally out of scope for the current phase
+- what is required soon
+- what is worth doing after the foundations are stable
+- what can be deliberately deferred
 
 The detailed `spec` subsystem design lives in [spec-design.md](spec-design.md).
 
-## 2. Current State
+## 2. Evaluation Criteria
 
-The repository already includes a unified runtime, config model, adapter registration, and a growing set of real Feishu and Notion operations. It is still short of the level of self-description and runtime governance needed for broad agent use.
+An item should enter the near-term roadmap only if it answers at least one of these questions well:
 
-Current highlights:
+- is it a real blocker for practical usage
+- is it a dependency for several later capabilities
+- does it reduce the risk of maintaining multiple drifting sources of truth
 
-- `clawrise spec list [path]` and `clawrise spec get <operation>` are implemented
-- operation metadata is now attached to the adapter registry
-- `spec status` and `spec export` are still planned, not implemented
+## 3. Current State
 
-Remaining problem areas:
+The repository already has:
 
-- discovery is only partially complete because `status`, `export`, and `completion` are still missing
-- documentation and implementation can still drift because there is no catalog diff yet
-- idempotency, retry, audit, and rate-limit behavior are still only partially realized at runtime
-- extension remains code-driven rather than catalog-driven
-
-## 3. Near-Term Goals
-
-The near-term goal is not to turn Clawrise into a REPL, workflow engine, or MCP replacement. The goal is to complete it as a practical agent-native CLI execution layer with stronger self-description and governance.
-
-We want to reach a state where:
-
-- current runtime capabilities are discoverable from the CLI itself
-- operation metadata is the primary source of truth
-- documentation, runtime registration, and tests can be reconciled automatically
-- mutating operations have more realistic idempotency and audit support
-- completion and generated docs can later reuse the same structured metadata
-
-## 4. Milestones
-
-### 4.1 M1: Minimal `spec` Loop
-
-Status:
-
-- completed
-
-Delivered:
-
+- a unified runtime and config model
+- a growing set of real Feishu and Notion operations
 - `clawrise spec list [path]`
 - `clawrise spec get <operation>`
-- extended adapter registry metadata
-- per-operation summaries, input fields, examples, and implementation state
 
-Exit criteria:
+It is still short of the level needed for broad, stable use by both humans and agents.
 
-- root-level platforms can be listed
-- operation paths can be browsed hierarchically
-- a single operation can be inspected without credentials
+Current gaps include:
 
-### 4.2 M2: Status and Drift Control
+- discovery is still incomplete because `spec status`, `spec export`, and `completion` are missing
+- docs and implementation can still drift because there is no catalog reconciliation yet
+- onboarding is still rough because install, config, auth, examples, and troubleshooting are not streamlined enough
+- AI usage material is still thin because the repo does not yet ship an official skill or a task-oriented operator guide
+- common tasks are not yet captured as searchable local recipes or playbooks
+- idempotency, audit, and retry behavior are still only partially realized
 
-Goal:
+## 4. Must-have
 
-- distinguish implemented, stubbed, and planned operations clearly
-- prevent docs, runtime code, and tests from drifting further apart
+These should be in the near-term mainline roadmap.
+
+### 4.1 `spec status + catalog`
+
+Why:
+
+- this is the source-of-truth foundation for docs, recipes, skills, and completion
+- without it, the repo will continue to drift across code, docs, and AI-facing material
 
 Deliverables:
 
@@ -74,58 +56,155 @@ Deliverables:
 - registry-to-catalog diff logic
 - metadata completeness tests
 
-Exit criteria:
+Completion signal:
 
-- stubbed operations can be identified
-- catalog-declared but runtime-missing operations are surfaced
-- adding a new operation without matching metadata or catalog coverage is caught by tests
+- implemented, stubbed, and declared-but-missing operations can be distinguished clearly
+- missing metadata or missing catalog coverage is caught by tests
 
-### 4.3 M3: Runtime Governance
+### 4.2 Onboarding Friendliness
 
-Goal:
+Why:
 
-- move idempotency, audit, and retry from "present in shape" to "actually usable"
+- this determines whether the project moves from "technically usable" to "practically adoptable"
+
+Deliverables:
+
+- `config init` or an equivalent bootstrap flow
+- a shorter quickstart
+- reusable sample configs and sample inputs
+- stronger `doctor`
+- a minimal `auth` helper surface for inspection or setup checks
+
+Completion signal:
+
+- a new user can complete one real call through the shortest documented path
+- common setup errors can be diagnosed quickly through docs or `doctor`
+
+### 4.3 Local Recipes / Playbooks
+
+Why:
+
+- this is the bridge from capability discovery to task execution
+- it helps both humans and agents
+- it is lighter and safer to build before an official skill
+
+Suggested shape:
+
+- `docs/recipes` or `docs/playbooks`
+- a small searchable index such as `index.yaml`
+- one task-focused recipe per common workflow:
+  - update a specific Feishu document
+  - update a specific Feishu table or record
+  - create a Feishu calendar event
+  - update Notion page content
+  - query a Notion data source
+
+Completion signal:
+
+- common tasks can be found quickly through local search
+- command templates and input samples are reusable and verifiable
+
+### 4.4 Basic Runtime Governance
+
+Why:
+
+- without realistic idempotency, audit, and retry behavior, write paths still carry too much operational risk
 
 Deliverables:
 
 - persisted idempotency state
 - basic audit records
-- configurable retry policy and error classification
-- stronger secret redaction rules
+- configurable retry behavior
+- clearer secret redaction rules
 
-### 4.4 M4: Completion and Generated Docs
+Completion signal:
 
-Goal:
+- write paths can report idempotency state
+- audit output does not leak secrets
+- retry behavior is visible in normalized metadata
 
-- turn `spec` into a shared base layer for multiple consumers
+## 5. Should-have
 
-Deliverables:
+These are valuable, but they should sit on top of the Must-have layer.
 
-- `completion` driven by the `spec` tree
-- progressively generated Chinese and English operation docs
-- machine-oriented `spec export`
+### 5.1 Official `clawrise-operator` Skill
 
-## 5. Out of Scope
+Why:
 
-The current phase explicitly does not target:
+- it can help agents learn how to use Clawrise more reliably
+- it should be built on top of `spec`, catalog, and recipes rather than replacing them
 
-- a REPL-first interactive product
-- a complex cross-platform workflow engine
-- forced provider schema unification
-- a heavy plugin system up front
-- a full JSON Schema generation and validation framework up front
+Suggested scope:
 
-## 6. Recommended Order
+- how to choose `platform / profile / subject`
+- how to explore capability through `spec`
+- how to find a matching recipe
+- how to handle common failures
 
-1. `spec status` plus catalog
-2. idempotency, audit, and retry behavior
-3. completion and generated docs
+### 5.2 `completion`, Generated Docs, and `spec export`
 
-## 7. Completion Signal
+Why:
 
-This roadmap phase can be considered complete when:
+- important, but better treated as force multipliers once the metadata base is stable
+
+Suggested deliverables:
+
+- `completion` driven by `spec`
+- progressively generated operation docs
+- machine-readable `spec export`
+
+### 5.3 Developer-facing `clawrise-builder` Skill
+
+Why:
+
+- useful for extension and adapter work
+- still lower priority than the operator-facing skill
+
+## 6. Can Wait
+
+These can be deferred explicitly:
+
+- a dynamic plugin system
+- a REPL-first interactive shell
+- a full JSON Schema framework
+- a cross-platform workflow engine
+- premature external distribution work
+
+## 7. Recommended Order
+
+1. `spec status + catalog`
+2. onboarding friendliness
+3. local recipes / playbooks
+4. basic runtime governance
+5. official `clawrise-operator` skill
+6. `completion` / generated docs / `spec export`
+7. developer-facing `clawrise-builder` skill
+
+## 8. Risks and Cautions
+
+### 8.1 Do Not Turn `spec` into a Documentation Copy
+
+`spec` should primarily serve as structured runtime truth, not as a duplicate Markdown layer.
+
+### 8.2 Do Not Default to Flat Global Listings
+
+As operation count grows, `spec list` must stay hierarchical by default.
+
+### 8.3 Do Not Collapse Catalog and Runtime into One Layer
+
+A single idealized operation list cannot accurately represent what the current binary can actually do.
+
+### 8.4 Do Not Create a Second Knowledge Base in Skills and Recipes
+
+Official skills, local recipes, and onboarding docs should reuse `spec`, catalog, and structured samples instead of maintaining separate command knowledge.
+
+## 9. Completion Signal
+
+This near-term roadmap can be considered complete when:
 
 - runtime capabilities can be discovered hierarchically through `spec`
 - implementation drift can be reported explicitly through `spec status`
-- mutating operations have stronger idempotency and audit behavior
-- completion and docs start consuming structured metadata instead of manual lists
+- new users can get through onboarding with much less friction
+- common tasks are covered by local searchable recipes or playbooks
+- write paths have more realistic idempotency and audit behavior
+- official skills and local playbooks start consuming structured metadata instead of manual command lists
