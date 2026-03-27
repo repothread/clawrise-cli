@@ -181,6 +181,39 @@ func TestRunSpecGet(t *testing.T) {
 	}
 }
 
+func TestRunSpecGetFeishuPriorityOperations(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"spec", "get", "feishu.bitable.field.list"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"operation": "feishu.bitable.field.list"`)) {
+		t.Fatalf("expected operation output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"required"`)) {
+		t.Fatalf("expected required field metadata, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"optional"`)) {
+		t.Fatalf("expected optional field metadata, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"sample"`)) {
+		t.Fatalf("expected sample metadata, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunSpecStatus(t *testing.T) {
 	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
 

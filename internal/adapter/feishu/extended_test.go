@@ -288,7 +288,7 @@ func TestCreateDocumentAndEditReplaceAllSuccess(t *testing.T) {
 	}
 }
 
-func TestBitableRecordOperationsSuccess(t *testing.T) {
+func TestBitableOperationsSuccess(t *testing.T) {
 	t.Setenv("FEISHU_APP_ID", "app-id")
 	t.Setenv("FEISHU_APP_SECRET", "app-secret")
 
@@ -302,6 +302,40 @@ func TestBitableRecordOperationsSuccess(t *testing.T) {
 						return jsonResponse(t, http.StatusOK, map[string]any{
 							"code":                0,
 							"tenant_access_token": "tenant-token",
+						}), nil
+					case "/open-apis/bitable/v1/apps/app_demo/tables":
+						if request.Method != http.MethodGet {
+							t.Fatalf("unexpected tables method: %s", request.Method)
+						}
+						return jsonResponse(t, http.StatusOK, map[string]any{
+							"code": 0,
+							"data": map[string]any{
+								"items": []map[string]any{
+									{"table_id": "tbl_demo", "name": "Tasks", "revision": 3},
+								},
+								"page_token": "tbl_cursor_next",
+								"has_more":   true,
+							},
+						}), nil
+					case "/open-apis/bitable/v1/apps/app_demo/tables/tbl_demo/fields":
+						if request.Method != http.MethodGet {
+							t.Fatalf("unexpected fields method: %s", request.Method)
+						}
+						return jsonResponse(t, http.StatusOK, map[string]any{
+							"code": 0,
+							"data": map[string]any{
+								"items": []map[string]any{
+									{
+										"field_id":   "fld_title",
+										"field_name": "Title",
+										"type":       1,
+										"property": map[string]any{
+											"formatter":  "text",
+											"is_primary": true,
+										},
+									},
+								},
+							},
 						}), nil
 					case "/open-apis/bitable/v1/apps/app_demo/tables/tbl_demo/records":
 						switch request.Method {
@@ -352,6 +386,11 @@ func TestBitableRecordOperationsSuccess(t *testing.T) {
 									},
 								},
 							}), nil
+						case http.MethodDelete:
+							return jsonResponse(t, http.StatusOK, map[string]any{
+								"code": 0,
+								"data": map[string]any{},
+							}), nil
 						default:
 							t.Fatalf("unexpected record method: %s", request.Method)
 							return nil, nil
@@ -366,6 +405,35 @@ func TestBitableRecordOperationsSuccess(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	tables, appErr := client.ListBitableTables(context.Background(), testBotProfile(), map[string]any{
+		"app_token": "app_demo",
+	})
+	if appErr != nil {
+		t.Fatalf("ListBitableTables returned error: %+v", appErr)
+	}
+	if tables["next_page_token"] != "tbl_cursor_next" {
+		t.Fatalf("unexpected table next_page_token: %+v", tables["next_page_token"])
+	}
+	tableItems := tables["items"].([]map[string]any)
+	if len(tableItems) != 1 || tableItems[0]["name"] != "Tasks" {
+		t.Fatalf("unexpected table items: %+v", tables["items"])
+	}
+
+	fields, appErr := client.ListBitableFields(context.Background(), testBotProfile(), map[string]any{
+		"app_token": "app_demo",
+		"table_id":  "tbl_demo",
+	})
+	if appErr != nil {
+		t.Fatalf("ListBitableFields returned error: %+v", appErr)
+	}
+	fieldItems := fields["items"].([]map[string]any)
+	if len(fieldItems) != 1 || fieldItems[0]["field_id"] != "fld_title" {
+		t.Fatalf("unexpected field items: %+v", fields["items"])
+	}
+	if fieldItems[0]["is_primary"] != true {
+		t.Fatalf("unexpected field primary flag: %+v", fieldItems[0]["is_primary"])
 	}
 
 	listed, appErr := client.ListBitableRecords(context.Background(), testBotProfile(), map[string]any{
@@ -419,6 +487,18 @@ func TestBitableRecordOperationsSuccess(t *testing.T) {
 	if updated["record_id"] != "rec_1" {
 		t.Fatalf("unexpected updated record_id: %+v", updated["record_id"])
 	}
+
+	deleted, appErr := client.DeleteBitableRecord(context.Background(), testBotProfile(), map[string]any{
+		"app_token": "app_demo",
+		"table_id":  "tbl_demo",
+		"record_id": "rec_1",
+	})
+	if appErr != nil {
+		t.Fatalf("DeleteBitableRecord returned error: %+v", appErr)
+	}
+	if deleted["deleted"] != true {
+		t.Fatalf("unexpected delete result: %+v", deleted)
+	}
 }
 
 func TestGetUserSuccess(t *testing.T) {
@@ -467,5 +547,107 @@ func TestGetUserSuccess(t *testing.T) {
 	}
 	if data["email"] != "demo@example.com" {
 		t.Fatalf("unexpected email: %+v", data["email"])
+	}
+}
+
+func TestSearchUsersSuccess(t *testing.T) {
+	t.Setenv("FEISHU_APP_ID", "app-id")
+	t.Setenv("FEISHU_APP_SECRET", "app-secret")
+
+	client, err := NewClient(Options{
+		BaseURL: "https://open.feishu.cn",
+		HTTPClient: &http.Client{
+			Transport: &roundTripFunc{
+				handler: func(request *http.Request) (*http.Response, error) {
+					switch request.URL.Path {
+					case "/open-apis/auth/v3/tenant_access_token/internal":
+						return jsonResponse(t, http.StatusOK, map[string]any{
+							"code":                0,
+							"tenant_access_token": "tenant-token",
+						}), nil
+					case "/open-apis/contact/v3/users":
+						if request.URL.Query().Get("page_size") != "50" {
+							t.Fatalf("unexpected page_size: %s", request.URL.Query().Get("page_size"))
+						}
+						switch request.URL.Query().Get("page_token") {
+						case "":
+							return jsonResponse(t, http.StatusOK, map[string]any{
+								"code": 0,
+								"data": map[string]any{
+									"items": []map[string]any{
+										{
+											"user_id": "ou_demo_1",
+											"name":    "Demo User One",
+											"email":   "demo.one@example.com",
+										},
+										{
+											"user_id": "ou_demo_2",
+											"name":    "Demo User Two",
+											"email":   "demo.two@example.com",
+										},
+									},
+									"page_token": "cursor_2",
+									"has_more":   true,
+								},
+							}), nil
+						case "cursor_2":
+							return jsonResponse(t, http.StatusOK, map[string]any{
+								"code": 0,
+								"data": map[string]any{
+									"items": []map[string]any{
+										{
+											"user_id": "ou_demo_3",
+											"name":    "Another User",
+											"email":   "another@example.com",
+										},
+									},
+									"has_more": false,
+								},
+							}), nil
+						default:
+							t.Fatalf("unexpected contact page_token: %s", request.URL.Query().Get("page_token"))
+							return nil, nil
+						}
+					default:
+						t.Fatalf("unexpected request path: %s", request.URL.Path)
+						return nil, nil
+					}
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	firstPage, appErr := client.SearchUsers(context.Background(), testBotProfile(), map[string]any{
+		"query":     "demo",
+		"page_size": 1,
+	})
+	if appErr != nil {
+		t.Fatalf("SearchUsers first page returned error: %+v", appErr)
+	}
+	firstItems := firstPage["items"].([]map[string]any)
+	if len(firstItems) != 1 || firstItems[0]["user_id"] != "ou_demo_1" {
+		t.Fatalf("unexpected first page items: %+v", firstPage["items"])
+	}
+	if firstPage["has_more"] != true {
+		t.Fatalf("expected first page has_more, got: %+v", firstPage["has_more"])
+	}
+
+	secondPage, appErr := client.SearchUsers(context.Background(), testBotProfile(), map[string]any{
+		"query":      "demo",
+		"page_size":  1,
+		"page_token": firstPage["next_page_token"],
+	})
+	if appErr != nil {
+		t.Fatalf("SearchUsers second page returned error: %+v", appErr)
+	}
+	secondItems := secondPage["items"].([]map[string]any)
+	if len(secondItems) != 1 || secondItems[0]["user_id"] != "ou_demo_2" {
+		t.Fatalf("unexpected second page items: %+v", secondPage["items"])
+	}
+	if matchedFields := secondItems[0]["matched_fields"].([]string); len(matchedFields) == 0 {
+		t.Fatalf("expected matched_fields to be populated: %+v", secondItems[0])
 	}
 }

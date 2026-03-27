@@ -231,6 +231,39 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "feishu.contact.user.search",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            contactUserSearchSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.SearchUsers(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.bitable.table.list",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            bitableTableListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListBitableTables(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.bitable.field.list",
+		Platform:        "feishu",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            bitableFieldListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListBitableFields(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "feishu.bitable.record.list",
 		Platform:        "feishu",
 		Mutating:        false,
@@ -272,6 +305,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Spec:            bitableRecordUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.UpdateBitableRecord(ctx, call.Profile, call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.bitable.record.delete",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec:            bitableRecordDeleteSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.DeleteBitableRecord(ctx, call.Profile, call.Input)
 		},
 	})
 }
