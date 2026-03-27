@@ -19,9 +19,10 @@ import (
 
 // Dependencies describes the base dependencies used by the CLI runtime.
 type Dependencies struct {
-	Version string
-	Stdout  io.Writer
-	Stderr  io.Writer
+	Version       string
+	Stdout        io.Writer
+	Stderr        io.Writer
+	PluginManager *pluginruntime.Manager
 }
 
 // ExitError carries a process exit code without printing another error line.
@@ -39,14 +40,6 @@ func Run(args []string, deps Dependencies) error {
 	if err != nil {
 		return err
 	}
-
-	manager, err := newDefaultPluginManager()
-	if err != nil {
-		return err
-	}
-	registry := manager.Registry()
-	executor := runtime.NewExecutor(store, registry)
-	specService := spec.NewServiceWithCatalog(registry, manager.CatalogEntries())
 
 	if len(args) == 0 {
 		printRootHelp(deps.Stdout)
@@ -69,16 +62,33 @@ func Run(args []string, deps Dependencies) error {
 	case "doctor":
 		return runDoctor(store, deps.Stdout)
 	case "spec":
+		manager, err := resolvePluginManager(deps)
+		if err != nil {
+			return err
+		}
+		specService := spec.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runSpec(args[1:], deps.Stdout, specService)
 	case "auth", "config", "batch", "completion":
 		return runPlaceholder(args[0], deps.Stdout)
 	default:
+		manager, err := resolvePluginManager(deps)
+		if err != nil {
+			return err
+		}
+		executor := runtime.NewExecutor(store, manager.Registry())
 		return runOperation(args, deps.Stdout, deps.Stderr, executor)
 	}
 }
 
+func resolvePluginManager(deps Dependencies) (*pluginruntime.Manager, error) {
+	if deps.PluginManager != nil {
+		return deps.PluginManager, nil
+	}
+	return newDefaultPluginManager()
+}
+
 func newDefaultPluginManager() (*pluginruntime.Manager, error) {
-	return pluginruntime.NewInstalledOrBuiltinManager(context.Background())
+	return pluginruntime.NewDiscoveredManager(context.Background())
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {

@@ -121,3 +121,16 @@ func (m *Manager) Registry() *adapter.Registry {
 func (m *Manager) CatalogEntries() []speccatalog.Entry {
 	return append([]speccatalog.Entry(nil), m.catalogEntries...)
 }
+
+// NewDiscoveredManager creates a manager backed only by discovered external plugins.
+func NewDiscoveredManager(ctx context.Context) (*Manager, error) {
+	roots, err := DefaultDiscoveryRoots()
+	if err != nil {
+		return nil, err
+	}
+	manifests, err := DiscoverManifests(roots)
+	if err != nil {
+		return nil, err
+	}
+	return NewManager(ctx, NewProcessRuntimes(manifests))
+}

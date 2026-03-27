@@ -2,7 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"testing"
+
+	"github.com/clawrise/clawrise-cli/internal/adapter"
+	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
+	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
+	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
+	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
 func TestRunRootHelpFlag(t *testing.T) {
@@ -12,9 +19,10 @@ func TestRunRootHelpFlag(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"--help"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -38,9 +46,10 @@ func TestRunOperationHelpFlag(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"feishu.calendar.event.create", "--help"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -68,9 +77,10 @@ func TestRunOperationDryRun(t *testing.T) {
 		"--json",
 		`{"calendar_id":"cal_demo","summary":"Demo Event","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}`,
 	}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -97,9 +107,10 @@ func TestRunSubjectUse(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"subject", "use", "bot"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -120,9 +131,10 @@ func TestRunSpecList(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"spec", "list"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -146,9 +158,10 @@ func TestRunSpecGet(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"spec", "get", "notion.page.create"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -172,9 +185,10 @@ func TestRunSpecStatus(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"spec", "status"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -201,9 +215,10 @@ func TestRunSpecHelpFlag(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"spec", "--help"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -224,9 +239,10 @@ func TestRunPlatformHelpFlag(t *testing.T) {
 	var stderr bytes.Buffer
 
 	err := Run([]string{"platform", "--help"}, Dependencies{
-		Version: "test",
-		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -238,4 +254,32 @@ func TestRunPlatformHelpFlag(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
+}
+
+func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
+	t.Helper()
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu test client: %v", err)
+	}
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct notion test client: %v", err)
+	}
+
+	feishuRegistry := adapter.NewRegistry()
+	feishuadapter.RegisterOperations(feishuRegistry, feishuClient)
+
+	notionRegistry := adapter.NewRegistry()
+	notionadapter.RegisterOperations(notionRegistry, notionClient)
+
+	manager, err := pluginruntime.NewManager(context.Background(), []pluginruntime.Runtime{
+		pluginruntime.NewRegistryRuntime("feishu", "test", []string{"feishu"}, feishuRegistry, pluginruntime.FilterCatalogByPrefix(speccatalog.All(), "feishu.")),
+		pluginruntime.NewRegistryRuntime("notion", "test", []string{"notion"}, notionRegistry, pluginruntime.FilterCatalogByPrefix(speccatalog.All(), "notion.")),
+	})
+	if err != nil {
+		t.Fatalf("failed to construct test plugin manager: %v", err)
+	}
+	return manager
 }

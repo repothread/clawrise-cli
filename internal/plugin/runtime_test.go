@@ -12,7 +12,7 @@ import (
 )
 
 func TestManagerRegistersOperationsThroughRuntimeBoundary(t *testing.T) {
-	runtime := newRegistryRuntime("demo", buildDemoRegistry(), []speccatalog.Entry{
+	runtime := NewRegistryRuntime("demo", "test", []string{"demo"}, buildDemoRegistry(), []speccatalog.Entry{
 		{Operation: "demo.page.get"},
 	})
 
@@ -48,7 +48,7 @@ func TestManagerRegistersOperationsThroughRuntimeBoundary(t *testing.T) {
 
 func TestManagerAggregatesCatalogEntries(t *testing.T) {
 	manager, err := NewManager(context.Background(), []Runtime{
-		newRegistryRuntime("demo", buildDemoRegistry(), []speccatalog.Entry{
+		NewRegistryRuntime("demo", "test", []string{"demo"}, buildDemoRegistry(), []speccatalog.Entry{
 			{Operation: "demo.page.get"},
 		}),
 	})
