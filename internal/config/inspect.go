@@ -40,21 +40,48 @@ type grantFieldSpec struct {
 	PlainValue func(Grant) string
 }
 
-// ValidateGrantShape 只校验结构和必填字段，不解析环境变量。
-func ValidateGrantShape(profile Profile) error {
-	if profile.Platform == "notion" && profile.Subject != "integration" {
+// ValidateConnectionShape 只校验连接结构和主配置里的必填字段。
+func ValidateConnectionShape(connection Connection) error {
+	if connection.Platform == "notion" && connection.Subject != "integration" {
 		return fmt.Errorf("notion profiles must use subject integration")
 	}
+	if strings.TrimSpace(connection.Method) == "" && strings.TrimSpace(connection.Grant.Type) == "" {
+		return fmt.Errorf("missing auth method")
+	}
 
-	requiredFields, err := requiredGrantFieldSpecs(profile)
+	switch strings.TrimSpace(connection.Method) {
+	case "":
+		// 兼容测试里的 legacy 构造方式，继续走旧字段校验。
+	case "feishu.app_credentials":
+		if strings.TrimSpace(connection.Params.AppID) == "" {
+			return fmt.Errorf("missing app_id")
+		}
+		return nil
+	case "feishu.oauth_user":
+		if strings.TrimSpace(connection.Params.ClientID) == "" {
+			return fmt.Errorf("missing client_id")
+		}
+		return nil
+	case "notion.internal_token":
+		return nil
+	case "notion.oauth_public":
+		if strings.TrimSpace(connection.Params.ClientID) == "" {
+			return fmt.Errorf("missing client_id")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported method: %s", connection.Method)
+	}
+
+	// legacy 路径仅保留给单元测试和 plugin 进程内部对象。
+	requiredFields, err := requiredGrantFieldSpecs(connection)
 	if err != nil {
 		return err
 	}
-
 	for _, field := range requiredFields {
-		raw := strings.TrimSpace(field.Value(profile.Grant))
+		raw := strings.TrimSpace(field.Value(connection.Grant))
 		if field.PlainValue != nil {
-			raw = strings.TrimSpace(field.PlainValue(profile.Grant))
+			raw = strings.TrimSpace(field.PlainValue(connection.Grant))
 		}
 		if raw == "" {
 			return fmt.Errorf("missing %s", field.Name)
@@ -63,8 +90,14 @@ func ValidateGrantShape(profile Profile) error {
 	return nil
 }
 
+// ValidateGrantShape 保留给当前仓库中的 legacy 调用点。
+func ValidateGrantShape(profile Profile) error {
+	return ValidateConnectionShape(profile)
+}
+
 // InspectProfile 生成一个适合 `doctor` 和 `auth` 复用的检查视图。
 func InspectProfile(name string, profile Profile) ProfileInspection {
+	profile = normalizeConnection(name, profile)
 	inspection := ProfileInspection{
 		Name:      name,
 		Platform:  profile.Platform,
@@ -95,7 +128,7 @@ func InspectProfile(name string, profile Profile) ProfileInspection {
 				if item.Source == "literal" {
 					item.Resolved = true
 					item.ResolvedValue = redactSecret(raw)
-				} else if item.Source == "env" {
+				} else if item.Source == "env" || item.Source == "secret_store" {
 					resolved, err := ResolveSecret(raw)
 					if err != nil {
 						item.Error = err.Error()
@@ -117,7 +150,7 @@ func InspectProfile(name string, profile Profile) ProfileInspection {
 		inspection.Fields = append(inspection.Fields, item)
 	}
 
-	if err := ValidateGrantShape(profile); err != nil {
+	if err := ValidateConnectionShape(profile); err != nil {
 		inspection.ShapeError = err.Error()
 	} else {
 		inspection.ShapeValid = true
@@ -135,15 +168,15 @@ func InspectProfile(name string, profile Profile) ProfileInspection {
 func SortedProfileInspections(cfg *Config) []ProfileInspection {
 	cfg.Ensure()
 
-	names := make([]string, 0, len(cfg.Profiles))
-	for name := range cfg.Profiles {
+	names := make([]string, 0, len(cfg.Connections))
+	for name := range cfg.Connections {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
 	items := make([]ProfileInspection, 0, len(names))
 	for _, name := range names {
-		items = append(items, InspectProfile(name, cfg.Profiles[name]))
+		items = append(items, InspectProfile(name, cfg.Connections[name]))
 	}
 	return items
 }
@@ -155,7 +188,7 @@ func requiredGrantFieldSpecs(profile Profile) ([]grantFieldSpec, error) {
 			return nil, fmt.Errorf("notion does not support grant type: %s", profile.Grant.Type)
 		}
 		return []grantFieldSpec{
-			{Name: "app_id", Secret: true, Required: true, Value: func(g Grant) string { return g.AppID }},
+			{Name: "app_id", Secret: false, Required: true, Value: func(g Grant) string { return g.AppID }},
 			{Name: "app_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.AppSecret }},
 		}, nil
 	case "static_token":
@@ -167,13 +200,13 @@ func requiredGrantFieldSpecs(profile Profile) ([]grantFieldSpec, error) {
 			return nil, fmt.Errorf("notion does not support grant type: %s", profile.Grant.Type)
 		}
 		return []grantFieldSpec{
-			{Name: "client_id", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientID }},
+			{Name: "client_id", Secret: false, Required: true, Value: func(g Grant) string { return g.ClientID }},
 			{Name: "client_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientSecret }},
 			{Name: "refresh_token", Secret: true, Required: true, Value: func(g Grant) string { return g.RefreshToken }},
 		}, nil
 	case "oauth_refreshable":
 		return []grantFieldSpec{
-			{Name: "client_id", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientID }},
+			{Name: "client_id", Secret: false, Required: true, Value: func(g Grant) string { return g.ClientID }},
 			{Name: "client_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientSecret }},
 			{Name: "refresh_token", Secret: true, Required: true, Value: func(g Grant) string { return g.RefreshToken }},
 		}, nil
@@ -192,10 +225,10 @@ func allGrantFieldSpecs(profile Profile) []grantFieldSpec {
 
 	// 这里固定字段顺序，保证命令输出稳定且容易阅读。
 	ordered := []grantFieldSpec{
-		{Name: "app_id", Secret: true, Value: func(g Grant) string { return g.AppID }},
+		{Name: "app_id", Secret: false, Value: func(g Grant) string { return g.AppID }},
 		{Name: "app_secret", Secret: true, Value: func(g Grant) string { return g.AppSecret }},
 		{Name: "token", Secret: true, Value: func(g Grant) string { return g.Token }},
-		{Name: "client_id", Secret: true, Value: func(g Grant) string { return g.ClientID }},
+		{Name: "client_id", Secret: false, Value: func(g Grant) string { return g.ClientID }},
 		{Name: "client_secret", Secret: true, Value: func(g Grant) string { return g.ClientSecret }},
 		{Name: "access_token", Secret: true, Value: func(g Grant) string { return g.AccessToken }},
 		{Name: "refresh_token", Secret: true, Value: func(g Grant) string { return g.RefreshToken }},
@@ -231,6 +264,9 @@ func describeSecretSource(raw string) (string, string) {
 	}
 	if strings.HasPrefix(raw, "env:") {
 		return "env", strings.TrimSpace(strings.TrimPrefix(raw, "env:"))
+	}
+	if strings.HasPrefix(raw, "secret:") {
+		return "secret_store", strings.TrimSpace(strings.TrimPrefix(raw, "secret:"))
 	}
 	return "literal", ""
 }

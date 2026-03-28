@@ -39,14 +39,14 @@ func runAuthSession(args []string, cfg *config.Config, store *config.Store, stdo
 	switch args[0] {
 	case "inspect":
 		if len(args) > 2 {
-			return fmt.Errorf("usage: clawrise auth session inspect [profile]")
+			return fmt.Errorf("usage: clawrise auth session inspect [connection]")
 		}
-		name, profile, ok, err := resolveAuthSessionProfile(cfg, args[1:])
+		name, profile, ok, err := resolveAuthSessionConnection(cfg, args[1:])
 		if err != nil {
-			return writeCLIError(stdout, "PROFILE_REQUIRED", err.Error())
+			return writeCLIError(stdout, "CONNECTION_REQUIRED", err.Error())
 		}
 		if !ok {
-			return writeCLIError(stdout, "PROFILE_NOT_FOUND", "the selected profile does not exist")
+			return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
 		}
 
 		sessionView, err := inspectAuthSession(sessionStore, name, profile)
@@ -61,20 +61,21 @@ func runAuthSession(args []string, cfg *config.Config, store *config.Store, stdo
 					"platform":   profile.Platform,
 					"subject":    profile.Subject,
 					"grant_type": profile.Grant.Type,
+					"method":     profile.Method,
 				},
 				"session": sessionView,
 			},
 		})
 	case "clear":
 		if len(args) > 2 {
-			return fmt.Errorf("usage: clawrise auth session clear [profile]")
+			return fmt.Errorf("usage: clawrise auth session clear [connection]")
 		}
-		name, profile, ok, err := resolveAuthSessionProfile(cfg, args[1:])
+		name, profile, ok, err := resolveAuthSessionConnection(cfg, args[1:])
 		if err != nil {
-			return writeCLIError(stdout, "PROFILE_REQUIRED", err.Error())
+			return writeCLIError(stdout, "CONNECTION_REQUIRED", err.Error())
 		}
 		if !ok {
-			return writeCLIError(stdout, "PROFILE_NOT_FOUND", "the selected profile does not exist")
+			return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
 		}
 
 		path := sessionStore.Path(name)
@@ -95,6 +96,7 @@ func runAuthSession(args []string, cfg *config.Config, store *config.Store, stdo
 					"platform":   profile.Platform,
 					"subject":    profile.Subject,
 					"grant_type": profile.Grant.Type,
+					"method":     profile.Method,
 				},
 				"session": map[string]any{
 					"path":    path,
@@ -105,14 +107,14 @@ func runAuthSession(args []string, cfg *config.Config, store *config.Store, stdo
 		})
 	case "refresh":
 		if len(args) > 2 {
-			return fmt.Errorf("usage: clawrise auth session refresh [profile]")
+			return fmt.Errorf("usage: clawrise auth session refresh [connection]")
 		}
-		name, profile, ok, err := resolveAuthSessionProfile(cfg, args[1:])
+		name, profile, ok, err := resolveAuthSessionConnection(cfg, args[1:])
 		if err != nil {
-			return writeCLIError(stdout, "PROFILE_REQUIRED", err.Error())
+			return writeCLIError(stdout, "CONNECTION_REQUIRED", err.Error())
 		}
 		if !ok {
-			return writeCLIError(stdout, "PROFILE_NOT_FOUND", "the selected profile does not exist")
+			return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
 		}
 
 		session, appErr := refreshAuthSession(context.Background(), sessionStore, name, profile)
@@ -128,6 +130,7 @@ func runAuthSession(args []string, cfg *config.Config, store *config.Store, stdo
 					"platform":   profile.Platform,
 					"subject":    profile.Subject,
 					"grant_type": profile.Grant.Type,
+					"method":     profile.Method,
 				},
 				"session": buildSessionView(sessionStore.Path(name), session, profile),
 			},
@@ -137,16 +140,21 @@ func runAuthSession(args []string, cfg *config.Config, store *config.Store, stdo
 	}
 }
 
-func resolveAuthSessionProfile(cfg *config.Config, args []string) (string, config.Profile, bool, error) {
-	name := strings.TrimSpace(cfg.Defaults.Profile)
+func resolveAuthSessionConnection(cfg *config.Config, args []string) (string, config.Profile, bool, error) {
+	name := ""
 	if len(args) == 1 {
 		name = strings.TrimSpace(args[0])
+	} else if platform := strings.TrimSpace(cfg.Defaults.Platform); platform != "" {
+		name = strings.TrimSpace(cfg.Defaults.Connections[platform])
+		if name == "" {
+			name = strings.TrimSpace(cfg.Defaults.Profile)
+		}
 	}
 	if name == "" {
-		return "", config.Profile{}, false, fmt.Errorf("no profile was provided and no default profile is configured")
+		return "", config.Profile{}, false, fmt.Errorf("no connection was provided and no default connection is configured")
 	}
 
-	_, profile, ok := lookupProfile(cfg, name)
+	_, profile, ok := lookupConnection(cfg, name)
 	if !ok {
 		return name, config.Profile{}, false, nil
 	}
@@ -248,5 +256,5 @@ func redactSessionSecret(value string) string {
 }
 
 func printAuthSessionHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth session [inspect|clear|refresh] [profile]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth session [inspect|clear|refresh] [connection]")
 }

@@ -56,12 +56,16 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	}
 	canonicalOperation := definition.Operation
 
-	profileName, profile, appErr := resolveProfile(cfg, operation.Platform, opts.ProfileName, opts.SubjectName)
+	connectionName, profile, appErr := resolveConnection(cfg, operation.Platform, opts.ConnectionName, opts.ProfileName, opts.SubjectName)
 	if appErr != nil {
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, appErr, ExecutionProfile{}), input), nil
 	}
 
-	if err := config.ValidateGrant(profile); err != nil {
+	validateConnection := config.ValidateGrant
+	if opts.DryRun {
+		validateConnection = config.ValidateConnectionShape
+	}
+	if err := validateConnection(profile); err != nil {
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("INVALID_AUTH_CONFIG", err.Error()), ExecutionProfile{}), input), nil
 	}
 
@@ -72,14 +76,15 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	}
 
 	if !contains(definition.AllowedSubjects, profile.Subject) {
-		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("profile %s with subject %s is not allowed to call %s", profileName, profile.Subject, canonicalOperation)), ExecutionProfile{}), input), nil
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("connection %s with subject %s is not allowed to call %s", connectionName, profile.Subject, canonicalOperation)), ExecutionProfile{}), input), nil
 	}
 
 	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
 	executionProfile := ExecutionProfile{
-		Name:     profileName,
-		Platform: profile.Platform,
-		Subject:  profile.Subject,
+		Name:       connectionName,
+		Connection: connectionName,
+		Platform:   profile.Platform,
+		Subject:    profile.Subject,
 		Grant: map[string]any{
 			"type": profile.Grant.Type,
 		},
@@ -149,7 +154,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	var data map[string]any
 	for {
 		data, appErr = definition.Handler(ctx, adapter.Call{
-			ProfileName:    profileName,
+			ProfileName:    connectionName,
 			Profile:        profile,
 			Input:          input,
 			IdempotencyKey: idempotencyKey,
@@ -214,9 +219,10 @@ func (e *Executor) finish(startAt time.Time, requestID, operation, platform stri
 
 	if profile.Name != "" || profile.Platform != "" || profile.Subject != "" {
 		envelope.Context = &Context{
-			Platform: profile.Platform,
-			Subject:  profile.Subject,
-			Profile:  profile.Name,
+			Platform:   profile.Platform,
+			Subject:    profile.Subject,
+			Connection: profile.Connection,
+			Profile:    profile.Name,
 		}
 	}
 
@@ -240,55 +246,70 @@ func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelop
 	return envelope
 }
 
-func resolveProfile(cfg *config.Config, platform string, explicitProfile string, explicitSubject string) (string, config.Profile, *apperr.AppError) {
+func resolveConnection(cfg *config.Config, platform string, explicitConnection string, explicitProfile string, explicitSubject string) (string, config.Profile, *apperr.AppError) {
 	cfg.Ensure()
 	desiredSubject := strings.TrimSpace(explicitSubject)
-	if desiredSubject == "" {
-		desiredSubject = strings.TrimSpace(cfg.Defaults.Subject)
+
+	selectedConnection := strings.TrimSpace(explicitConnection)
+	if selectedConnection == "" {
+		selectedConnection = strings.TrimSpace(explicitProfile)
 	}
 
-	if explicitProfile != "" {
-		profile, ok := cfg.Profiles[explicitProfile]
+	if selectedConnection != "" {
+		profile, ok := cfg.Profiles[selectedConnection]
 		if !ok {
-			return "", config.Profile{}, apperr.New("PROFILE_NOT_FOUND", fmt.Sprintf("profile %s does not exist", explicitProfile))
+			return "", config.Profile{}, apperr.New("PROFILE_NOT_FOUND", fmt.Sprintf("connection %s does not exist", selectedConnection))
 		}
 		if profile.Platform != platform {
-			return "", config.Profile{}, apperr.New("PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("profile %s belongs to platform %s and cannot be used for %s", explicitProfile, profile.Platform, platform))
+			return "", config.Profile{}, apperr.New("PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("connection %s belongs to platform %s and cannot be used for %s", selectedConnection, profile.Platform, platform))
 		}
 		if desiredSubject != "" && profile.Subject != desiredSubject {
-			return "", config.Profile{}, apperr.New("PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("profile %s has subject %s and cannot be used when subject %s is selected", explicitProfile, profile.Subject, desiredSubject))
+			return "", config.Profile{}, apperr.New("PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("connection %s has subject %s and cannot be used when subject %s is selected", selectedConnection, profile.Subject, desiredSubject))
 		}
-		return explicitProfile, profile, nil
+		return selectedConnection, profile, nil
 	}
 
-	if cfg.Defaults.Profile != "" {
-		profile, ok := cfg.Profiles[cfg.Defaults.Profile]
+	if defaultConnection := strings.TrimSpace(cfg.Defaults.Connections[platform]); defaultConnection != "" {
+		profile, ok := cfg.Profiles[defaultConnection]
 		if !ok {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default profile %s does not exist", cfg.Defaults.Profile))
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default connection %s does not exist", defaultConnection))
 		}
 		if profile.Platform != platform {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default profile %s belongs to platform %s and cannot be used for %s", cfg.Defaults.Profile, profile.Platform, platform))
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default connection %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
 		}
 		if desiredSubject != "" && profile.Subject != desiredSubject {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("default profile %s has subject %s and cannot be used when subject %s is selected", cfg.Defaults.Profile, profile.Subject, desiredSubject))
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("default connection %s has subject %s and cannot be used when subject %s is selected", defaultConnection, profile.Subject, desiredSubject))
 		}
-		return cfg.Defaults.Profile, profile, nil
+		return defaultConnection, profile, nil
+	}
+	if defaultConnection := strings.TrimSpace(cfg.Defaults.Profile); defaultConnection != "" {
+		profile, ok := cfg.Profiles[defaultConnection]
+		if !ok {
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default connection %s does not exist", defaultConnection))
+		}
+		if profile.Platform != platform {
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default connection %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
+		}
+		if desiredSubject != "" && profile.Subject != desiredSubject {
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("default connection %s has subject %s and cannot be used when subject %s is selected", defaultConnection, profile.Subject, desiredSubject))
+		}
+		return defaultConnection, profile, nil
 	}
 
 	candidates := cfg.CandidateProfilesBySubject(platform, desiredSubject)
 	switch len(candidates) {
 	case 0:
 		if desiredSubject != "" {
-			return "", config.Profile{}, apperr.New("PROFILE_REQUIRED", fmt.Sprintf("platform %s has no available %s profile; run `clawrise profile use <name>` or pass --profile", platform, desiredSubject))
+			return "", config.Profile{}, apperr.New("PROFILE_REQUIRED", fmt.Sprintf("platform %s has no available %s connection; run `clawrise connection use <name>` or pass --connection", platform, desiredSubject))
 		}
-		return "", config.Profile{}, apperr.New("PROFILE_REQUIRED", fmt.Sprintf("platform %s has no available profile; run `clawrise profile use <name>` or pass --profile", platform))
+		return "", config.Profile{}, apperr.New("PROFILE_REQUIRED", fmt.Sprintf("platform %s has no available connection; run `clawrise connection use <name>` or pass --connection", platform))
 	case 1:
 		return candidates[0].Name, candidates[0].Profile, nil
 	default:
 		if desiredSubject != "" {
-			return "", config.Profile{}, apperr.New("PROFILE_AMBIGUOUS", fmt.Sprintf("platform %s has multiple %s profiles; specify --profile explicitly", platform, desiredSubject))
+			return "", config.Profile{}, apperr.New("PROFILE_AMBIGUOUS", fmt.Sprintf("platform %s has multiple %s connections; specify --connection explicitly", platform, desiredSubject))
 		}
-		return "", config.Profile{}, apperr.New("PROFILE_AMBIGUOUS", fmt.Sprintf("platform %s has multiple candidate profiles; specify --profile explicitly", platform))
+		return "", config.Profile{}, apperr.New("PROFILE_AMBIGUOUS", fmt.Sprintf("platform %s has multiple candidate connections; specify --connection explicitly", platform))
 	}
 }
 

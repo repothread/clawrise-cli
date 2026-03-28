@@ -1,7 +1,15 @@
 defaults:
   platform: feishu
-  subject: bot
-  profile: feishu_bot_ops
+  connections:
+    feishu: feishu_bot_ops
+    notion: notion_team_docs
+
+auth:
+  secret_store:
+    backend: auto
+    fallback_backend: encrypted_file
+  session_store:
+    backend: file
 
 runtime:
   retry:
@@ -9,53 +17,40 @@ runtime:
     base_delay_ms: 200
     max_delay_ms: 1000
 
-profiles:
-  # Feishu bot profile for general operations.
+connections:
   feishu_bot_ops:
+    title: 飞书运营 Bot
     platform: feishu
     subject: bot
-    grant:
-      type: client_credentials
-      app_id: env:FEISHU_BOT_OPS_APP_ID
-      app_secret: env:FEISHU_BOT_OPS_APP_SECRET
+    method: feishu.app_credentials
+    params:
+      app_id: cli_xxx
 
-  # Feishu bot profile for another application or business domain.
-  feishu_bot_sales:
-    platform: feishu
-    subject: bot
-    grant:
-      type: client_credentials
-      app_id: env:FEISHU_BOT_SALES_APP_ID
-      app_secret: env:FEISHU_BOT_SALES_APP_SECRET
-
-  # Reserved for future Feishu user-mode OAuth support.
   feishu_user_alice:
+    title: 飞书 Alice 用户态
     platform: feishu
     subject: user
-    grant:
-      type: oauth_user
-      client_id: env:FEISHU_CLIENT_ID
-      client_secret: env:FEISHU_CLIENT_SECRET
-      access_token: env:FEISHU_ALICE_ACCESS_TOKEN
-      refresh_token: env:FEISHU_ALICE_REFRESH_TOKEN
+    method: feishu.oauth_user
+    params:
+      client_id: cli_xxx
+      redirect_mode: loopback
+      scopes:
+        - offline_access
 
-  # Notion internal integration for a single workspace.
   notion_team_docs:
+    title: Notion 团队文档
     platform: notion
     subject: integration
-    grant:
-      type: static_token
-      token: env:NOTION_TEAM_DOCS_TOKEN
+    method: notion.internal_token
+    params:
       notion_version: "2026-03-11"
 
-  # Reserved for future Notion public OAuth support.
   notion_public_workspace_a:
+    title: Notion 公共 OAuth 工作区 A
     platform: notion
     subject: integration
-    grant:
-      type: oauth_refreshable
-      client_id: env:NOTION_CLIENT_ID
-      client_secret: env:NOTION_CLIENT_SECRET
-      access_token: env:NOTION_WORKSPACE_A_ACCESS_TOKEN
-      refresh_token: env:NOTION_WORKSPACE_A_REFRESH_TOKEN
+    method: notion.oauth_public
+    params:
+      client_id: cli_xxx
       notion_version: "2026-03-11"
+      redirect_mode: loopback

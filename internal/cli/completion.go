@@ -11,8 +11,8 @@ import (
 var (
 	rootCompletionCommands = []string{
 		"platform",
+		"connection",
 		"subject",
-		"profile",
 		"auth",
 		"config",
 		"plugin",
@@ -23,17 +23,19 @@ var (
 		"batch",
 	}
 	platformCompletionCommands    = []string{"use", "current", "unset"}
+	connectionCompletionCommands  = []string{"use", "current", "list"}
 	subjectCompletionCommands     = []string{"use", "current", "unset", "list"}
-	profileCompletionCommands     = []string{"use", "current", "list"}
-	authCompletionCommands        = []string{"list", "inspect", "check", "session"}
+	profileCompletionCommands     = connectionCompletionCommands
+	authCompletionCommands        = []string{"list", "inspect", "check", "session", "secret"}
 	authSessionCompletionCommands = []string{"inspect", "clear", "refresh"}
+	authSecretCompletionCommands  = []string{"set", "delete"}
 	configCompletionCommands      = []string{"init"}
 	pluginCompletionCommands      = []string{"list", "install", "info", "remove", "verify"}
 	specCompletionCommands        = []string{"list", "get", "status", "export"}
 	completionShells              = []string{"bash", "zsh", "fish"}
-	operationCompletionFlags      = []string{"--profile", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	operationCompletionFlags      = []string{"--connection", "--profile", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
 	specExportCompletionFlags     = []string{"--format", "--help", "-h"}
-	configInitCompletionFlags     = []string{"--platform", "--subject", "--profile", "--grant-type", "--force", "--help", "-h"}
+	configInitCompletionFlags     = []string{"--platform", "--subject", "--connection", "--method", "--force", "--help", "-h"}
 )
 
 // runCompletion 输出 shell completion 脚本。

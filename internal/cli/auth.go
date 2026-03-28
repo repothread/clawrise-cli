@@ -35,11 +35,11 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 		})
 	case "inspect":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: clawrise auth inspect <profile>")
+			return fmt.Errorf("usage: clawrise auth inspect <connection>")
 		}
-		name, profile, ok := lookupProfile(cfg, args[1])
+		name, profile, ok := lookupConnection(cfg, args[1])
 		if !ok {
-			return writeCLIError(stdout, "PROFILE_NOT_FOUND", "the selected profile does not exist")
+			return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
 		}
 		return output.WriteJSON(stdout, map[string]any{
 			"ok":   true,
@@ -47,20 +47,25 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 		})
 	case "check":
 		if len(args) > 2 {
-			return fmt.Errorf("usage: clawrise auth check [profile]")
+			return fmt.Errorf("usage: clawrise auth check [connection]")
 		}
 
-		name := cfg.Defaults.Profile
+		name := ""
 		if len(args) == 2 {
 			name = strings.TrimSpace(args[1])
+		} else if platform := strings.TrimSpace(cfg.Defaults.Platform); platform != "" {
+			name = strings.TrimSpace(cfg.Defaults.Connections[platform])
+			if name == "" {
+				name = strings.TrimSpace(cfg.Defaults.Profile)
+			}
 		}
 		if strings.TrimSpace(name) == "" {
-			return writeCLIError(stdout, "PROFILE_REQUIRED", "no profile was provided and no default profile is configured")
+			return writeCLIError(stdout, "CONNECTION_REQUIRED", "no connection was provided and no default connection is configured")
 		}
 
-		resolvedName, profile, ok := lookupProfile(cfg, name)
+		resolvedName, profile, ok := lookupConnection(cfg, name)
 		if !ok {
-			return writeCLIError(stdout, "PROFILE_NOT_FOUND", "the selected profile does not exist")
+			return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
 		}
 
 		inspection := config.InspectProfile(resolvedName, profile)
@@ -82,6 +87,8 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 		return nil
 	case "session":
 		return runAuthSession(args[1:], cfg, store, stdout)
+	case "secret":
+		return runAuthSecret(args[1:], cfg, store, stdout)
 	default:
 		return fmt.Errorf("unknown auth command: %s", args[0])
 	}
@@ -113,9 +120,9 @@ func buildAuthOperationSummary(profile config.Profile, manager *pluginruntime.Ma
 	return summary
 }
 
-func lookupProfile(cfg *config.Config, name string) (string, config.Profile, bool) {
+func lookupConnection(cfg *config.Config, name string) (string, config.Profile, bool) {
 	cfg.Ensure()
-	profile, ok := cfg.Profiles[strings.TrimSpace(name)]
+	profile, ok := cfg.Connections[strings.TrimSpace(name)]
 	return strings.TrimSpace(name), profile, ok
 }
 
@@ -142,6 +149,7 @@ func writeCLIError(stdout io.Writer, code string, message string) error {
 }
 
 func printAuthHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|inspect|check|session]")
-	_, _ = fmt.Fprintln(stdout, "       clawrise auth session [inspect|clear|refresh] [profile]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|inspect|check|session|secret]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth session [inspect|clear|refresh] [connection]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth secret [set|delete] <connection> <field>")
 }

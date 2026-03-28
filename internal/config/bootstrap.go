@@ -2,30 +2,30 @@ package config
 
 import (
 	"fmt"
-	"regexp"
+	"sort"
 	"strings"
 )
 
 const defaultNotionVersion = "2026-03-11"
 
-var nonAlphaNumericPattern = regexp.MustCompile(`[^A-Za-z0-9]+`)
-
 // InitOptions 描述 `config init` 需要的参数。
 type InitOptions struct {
-	Platform  string
-	Subject   string
-	Profile   string
-	GrantType string
+	Platform   string
+	Subject    string
+	Connection string
+	Method     string
 }
 
 // InitResult 描述初始化后生成的配置与提示信息。
 type InitResult struct {
-	Config      *Config           `json:"-"`
-	ProfileName string            `json:"profile_name"`
-	Platform    string            `json:"platform"`
-	Subject     string            `json:"subject"`
-	GrantType   string            `json:"grant_type"`
-	EnvTemplate map[string]string `json:"env_template"`
+	Config         *Config  `json:"-"`
+	ConnectionName string   `json:"connection_name"`
+	Platform       string   `json:"platform"`
+	Subject        string   `json:"subject"`
+	Method         string   `json:"method"`
+	SecretFields   []string `json:"secret_fields"`
+	SessionBackend string   `json:"session_backend"`
+	SecretBackend  string   `json:"secret_backend"`
 }
 
 // BuildInitConfig 生成最小可用的配置骨架。
@@ -40,28 +40,38 @@ func BuildInitConfig(opts InitOptions) (InitResult, error) {
 		subject = defaultSubjectForPlatform(platform)
 	}
 
-	grantType := strings.TrimSpace(opts.GrantType)
-	if grantType == "" {
-		grantType = defaultGrantType(platform, subject)
+	method := strings.TrimSpace(opts.Method)
+	if method == "" {
+		method = defaultMethod(platform, subject)
 	}
-	if grantType == "" {
+	if method == "" {
 		return InitResult{}, fmt.Errorf("unsupported platform and subject combination: %s/%s", platform, subject)
 	}
 
-	profileName := strings.TrimSpace(opts.Profile)
-	if profileName == "" {
-		profileName = defaultProfileName(platform, subject)
+	connectionName := strings.TrimSpace(opts.Connection)
+	if connectionName == "" {
+		connectionName = defaultConnectionName(platform, subject)
 	}
 
-	profile, envTemplate, err := buildProfileTemplate(profileName, platform, subject, grantType)
+	connection, secretFields, err := buildConnectionTemplate(platform, subject, method)
 	if err != nil {
 		return InitResult{}, err
 	}
 
 	cfg := New()
+	cfg.Ensure()
 	cfg.Defaults.Platform = platform
-	cfg.Defaults.Subject = subject
-	cfg.Defaults.Profile = profileName
+	cfg.Defaults.Profile = connectionName
+	cfg.Defaults.Connections[platform] = connectionName
+	cfg.Auth = AuthConfig{
+		SecretStore: SecretStoreConfig{
+			Backend:         "auto",
+			FallbackBackend: "encrypted_file",
+		},
+		SessionStore: SessionStoreConfig{
+			Backend: "file",
+		},
+	}
 	cfg.Runtime = RuntimeConfig{
 		Retry: RetryConfig{
 			MaxAttempts: 1,
@@ -69,71 +79,56 @@ func BuildInitConfig(opts InitOptions) (InitResult, error) {
 			MaxDelayMS:  1000,
 		},
 	}
-	cfg.Profiles[profileName] = profile
+	cfg.Connections[connectionName] = connection
+	cfg.Ensure()
 
 	return InitResult{
-		Config:      cfg,
-		ProfileName: profileName,
-		Platform:    platform,
-		Subject:     subject,
-		GrantType:   grantType,
-		EnvTemplate: envTemplate,
+		Config:         cfg,
+		ConnectionName: connectionName,
+		Platform:       platform,
+		Subject:        subject,
+		Method:         method,
+		SecretFields:   secretFields,
+		SessionBackend: cfg.Auth.SessionStore.Backend,
+		SecretBackend:  cfg.Auth.SecretStore.Backend,
 	}, nil
 }
 
-func buildProfileTemplate(profileName, platform, subject, grantType string) (Profile, map[string]string, error) {
-	profile := Profile{
+func buildConnectionTemplate(platform, subject, method string) (Connection, []string, error) {
+	connection := Connection{
 		Platform: platform,
 		Subject:  subject,
-		Grant: Grant{
-			Type: grantType,
-		},
+		Method:   method,
 	}
 
-	prefix := envPrefixForProfile(profileName)
-	envTemplate := map[string]string{}
+	secretFields := []string{}
 
-	switch grantType {
-	case "client_credentials":
-		profile.Grant.AppID = "env:" + prefix + "_APP_ID"
-		profile.Grant.AppSecret = "env:" + prefix + "_APP_SECRET"
-		envTemplate["APP_ID"] = prefix + "_APP_ID"
-		envTemplate["APP_SECRET"] = prefix + "_APP_SECRET"
-	case "static_token":
-		profile.Grant.Token = "env:" + prefix + "_TOKEN"
-		envTemplate["TOKEN"] = prefix + "_TOKEN"
-		if platform == "notion" {
-			profile.Grant.NotionVer = defaultNotionVersion
-		}
-	case "oauth_user":
-		profile.Grant.ClientID = "env:" + prefix + "_CLIENT_ID"
-		profile.Grant.ClientSecret = "env:" + prefix + "_CLIENT_SECRET"
-		profile.Grant.AccessToken = "env:" + prefix + "_ACCESS_TOKEN"
-		profile.Grant.RefreshToken = "env:" + prefix + "_REFRESH_TOKEN"
-		envTemplate["CLIENT_ID"] = prefix + "_CLIENT_ID"
-		envTemplate["CLIENT_SECRET"] = prefix + "_CLIENT_SECRET"
-		envTemplate["ACCESS_TOKEN"] = prefix + "_ACCESS_TOKEN"
-		envTemplate["REFRESH_TOKEN"] = prefix + "_REFRESH_TOKEN"
-	case "oauth_refreshable":
-		profile.Grant.ClientID = "env:" + prefix + "_CLIENT_ID"
-		profile.Grant.ClientSecret = "env:" + prefix + "_CLIENT_SECRET"
-		profile.Grant.AccessToken = "env:" + prefix + "_ACCESS_TOKEN"
-		profile.Grant.RefreshToken = "env:" + prefix + "_REFRESH_TOKEN"
-		envTemplate["CLIENT_ID"] = prefix + "_CLIENT_ID"
-		envTemplate["CLIENT_SECRET"] = prefix + "_CLIENT_SECRET"
-		envTemplate["ACCESS_TOKEN"] = prefix + "_ACCESS_TOKEN"
-		envTemplate["REFRESH_TOKEN"] = prefix + "_REFRESH_TOKEN"
-		if platform == "notion" {
-			profile.Grant.NotionVer = defaultNotionVersion
-		}
+	switch method {
+	case "feishu.app_credentials":
+		connection.Params.AppID = "<请填写 app_id>"
+		secretFields = []string{"app_secret"}
+	case "feishu.oauth_user":
+		connection.Params.ClientID = "<请填写 client_id>"
+		connection.Params.RedirectMode = "loopback"
+		connection.Params.Scopes = []string{"offline_access"}
+		secretFields = []string{"client_secret", "refresh_token"}
+	case "notion.internal_token":
+		connection.Params.NotionVersion = defaultNotionVersion
+		secretFields = []string{"token"}
+	case "notion.oauth_public":
+		connection.Params.ClientID = "<请填写 client_id>"
+		connection.Params.NotionVersion = defaultNotionVersion
+		connection.Params.RedirectMode = "loopback"
+		secretFields = []string{"client_secret", "refresh_token"}
 	default:
-		return Profile{}, nil, fmt.Errorf("unsupported grant type: %s", grantType)
+		return Connection{}, nil, fmt.Errorf("unsupported method: %s", method)
 	}
 
-	if err := ValidateGrantShape(profile); err != nil {
-		return Profile{}, nil, err
+	if err := ValidateConnectionShape(connection); err != nil {
+		return Connection{}, nil, err
 	}
-	return profile, envTemplate, nil
+	sort.Strings(secretFields)
+	return connection, secretFields, nil
 }
 
 func defaultSubjectForPlatform(platform string) string {
@@ -147,20 +142,20 @@ func defaultSubjectForPlatform(platform string) string {
 	}
 }
 
-func defaultGrantType(platform, subject string) string {
+func defaultMethod(platform, subject string) string {
 	switch {
 	case platform == "feishu" && subject == "bot":
-		return "client_credentials"
+		return "feishu.app_credentials"
 	case platform == "feishu" && subject == "user":
-		return "oauth_user"
+		return "feishu.oauth_user"
 	case platform == "notion" && subject == "integration":
-		return "static_token"
+		return "notion.internal_token"
 	default:
 		return ""
 	}
 }
 
-func defaultProfileName(platform, subject string) string {
+func defaultConnectionName(platform, subject string) string {
 	switch {
 	case platform == "feishu" && subject == "bot":
 		return "feishu_bot_default"
@@ -171,14 +166,4 @@ func defaultProfileName(platform, subject string) string {
 	default:
 		return platform + "_" + subject + "_default"
 	}
-}
-
-func envPrefixForProfile(profileName string) string {
-	profileName = strings.TrimSpace(profileName)
-	normalized := nonAlphaNumericPattern.ReplaceAllString(strings.ToUpper(profileName), "_")
-	normalized = strings.Trim(normalized, "_")
-	if normalized == "" {
-		return "CLAWRISE_PROFILE"
-	}
-	return normalized
 }

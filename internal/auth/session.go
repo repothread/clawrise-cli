@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/clawrise/clawrise-cli/internal/paths"
 )
 
 const (
@@ -90,7 +92,11 @@ func NewFileStore(configPath string) *FileStore {
 
 // ResolveSessionDir 返回 session cache 的默认目录。
 func ResolveSessionDir(configPath string) string {
-	return filepath.Join(filepath.Dir(configPath), "runtime", "auth")
+	stateDir, err := paths.ResolveStateDir(configPath)
+	if err != nil {
+		return filepath.Join(filepath.Dir(configPath), "state", "auth", "sessions")
+	}
+	return filepath.Join(stateDir, "auth", "sessions")
 }
 
 // Path 返回指定 profile 的 session 文件路径。

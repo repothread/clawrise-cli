@@ -54,10 +54,12 @@ func Run(args []string, deps Dependencies) error {
 	switch args[0] {
 	case "platform":
 		return runPlatform(args[1:], store, deps.Stdout)
+	case "connection":
+		return runConnection(args[1:], store, deps.Stdout)
 	case "subject":
 		return runSubject(args[1:], store, deps.Stdout)
 	case "profile":
-		return runProfile(args[1:], store, deps.Stdout)
+		return runConnection(args[1:], store, deps.Stdout)
 	case "version":
 		return runVersion(deps.Version, deps.Stdout)
 	case "doctor":
@@ -123,6 +125,7 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 	flags.SetOutput(stderr)
 
 	var profileName string
+	var connectionName string
 	var subjectName string
 	var inputJSON string
 	var inputFile string
@@ -132,6 +135,7 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 	var outputFormat string
 	var quiet bool
 
+	flags.StringVar(&connectionName, "connection", "", "select the connection for this execution")
 	flags.StringVar(&profileName, "profile", "", "select the profile for this execution")
 	flags.StringVar(&subjectName, "subject", "", "select the execution subject for this execution")
 	flags.StringVar(&inputJSON, "json", "", "pass inline JSON input")
@@ -163,6 +167,7 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 
 	envelope, err := executor.ExecuteContext(context.Background(), runtime.ExecuteOptions{
 		OperationInput: positionals[0],
+		ConnectionName: connectionName,
 		ProfileName:    profileName,
 		SubjectName:    subjectName,
 		InputJSON:      inputJSON,
@@ -513,8 +518,8 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
 	_, _ = fmt.Fprintln(w, "  clawrise <operation> [flags]")
 	_, _ = fmt.Fprintln(w, "  clawrise platform [use|current|unset]")
+	_, _ = fmt.Fprintln(w, "  clawrise connection [use|current|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
-	_, _ = fmt.Fprintln(w, "  clawrise profile [use|current|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise auth [list|inspect|check|session]")
 	_, _ = fmt.Fprintln(w, "  clawrise config init")
 	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")

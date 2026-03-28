@@ -143,6 +143,7 @@ func TestRunProfileUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read example config: %v", err)
 	}
+	configBytes = bytes.Replace(configBytes, []byte("backend: auto"), []byte("backend: encrypted_file"), 1)
 	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
@@ -519,9 +520,8 @@ func TestRunConfigInit(t *testing.T) {
 }
 
 func TestRunAuthCheck(t *testing.T) {
-	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
-	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
-	t.Setenv("CLAWRISE_CONFIG", "../../examples/config.example.yaml")
+	copyExampleConfig(t)
+	runSecretSet(t, "feishu_bot_ops", "app_secret", "app-secret")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -533,7 +533,7 @@ func TestRunAuthCheck(t *testing.T) {
 		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
-		t.Fatalf("Run returned error: %v", err)
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
 
 	if !bytes.Contains(stdout.Bytes(), []byte(`"resolved_valid": true`)) {
@@ -548,16 +548,7 @@ func TestRunAuthCheck(t *testing.T) {
 }
 
 func TestRunAuthSessionInspectAndClear(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	t.Setenv("CLAWRISE_CONFIG", configPath)
-
-	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
-	if err != nil {
-		t.Fatalf("failed to read example config: %v", err)
-	}
-	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
-		t.Fatalf("failed to write test config: %v", err)
-	}
+	configPath := copyExampleConfig(t)
 
 	sessionStore := authcache.NewFileStore(configPath)
 	expiresAt := time.Now().UTC().Add(30 * time.Minute)
@@ -577,7 +568,7 @@ func TestRunAuthSessionInspectAndClear(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err = Run([]string{"auth", "session", "inspect", "notion_public_workspace_a"}, Dependencies{
+	err := Run([]string{"auth", "session", "inspect", "notion_public_workspace_a"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -620,19 +611,9 @@ func TestRunAuthSessionInspectAndClear(t *testing.T) {
 }
 
 func TestRunAuthSessionRefresh(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	t.Setenv("CLAWRISE_CONFIG", configPath)
-	t.Setenv("NOTION_CLIENT_ID", "client-id")
-	t.Setenv("NOTION_CLIENT_SECRET", "client-secret")
-	t.Setenv("NOTION_WORKSPACE_A_REFRESH_TOKEN", "refresh-token")
-
-	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
-	if err != nil {
-		t.Fatalf("failed to read example config: %v", err)
-	}
-	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
-		t.Fatalf("failed to write test config: %v", err)
-	}
+	configPath := copyExampleConfig(t)
+	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
+	runSecretSet(t, "notion_public_workspace_a", "refresh_token", "refresh-token")
 
 	previousFactory := newNotionAuthSessionClient
 	t.Cleanup(func() {
@@ -671,14 +652,14 @@ func TestRunAuthSessionRefresh(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err = Run([]string{"auth", "session", "refresh", "notion_public_workspace_a"}, Dependencies{
+	err := Run([]string{"auth", "session", "refresh", "notion_public_workspace_a"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
 		PluginManager: newTestPluginManager(t),
 	})
 	if err != nil {
-		t.Fatalf("Run returned error: %v", err)
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"exists": true`)) {
 		t.Fatalf("expected refreshed session output, got: %s", stdout.String())
@@ -785,5 +766,39 @@ func testJSONResponse(t *testing.T, statusCode int, value any) *http.Response {
 		Request: &http.Request{
 			Header: http.Header{},
 		},
+	}
+}
+
+func copyExampleConfig(t *testing.T) string {
+	t.Helper()
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
+	if err != nil {
+		t.Fatalf("failed to read example config: %v", err)
+	}
+	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+	return configPath
+}
+
+func runSecretSet(t *testing.T, connectionName string, fieldName string, value string) {
+	t.Helper()
+
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"auth", "secret", "set", connectionName, fieldName, "--value", value}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("failed to seed secret via CLI: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
 }
