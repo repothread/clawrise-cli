@@ -3,12 +3,18 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
 	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
@@ -35,7 +41,7 @@ func TestRunRootHelpFlag(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise spec [list|get|status|export]")) {
 		t.Fatalf("expected spec usage in root help, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|inspect|check]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|inspect|check|session]")) {
 		t.Fatalf("expected auth usage in root help, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
@@ -541,6 +547,162 @@ func TestRunAuthCheck(t *testing.T) {
 	}
 }
 
+func TestRunAuthSessionInspectAndClear(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
+	if err != nil {
+		t.Fatalf("failed to read example config: %v", err)
+	}
+	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	sessionStore := authcache.NewFileStore(configPath)
+	expiresAt := time.Now().UTC().Add(30 * time.Minute)
+	if err := sessionStore.Save(authcache.Session{
+		ProfileName:  "notion_public_workspace_a",
+		Platform:     "notion",
+		Subject:      "integration",
+		GrantType:    "oauth_refreshable",
+		AccessToken:  "fresh-token",
+		RefreshToken: "refresh-token-2",
+		TokenType:    "Bearer",
+		ExpiresAt:    &expiresAt,
+	}); err != nil {
+		t.Fatalf("failed to seed session cache: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err = Run([]string{"auth", "session", "inspect", "notion_public_workspace_a"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"exists": true`)) {
+		t.Fatalf("expected existing session output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"matches": true`)) {
+		t.Fatalf("expected matching profile output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"access_token": "fr***en"`)) {
+		t.Fatalf("expected redacted access token output, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+
+	err = Run([]string{"auth", "session", "clear", "notion_public_workspace_a"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"deleted": true`)) {
+		t.Fatalf("expected deleted session output, got: %s", stdout.String())
+	}
+	if _, err := os.Stat(sessionStore.Path("notion_public_workspace_a")); !os.IsNotExist(err) {
+		t.Fatalf("expected session file to be removed, got: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunAuthSessionRefresh(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("NOTION_CLIENT_ID", "client-id")
+	t.Setenv("NOTION_CLIENT_SECRET", "client-secret")
+	t.Setenv("NOTION_WORKSPACE_A_REFRESH_TOKEN", "refresh-token")
+
+	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
+	if err != nil {
+		t.Fatalf("failed to read example config: %v", err)
+	}
+	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	previousFactory := newNotionAuthSessionClient
+	t.Cleanup(func() {
+		newNotionAuthSessionClient = previousFactory
+	})
+
+	newNotionAuthSessionClient = func(sessionStore authcache.Store) (*notionadapter.Client, error) {
+		return notionadapter.NewClient(notionadapter.Options{
+			BaseURL: "https://api.notion.com",
+			HTTPClient: &http.Client{
+				Transport: &testRoundTripFunc{
+					handler: func(request *http.Request) (*http.Response, error) {
+						if request.URL.Path != "/v1/oauth/token" {
+							t.Fatalf("unexpected request path: %s", request.URL.Path)
+						}
+						var payload map[string]any
+						if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+							t.Fatalf("failed to decode refresh payload: %v", err)
+						}
+						if payload["refresh_token"] != "refresh-token" {
+							t.Fatalf("unexpected refresh token: %+v", payload["refresh_token"])
+						}
+						return testJSONResponse(t, http.StatusOK, map[string]any{
+							"access_token":  "fresh-token",
+							"token_type":    "bearer",
+							"refresh_token": "refresh-token-2",
+							"expires_in":    3600,
+						}), nil
+					},
+				},
+			},
+			SessionStore: sessionStore,
+		})
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err = Run([]string{"auth", "session", "refresh", "notion_public_workspace_a"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"exists": true`)) {
+		t.Fatalf("expected refreshed session output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"access_token": "fr***en"`)) {
+		t.Fatalf("expected redacted cached access token output, got: %s", stdout.String())
+	}
+
+	sessionStore := authcache.NewFileStore(configPath)
+	session, err := sessionStore.Load("notion_public_workspace_a")
+	if err != nil {
+		t.Fatalf("failed to load refreshed session: %v", err)
+	}
+	if session.AccessToken != "fresh-token" {
+		t.Fatalf("unexpected cached access token: %s", session.AccessToken)
+	}
+	if session.RefreshToken != "refresh-token-2" {
+		t.Fatalf("unexpected cached refresh token: %s", session.RefreshToken)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunDoctor(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
@@ -596,4 +758,32 @@ func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 		t.Fatalf("failed to construct test plugin manager: %v", err)
 	}
 	return manager
+}
+
+type testRoundTripFunc struct {
+	handler func(request *http.Request) (*http.Response, error)
+}
+
+func (f *testRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f.handler(request)
+}
+
+func testJSONResponse(t *testing.T, statusCode int, value any) *http.Response {
+	t.Helper()
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("failed to marshal JSON response: %v", err)
+	}
+	return &http.Response{
+		StatusCode: statusCode,
+		Header: http.Header{
+			"Content-Type": []string{"application/json; charset=utf-8"},
+		},
+		Body:          io.NopCloser(bytes.NewReader(data)),
+		ContentLength: int64(len(data)),
+		Request: &http.Request{
+			Header: http.Header{},
+		},
+	}
 }

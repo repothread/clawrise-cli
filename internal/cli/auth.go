@@ -80,6 +80,8 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 			return ExitError{Code: 1}
 		}
 		return nil
+	case "session":
+		return runAuthSession(args[1:], cfg, store, stdout)
 	default:
 		return fmt.Errorf("unknown auth command: %s", args[0])
 	}
@@ -140,5 +142,6 @@ func writeCLIError(stdout io.Writer, code string, message string) error {
 }
 
 func printAuthHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|inspect|check]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|inspect|check|session]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth session [inspect|clear|refresh] [profile]")
 }

@@ -22,17 +22,18 @@ var (
 		"version",
 		"batch",
 	}
-	platformCompletionCommands = []string{"use", "current", "unset"}
-	subjectCompletionCommands  = []string{"use", "current", "unset", "list"}
-	profileCompletionCommands  = []string{"use", "current", "list"}
-	authCompletionCommands     = []string{"list", "inspect", "check"}
-	configCompletionCommands   = []string{"init"}
-	pluginCompletionCommands   = []string{"list", "install", "info", "remove", "verify"}
-	specCompletionCommands     = []string{"list", "get", "status", "export"}
-	completionShells           = []string{"bash", "zsh", "fish"}
-	operationCompletionFlags   = []string{"--profile", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
-	specExportCompletionFlags  = []string{"--format", "--help", "-h"}
-	configInitCompletionFlags  = []string{"--platform", "--subject", "--profile", "--grant-type", "--force", "--help", "-h"}
+	platformCompletionCommands    = []string{"use", "current", "unset"}
+	subjectCompletionCommands     = []string{"use", "current", "unset", "list"}
+	profileCompletionCommands     = []string{"use", "current", "list"}
+	authCompletionCommands        = []string{"list", "inspect", "check", "session"}
+	authSessionCompletionCommands = []string{"inspect", "clear", "refresh"}
+	configCompletionCommands      = []string{"init"}
+	pluginCompletionCommands      = []string{"list", "install", "info", "remove", "verify"}
+	specCompletionCommands        = []string{"list", "get", "status", "export"}
+	completionShells              = []string{"bash", "zsh", "fish"}
+	operationCompletionFlags      = []string{"--profile", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	specExportCompletionFlags     = []string{"--format", "--help", "-h"}
+	configInitCompletionFlags     = []string{"--platform", "--subject", "--profile", "--grant-type", "--force", "--help", "-h"}
 )
 
 // runCompletion 输出 shell completion 脚本。
@@ -112,7 +113,15 @@ _clawrise_completion() {
       return 0
       ;;
     auth)
-      COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+      if [[ ${COMP_CWORD} -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+        return 0
+      fi
+      if [[ "$second" == "session" ]]; then
+        COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+        return 0
+      fi
+      COMPREPLY=()
       return 0
       ;;
     config)
@@ -165,6 +174,7 @@ complete -F _clawrise_completion clawrise
 		shellWords(subjectCompletionCommands),
 		shellWords(profileCompletionCommands),
 		shellWords(authCompletionCommands),
+		shellWords(authSessionCompletionCommands),
 		shellWords(configCompletionCommands),
 		shellWords(configInitCompletionFlags),
 		shellWords(pluginCompletionCommands),
@@ -184,6 +194,7 @@ local -a platform_commands
 local -a subject_commands
 local -a profile_commands
 local -a auth_commands
+local -a auth_session_commands
 local -a config_commands
 local -a plugin_commands
 local -a spec_commands
@@ -199,6 +210,7 @@ platform_commands=(%s)
 subject_commands=(%s)
 profile_commands=(%s)
 auth_commands=(%s)
+auth_session_commands=(%s)
 config_commands=(%s)
 plugin_commands=(%s)
 spec_commands=(%s)
@@ -225,7 +237,15 @@ case "$words[2]" in
     compadd -- $profile_commands
     ;;
   auth)
-    compadd -- $auth_commands
+    if (( CURRENT == 3 )); then
+      compadd -- $auth_commands
+    else
+      case "$words[3]" in
+        session)
+          compadd -- $auth_session_commands
+          ;;
+      esac
+    fi
     ;;
   config)
     if (( CURRENT == 3 )); then
@@ -262,6 +282,7 @@ esac
 		zshWords(subjectCompletionCommands),
 		zshWords(profileCompletionCommands),
 		zshWords(authCompletionCommands),
+		zshWords(authSessionCompletionCommands),
 		zshWords(configCompletionCommands),
 		zshWords(pluginCompletionCommands),
 		zshWords(specCompletionCommands),
@@ -291,6 +312,9 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 	lines = append(lines, fishCommandCompletions("subject", subjectCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("profile", profileCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("auth", authCompletionCommands)...)
+	for _, value := range authSessionCompletionCommands {
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from auth; and __fish_seen_subcommand_from session' -a '%s'", value))
+	}
 	lines = append(lines, fishCommandCompletions("config", configCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("plugin", pluginCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("spec", specCompletionCommands)...)

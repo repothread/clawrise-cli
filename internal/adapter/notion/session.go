@@ -2,11 +2,13 @@ package notion
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
+	"github.com/clawrise/clawrise-cli/internal/apperr"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
@@ -97,4 +99,24 @@ func normalizeTokenType(tokenType string) string {
 		return "Bearer"
 	}
 	return tokenType
+}
+
+// RefreshSession 强制刷新指定 profile 的 OAuth session，并写回本地 cache。
+func (c *Client) RefreshSession(ctx context.Context, profileName string, profile config.Profile) (*authcache.Session, *apperr.AppError) {
+	if profile.Subject != "integration" {
+		return nil, apperr.New("SUBJECT_NOT_ALLOWED", "this Notion session refresh currently requires an integration profile")
+	}
+	if profile.Grant.Type != "oauth_refreshable" {
+		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion session refresh currently supports only oauth_refreshable, got %s", profile.Grant.Type))
+	}
+
+	ctx = adapter.WithProfileName(ctx, profileName)
+	currentSession, _ := c.loadCachedSession(ctx, profile)
+
+	session, appErr := c.refreshAccessToken(ctx, profile, currentSession)
+	if appErr != nil {
+		return nil, appErr
+	}
+	c.saveCachedSession(ctx, profile, *session)
+	return session, nil
 }
