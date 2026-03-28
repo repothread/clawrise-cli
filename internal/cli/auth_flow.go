@@ -8,6 +8,8 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"os/exec"
+	goRuntime "runtime"
 	"strings"
 	"time"
 
@@ -34,7 +36,17 @@ var (
 			SessionStore: sessionStore,
 		})
 	}
+	openAuthURL = func(rawURL string) error {
+		return openURLInBrowser(rawURL)
+	}
 )
+
+type authFlowStartOptions struct {
+	mode         string
+	redirectURI  string
+	callbackHost string
+	callbackPath string
+}
 
 func runAuthFlow(args []string, cfg *config.Config, store *config.Store, stdout io.Writer) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
@@ -45,6 +57,8 @@ func runAuthFlow(args []string, cfg *config.Config, store *config.Store, stdout 
 	switch args[0] {
 	case "begin":
 		return runAuthFlowBegin(args[1:], cfg, store, stdout)
+	case "connect":
+		return runAuthFlowConnect(args[1:], cfg, store, stdout)
 	case "status":
 		return runAuthFlowStatus(args[1:], cfg, store, stdout)
 	case "continue":
@@ -55,60 +69,16 @@ func runAuthFlow(args []string, cfg *config.Config, store *config.Store, stdout 
 }
 
 func runAuthFlowBegin(args []string, cfg *config.Config, store *config.Store, stdout io.Writer) error {
-	flags := pflag.NewFlagSet("clawrise auth begin", pflag.ContinueOnError)
-	flags.SetOutput(stdout)
-
-	var mode string
-	var redirectURI string
-	var callbackHost string
-	var callbackPath string
-
-	flags.StringVar(&mode, "mode", "", "授权交互模式：local_browser/manual_url/manual_code")
-	flags.StringVar(&redirectURI, "redirect-uri", "", "显式指定 OAuth redirect_uri")
-	flags.StringVar(&callbackHost, "callback-host", "127.0.0.1", "loopback 模式使用的本地回调主机")
-	flags.StringVar(&callbackPath, "callback-path", "/callback", "loopback 模式使用的本地回调路径")
-
-	if err := flags.Parse(args); err != nil {
+	options, positionals, err := parseAuthFlowStartOptions(args, stdout, "clawrise auth begin", "usage: clawrise auth begin [connection] [--mode <name>] [--redirect-uri <uri>]")
+	if err != nil {
 		if err == pflag.ErrHelp {
 			return nil
 		}
 		return err
 	}
-	if len(flags.Args()) > 1 {
-		return fmt.Errorf("usage: clawrise auth begin [connection] [--mode <name>] [--redirect-uri <uri>]")
-	}
 
-	connectionName, connection, ok, err := resolveAuthConnection(cfg, flags.Args())
+	connectionName, connection, methodSpec, flow, err := prepareAuthFlowStart(positionals, options, cfg, store, stdout)
 	if err != nil {
-		return writeCLIError(stdout, "CONNECTION_REQUIRED", err.Error())
-	}
-	if !ok {
-		return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
-	}
-
-	methodSpec, ok := authflow.LookupMethodSpec(connection.Method)
-	if !ok {
-		return writeCLIError(stdout, "AUTH_METHOD_NOT_SUPPORTED", fmt.Sprintf("auth method %s is not supported", connection.Method))
-	}
-	if !methodSpec.Interactive || !methodSpec.SupportsCodeFlow {
-		return writeCLIError(stdout, "AUTH_METHOD_NOT_INTERACTIVE", fmt.Sprintf("auth method %s does not support interactive authorization flows", connection.Method))
-	}
-
-	mode = strings.TrimSpace(mode)
-	if mode == "" {
-		mode = methodSpec.DefaultMode
-	}
-	if !stringSliceContains(methodSpec.Modes, mode) {
-		return writeCLIError(stdout, "AUTH_MODE_NOT_SUPPORTED", fmt.Sprintf("mode %s is not supported for auth method %s", mode, connection.Method))
-	}
-
-	flow, appErr := buildAuthorizationFlow(connectionName, connection, mode, redirectURI, callbackHost, callbackPath)
-	if appErr != nil {
-		return writeCLIError(stdout, appErr.Code, appErr.Message)
-	}
-
-	flowStore := authflow.NewFileStore(store.Path())
-	if err := flowStore.Save(flow); err != nil {
 		return err
 	}
 
@@ -118,6 +88,73 @@ func runAuthFlowBegin(args []string, cfg *config.Config, store *config.Store, st
 			"flow":    buildAuthFlowView(flow),
 			"actions": authflow.BuildActions(flow),
 			"method":  methodSpec,
+			"connection": map[string]any{
+				"name":     connectionName,
+				"platform": connection.Platform,
+				"subject":  connection.Subject,
+				"method":   connection.Method,
+			},
+		},
+	})
+}
+
+func runAuthFlowConnect(args []string, cfg *config.Config, store *config.Store, stdout io.Writer) error {
+	flags := pflag.NewFlagSet("clawrise auth connect", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	options := authFlowStartOptions{}
+	var openBrowser bool
+	flags.StringVar(&options.mode, "mode", "", "授权交互模式：local_browser/manual_url/manual_code")
+	flags.StringVar(&options.redirectURI, "redirect-uri", "", "显式指定 OAuth redirect_uri")
+	flags.StringVar(&options.callbackHost, "callback-host", "127.0.0.1", "loopback 模式使用的本地回调主机")
+	flags.StringVar(&options.callbackPath, "callback-path", "/callback", "loopback 模式使用的本地回调路径")
+	flags.BoolVar(&openBrowser, "open-browser", true, "创建 flow 后自动尝试打开授权链接")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+
+	if len(flags.Args()) > 1 {
+		return fmt.Errorf("usage: clawrise auth connect [connection] [--mode <name>] [--redirect-uri <uri>] [--open-browser=true|false]")
+	}
+	options.mode = strings.TrimSpace(options.mode)
+	options.redirectURI = strings.TrimSpace(options.redirectURI)
+	options.callbackHost = strings.TrimSpace(options.callbackHost)
+	options.callbackPath = strings.TrimSpace(options.callbackPath)
+
+	connectionName, connection, methodSpec, flow, err := prepareAuthFlowStart(flags.Args(), options, cfg, store, stdout)
+	if err != nil {
+		return err
+	}
+
+	openResult := map[string]any{
+		"attempted": openBrowser,
+		"opened":    false,
+	}
+	if openBrowser {
+		if openErr := openAuthURL(flow.AuthorizationURL); openErr != nil {
+			openResult["error"] = openErr.Error()
+		} else {
+			openResult["opened"] = true
+		}
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"flow":    buildAuthFlowView(flow),
+			"actions": authflow.BuildActions(flow),
+			"method":  methodSpec,
+			"browser": openResult,
+			"connection": map[string]any{
+				"name":     connectionName,
+				"platform": connection.Platform,
+				"subject":  connection.Subject,
+				"method":   connection.Method,
+			},
 		},
 	})
 }
@@ -247,6 +284,66 @@ func resolveAuthConnection(cfg *config.Config, args []string) (string, config.Pr
 		return name, config.Profile{}, false, nil
 	}
 	return name, connection, true, nil
+}
+
+func prepareAuthFlowStart(positionals []string, options authFlowStartOptions, cfg *config.Config, store *config.Store, stdout io.Writer) (string, config.Connection, authflow.MethodSpec, authflow.Flow, error) {
+	connectionName, connection, ok, resolveErr := resolveAuthConnection(cfg, positionals)
+	if resolveErr != nil {
+		return "", config.Connection{}, authflow.MethodSpec{}, authflow.Flow{}, writeCLIError(stdout, "CONNECTION_REQUIRED", resolveErr.Error())
+	}
+	if !ok {
+		return "", config.Connection{}, authflow.MethodSpec{}, authflow.Flow{}, writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
+	}
+
+	methodSpec, ok := authflow.LookupMethodSpec(connection.Method)
+	if !ok {
+		return "", config.Connection{}, authflow.MethodSpec{}, authflow.Flow{}, writeCLIError(stdout, "AUTH_METHOD_NOT_SUPPORTED", fmt.Sprintf("auth method %s is not supported", connection.Method))
+	}
+	if !methodSpec.Interactive || !methodSpec.SupportsCodeFlow {
+		return "", config.Connection{}, authflow.MethodSpec{}, authflow.Flow{}, writeCLIError(stdout, "AUTH_METHOD_NOT_INTERACTIVE", fmt.Sprintf("auth method %s does not support interactive authorization flows", connection.Method))
+	}
+
+	if options.mode == "" {
+		options.mode = methodSpec.DefaultMode
+	}
+	if !stringSliceContains(methodSpec.Modes, options.mode) {
+		return "", config.Connection{}, authflow.MethodSpec{}, authflow.Flow{}, writeCLIError(stdout, "AUTH_MODE_NOT_SUPPORTED", fmt.Sprintf("mode %s is not supported for auth method %s", options.mode, connection.Method))
+	}
+
+	flow, appErr := buildAuthorizationFlow(connectionName, connection, options.mode, options.redirectURI, options.callbackHost, options.callbackPath)
+	if appErr != nil {
+		return "", config.Connection{}, authflow.MethodSpec{}, authflow.Flow{}, writeCLIError(stdout, appErr.Code, appErr.Message)
+	}
+
+	flowStore := authflow.NewFileStore(store.Path())
+	if err := flowStore.Save(flow); err != nil {
+		return "", config.Connection{}, authflow.MethodSpec{}, authflow.Flow{}, err
+	}
+
+	return connectionName, connection, methodSpec, flow, nil
+}
+
+func parseAuthFlowStartOptions(args []string, stdout io.Writer, flagSetName string, usage string) (authFlowStartOptions, []string, error) {
+	flags := pflag.NewFlagSet(flagSetName, pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	options := authFlowStartOptions{}
+	flags.StringVar(&options.mode, "mode", "", "授权交互模式：local_browser/manual_url/manual_code")
+	flags.StringVar(&options.redirectURI, "redirect-uri", "", "显式指定 OAuth redirect_uri")
+	flags.StringVar(&options.callbackHost, "callback-host", "127.0.0.1", "loopback 模式使用的本地回调主机")
+	flags.StringVar(&options.callbackPath, "callback-path", "/callback", "loopback 模式使用的本地回调路径")
+
+	if err := flags.Parse(args); err != nil {
+		return authFlowStartOptions{}, nil, err
+	}
+	if len(flags.Args()) > 1 {
+		return authFlowStartOptions{}, nil, fmt.Errorf(usage)
+	}
+	options.mode = strings.TrimSpace(options.mode)
+	options.redirectURI = strings.TrimSpace(options.redirectURI)
+	options.callbackHost = strings.TrimSpace(options.callbackHost)
+	options.callbackPath = strings.TrimSpace(options.callbackPath)
+	return options, flags.Args(), nil
 }
 
 func buildAuthorizationFlow(connectionName string, connection config.Connection, mode string, redirectURI string, callbackHost string, callbackPath string) (authflow.Flow, *apperr.AppError) {
@@ -451,6 +548,31 @@ func openCLISecretStore(cfg *config.Config, store *config.Store) (secretstore.St
 	})
 }
 
+func openURLInBrowser(rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return fmt.Errorf("authorization url is empty")
+	}
+
+	var command *exec.Cmd
+	switch goRuntime.GOOS {
+	case "darwin":
+		command = exec.Command("open", rawURL)
+	case "windows":
+		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
+	default:
+		command = exec.Command("xdg-open", rawURL)
+	}
+	if output, err := command.CombinedOutput(); err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("failed to open authorization url: %s", message)
+	}
+	return nil
+}
+
 func reserveLoopbackPort(host string) (int, error) {
 	listener, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
 	if err != nil {
@@ -477,8 +599,9 @@ func randomToken(byteLength int) string {
 }
 
 func printAuthFlowHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [begin|status|continue]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [begin|connect|status|continue]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth begin [connection] [--mode <name>] [--redirect-uri <uri>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth connect [connection] [--mode <name>] [--redirect-uri <uri>] [--open-browser=true|false]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth status <flow_id>")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth continue <flow_id> [--callback-url <url> | --code <text>]")
 }

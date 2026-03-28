@@ -520,7 +520,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise platform [use|current|unset]")
 	_, _ = fmt.Fprintln(w, "  clawrise connection [use|current|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
-	_, _ = fmt.Fprintln(w, "  clawrise auth [list|inspect|check|session]")
+	_, _ = fmt.Fprintln(w, "  clawrise auth [list|inspect|check|begin|connect|status|continue|session|secret]")
 	_, _ = fmt.Fprintln(w, "  clawrise config init")
 	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")

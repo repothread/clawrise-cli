@@ -43,7 +43,7 @@ func TestRunRootHelpFlag(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise spec [list|get|status|export]")) {
 		t.Fatalf("expected spec usage in root help, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|inspect|check|session]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|inspect|check|begin|connect|status|continue|session|secret]")) {
 		t.Fatalf("expected auth usage in root help, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
@@ -701,6 +701,50 @@ func TestRunAuthBeginNotionPublic(t *testing.T) {
 	}
 	if !strings.HasPrefix(authURL, "https://api.notion.com/v1/oauth/authorize") {
 		t.Fatalf("unexpected notion authorize url: %s", authURL)
+	}
+}
+
+func TestRunAuthConnectOpensAuthorizationURL(t *testing.T) {
+	copyExampleConfig(t)
+
+	previousOpenAuthURL := openAuthURL
+	t.Cleanup(func() {
+		openAuthURL = previousOpenAuthURL
+	})
+
+	openedURL := ""
+	openAuthURL = func(rawURL string) error {
+		openedURL = rawURL
+		return nil
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{
+		"auth", "connect", "notion_public_workspace_a",
+		"--mode", "manual_code",
+		"--redirect-uri", "https://example.com/callback",
+	}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if openedURL == "" {
+		t.Fatalf("expected auth connect to open authorization url, stdout=%s", stdout.String())
+	}
+	if !strings.HasPrefix(openedURL, "https://api.notion.com/v1/oauth/authorize") {
+		t.Fatalf("unexpected opened url: %s", openedURL)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"opened": true`)) {
+		t.Fatalf("expected browser opened result, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
 }
 
