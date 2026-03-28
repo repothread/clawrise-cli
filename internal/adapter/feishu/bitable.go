@@ -19,7 +19,7 @@ func (c *Client) ListBitableTables(ctx context.Context, profile config.Profile, 
 	}
 	appToken = strings.TrimSpace(appToken)
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -72,7 +72,7 @@ func (c *Client) ListBitableFields(ctx context.Context, profile config.Profile, 
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -126,7 +126,7 @@ func (c *Client) ListBitableRecords(ctx context.Context, profile config.Profile,
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -188,7 +188,7 @@ func (c *Client) GetBitableRecord(ctx context.Context, profile config.Profile, i
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -228,7 +228,7 @@ func (c *Client) CreateBitableRecord(ctx context.Context, profile config.Profile
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -276,7 +276,7 @@ func (c *Client) UpdateBitableRecord(ctx context.Context, profile config.Profile
 		return nil, apperr.New("INVALID_INPUT", "fields is required")
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -320,7 +320,7 @@ func (c *Client) DeleteBitableRecord(ctx context.Context, profile config.Profile
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -361,7 +361,7 @@ func (c *Client) BatchCreateBitableRecords(ctx context.Context, profile config.P
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -401,7 +401,7 @@ func (c *Client) BatchUpdateBitableRecords(ctx context.Context, profile config.P
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -441,7 +441,7 @@ func (c *Client) BatchDeleteBitableRecords(ctx context.Context, profile config.P
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}

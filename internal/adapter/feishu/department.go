@@ -13,7 +13,7 @@ import (
 
 // ListDepartments 列出指定部门下的子部门，未传 department_id 时默认从根部门开始。
 func (c *Client) ListDepartments(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -39,11 +39,12 @@ func (c *Client) ListDepartments(ctx context.Context, profile config.Profile, in
 	if pageToken, ok := asString(input["page_token"]); ok && strings.TrimSpace(pageToken) != "" {
 		query.Set("page_token", strings.TrimSpace(pageToken))
 	}
+	query.Set("parent_department_id", departmentID)
 
 	responseBody, appErr := c.doJSONRequest(
 		ctx,
 		http.MethodGet,
-		"/open-apis/contact/v3/departments/"+url.PathEscape(departmentID)+"/children",
+		"/open-apis/contact/v3/departments",
 		query,
 		nil,
 		"Bearer "+accessToken,
@@ -88,7 +89,7 @@ func (c *Client) ListDepartmentUsers(ctx context.Context, profile config.Profile
 	}
 	departmentID = strings.TrimSpace(departmentID)
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -111,7 +112,7 @@ func (c *Client) ListDepartmentUsers(ctx context.Context, profile config.Profile
 	responseBody, appErr := c.doJSONRequest(
 		ctx,
 		http.MethodGet,
-		"/open-apis/contact/v3/users/find_by_department",
+		"/open-apis/contact/v3/users",
 		query,
 		nil,
 		"Bearer "+accessToken,

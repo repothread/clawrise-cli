@@ -15,7 +15,7 @@ import (
 
 // ListCalendars lists calendars visible to the current identity.
 func (c *Client) ListCalendars(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -76,7 +76,7 @@ func (c *Client) ListCalendarEvents(ctx context.Context, profile config.Profile,
 		return nil, apperr.New("INVALID_INPUT", "calendar_id is required")
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -148,7 +148,7 @@ func (c *Client) GetCalendarEvent(ctx context.Context, profile config.Profile, i
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -189,7 +189,7 @@ func (c *Client) UpdateCalendarEvent(ctx context.Context, profile config.Profile
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -227,7 +227,7 @@ func (c *Client) DeleteCalendarEvent(ctx context.Context, profile config.Profile
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}

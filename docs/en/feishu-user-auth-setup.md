@@ -223,21 +223,105 @@ Then reload:
 source ~/.zshrc
 ```
 
-## 9. Current Code Status
+## 9. Current `user` Support Scope
+
+Starting from the current version, the repository does not enable `subject=user` merely because an implementation path happens to be reusable.
+
+The current rule is:
+
+- Clawrise enables `subject=user` only when first-party Feishu material explicitly shows that the endpoint supports `user_access_token`
+- if the current verified materials do not show user-token support, the operation stays closed to `user` even if the local implementation could technically share code
+
+The current verification source is the generated Feishu official Go SDK `github.com/larksuite/oapi-sdk-go` at version `v1.1.48`.  
+Those generated files explicitly declare allowed token types per endpoint, for example:
+
+- `request.AccessTokenTypeUser`
+- `request.AccessTokenTypeTenant`
+
+### 9.1 Operations That Currently Allow `subject=user`
+
+Calendar:
+
+- `feishu.calendar.calendar.list`
+- `feishu.calendar.event.create`
+- `feishu.calendar.event.list`
+- `feishu.calendar.event.get`
+- `feishu.calendar.event.update`
+- `feishu.calendar.event.delete`
+
+Docx:
+
+- `feishu.docs.document.create`
+- `feishu.docs.document.get`
+- `feishu.docs.document.list_blocks`
+- `feishu.docs.document.append_blocks`
+- `feishu.docs.document.edit`
+- `feishu.docs.document.get_raw_content`
+- `feishu.docs.document.share`
+- `feishu.docs.block.get`
+- `feishu.docs.block.list_children`
+- `feishu.docs.block.update`
+- `feishu.docs.block.batch_delete`
+
+Contact:
+
+- `feishu.contact.user.get`
+- `feishu.contact.user.search`
+- `feishu.contact.department.list`
+- `feishu.department.user.list`
+
+Implementation note:
+
+- `feishu.contact.department.list` now uses `GET /open-apis/contact/v3/departments`
+- `feishu.department.user.list` now uses `GET /open-apis/contact/v3/users` with `department_id`
+- older local-only path choices were removed in favor of endpoints that are explicitly present in the verified official SDK surface
+
+Bitable:
+
+- `feishu.bitable.table.list`
+- `feishu.bitable.field.list`
+- `feishu.bitable.record.list`
+- `feishu.bitable.record.get`
+- `feishu.bitable.record.create`
+- `feishu.bitable.record.batch_create`
+- `feishu.bitable.record.update`
+- `feishu.bitable.record.batch_update`
+- `feishu.bitable.record.delete`
+- `feishu.bitable.record.batch_delete`
+
+### 9.2 Operations That Remain `bot` Only
+
+The following operations remain `bot` only in the current version:
+
+- `feishu.wiki.space.list`
+- `feishu.wiki.node.list`
+- `feishu.wiki.node.create`
+- `feishu.docs.block.get_descendants`
+
+Why they stay `bot` only:
+
+- for the `wiki` endpoints, the current verification pass did not find a directly usable first-party declaration proving `user_access_token` support
+- `feishu.docs.block.get_descendants` currently depends on the local `with_descendants=true` path, but that parameter is not declared in the verified SDK surface for the current check, so it remains closed to `user`
+
+### 9.3 Verification Links
+
+The current repository uses the following first-party links as the verification basis:
+
+- Calendar: <https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/calendar/v4/api.go>
+- Docx: <https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/docx/v1/api.go>
+- Bitable: <https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/bitable/v1/api.go>
+- Contact: <https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/contact/v3/api.go>
+- Drive permissions: <https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/drive/v1/api.go>
+
+## 10. Current Code Status
 
 In the current repository:
 
-- the `oauth_user` profile shape already exists in the config model
-- the naming and design strategy are already documented
-
-Current runtime status:
-
-- `oauth_user` is wired into the runtime for selected Feishu document operations
-- `feishu.docs.document.create` can run under `subject=user`
-- document editing flows can also use user identity where the operation allows it
-- not every Feishu operation supports `subject=user`; operation-level subject constraints still apply
+- `oauth_user` is fully wired into the runtime
+- the enabled `subject=user` surface now matches the verified operation set above
+- runtime subject checks remain operation-specific and the runtime does not silently downgrade `user` to `bot`
 
 That means:
 
-- you can prepare the user credentials now and use them with real execution
-- you should still verify per-operation subject support through `spec get` or the operation docs
+- you can prepare user credentials now and use them with the verified operations above
+- if an operation is still `bot` only, the intended interpretation is "user-token support has not been verified yet", not "the local implementation forgot to enable it"

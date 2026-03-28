@@ -31,7 +31,7 @@ func (c *Client) GetUser(ctx context.Context, profile config.Profile, input map[
 		return nil, apperr.New("INVALID_INPUT", "user_id is required")
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -88,7 +88,7 @@ func (c *Client) SearchUsers(ctx context.Context, profile config.Profile, input 
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}

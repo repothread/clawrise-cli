@@ -223,21 +223,105 @@ export FEISHU_ALICE_REFRESH_TOKEN=你的_refresh_token
 source ~/.zshrc
 ```
 
-## 9. 当前代码状态
+## 9. 当前 user 支持范围
+
+从当前版本开始，仓库不再因为“代码路径刚好可复用”就放开 `subject=user`。
+
+当前规则是：
+
+- 只有在飞书官方一手资料能明确证明接口支持 `user_access_token` 时，Clawrise 才允许 `subject=user`
+- 如果官方资料里暂时找不到 user token 支持声明，即使当前实现技术上可以共用，也不会放开
+
+当前核对依据为飞书官方 Go SDK `github.com/larksuite/oapi-sdk-go` 的生成代码，版本为 `v1.1.48`。  
+这些生成代码会在每个接口旁显式声明允许的 token 类型，例如：
+
+- `request.AccessTokenTypeUser`
+- `request.AccessTokenTypeTenant`
+
+### 9.1 当前允许 `subject=user` 的 operation
+
+日历：
+
+- `feishu.calendar.calendar.list`
+- `feishu.calendar.event.create`
+- `feishu.calendar.event.list`
+- `feishu.calendar.event.get`
+- `feishu.calendar.event.update`
+- `feishu.calendar.event.delete`
+
+新版文档 Docx：
+
+- `feishu.docs.document.create`
+- `feishu.docs.document.get`
+- `feishu.docs.document.list_blocks`
+- `feishu.docs.document.append_blocks`
+- `feishu.docs.document.edit`
+- `feishu.docs.document.get_raw_content`
+- `feishu.docs.document.share`
+- `feishu.docs.block.get`
+- `feishu.docs.block.list_children`
+- `feishu.docs.block.update`
+- `feishu.docs.block.batch_delete`
+
+通讯录：
+
+- `feishu.contact.user.get`
+- `feishu.contact.user.search`
+- `feishu.contact.department.list`
+- `feishu.department.user.list`
+
+补充说明：
+
+- `feishu.contact.department.list` 当前实现使用 `GET /open-apis/contact/v3/departments`
+- `feishu.department.user.list` 当前实现使用 `GET /open-apis/contact/v3/users` 并带 `department_id`
+- 之所以不用旧实现中的其他路径，是因为当前版本只保留已在官方 SDK 中明确暴露并标注 token 类型的接口
+
+多维表格：
+
+- `feishu.bitable.table.list`
+- `feishu.bitable.field.list`
+- `feishu.bitable.record.list`
+- `feishu.bitable.record.get`
+- `feishu.bitable.record.create`
+- `feishu.bitable.record.batch_create`
+- `feishu.bitable.record.update`
+- `feishu.bitable.record.batch_update`
+- `feishu.bitable.record.delete`
+- `feishu.bitable.record.batch_delete`
+
+### 9.2 当前仍保持 `bot` only 的 operation
+
+以下 operation 在当前版本中仍然只允许 `subject=bot`：
+
+- `feishu.wiki.space.list`
+- `feishu.wiki.node.list`
+- `feishu.wiki.node.create`
+- `feishu.docs.block.get_descendants`
+
+保留为 `bot` only 的原因：
+
+- `wiki` 相关接口暂未在当前核对范围内找到可直接证明支持 `user_access_token` 的官方一手声明
+- `feishu.docs.block.get_descendants` 在当前实现里依赖 `with_descendants=true` 这一扩展参数，但在当前核对版本的官方 SDK 中没有找到对应声明，因此暂不放开给 `user`
+
+### 9.3 官方核对链接
+
+以下链接是当前版本实际采用的官方核对依据：
+
+- 日历：<https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/calendar/v4/api.go>
+- Docx：<https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/docx/v1/api.go>
+- 多维表格：<https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/bitable/v1/api.go>
+- 通讯录：<https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/contact/v3/api.go>
+- 文档权限：<https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/drive/v1/api.go>
+
+## 10. 当前代码状态
 
 当前仓库中：
 
-- `oauth_user` 这种 profile 结构已经在配置模型中预留
-- 相关文档与命名策略已经确定
-
-当前运行时状态：
-
-- `oauth_user` 已经接入运行时，用于部分飞书文档操作
-- `feishu.docs.document.create` 可以在 `subject=user` 下真实执行
-- 文档编辑链路也可以在 operation 允许时使用用户身份
-- 不是所有 Feishu operation 都支持 `subject=user`，仍需以 operation 级主体约束为准
+- `oauth_user` 这种 profile 结构已经接入运行时
+- `subject=user` 的放开范围已经与上面的已核实 operation 对齐
+- 调用时仍需以 operation 级主体约束为准，运行时不会自动把 `user` 降级为 `bot`
 
 这意味着：
 
-- 你现在可以准备好用户授权凭证并直接用于真实调用
-- 但仍应通过 `spec get` 或 operation 文档确认具体 operation 是否允许 `user`
+- 你现在可以准备好用户授权凭证并直接用于上述已核实 operation
+- 如果某个 operation 仍是 `bot` only，应优先视为“官方支持范围尚未被确认”，而不是本地策略遗漏

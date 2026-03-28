@@ -41,9 +41,12 @@ func TestFeishuP2OperationsSuccess(t *testing.T) {
 								"has_more":   false,
 							},
 						}), nil
-					case "/open-apis/contact/v3/departments/0/children":
+					case "/open-apis/contact/v3/departments":
 						if request.Method != http.MethodGet {
 							t.Fatalf("unexpected department method: %s", request.Method)
+						}
+						if request.URL.Query().Get("parent_department_id") != "0" {
+							t.Fatalf("unexpected parent_department_id: %s", request.URL.Query().Get("parent_department_id"))
 						}
 						return jsonResponse(t, http.StatusOK, map[string]any{
 							"code": 0,
@@ -58,7 +61,7 @@ func TestFeishuP2OperationsSuccess(t *testing.T) {
 								"has_more": false,
 							},
 						}), nil
-					case "/open-apis/contact/v3/users/find_by_department":
+					case "/open-apis/contact/v3/users":
 						if request.Method != http.MethodGet {
 							t.Fatalf("unexpected department users method: %s", request.Method)
 						}

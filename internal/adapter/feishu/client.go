@@ -69,14 +69,14 @@ func NewClient(options Options) (*Client, error) {
 	}, nil
 }
 
-// CreateCalendarEvent creates a Feishu calendar event using tenant_access_token.
+// CreateCalendarEvent creates a Feishu calendar event using the selected Feishu identity.
 func (c *Client) CreateCalendarEvent(ctx context.Context, profile config.Profile, input map[string]any, idempotencyKey string) (map[string]any, *apperr.AppError) {
 	request, appErr := buildCreateCalendarEventRequest(input)
 	if appErr != nil {
 		return nil, appErr
 	}
 
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}

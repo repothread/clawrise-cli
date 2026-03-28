@@ -15,7 +15,7 @@ import (
 
 // GetDocument fetches basic document metadata.
 func (c *Client) GetDocument(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -62,7 +62,7 @@ func (c *Client) GetDocument(ctx context.Context, profile config.Profile, input 
 
 // ListDocumentBlocks returns document blocks with pagination support.
 func (c *Client) ListDocumentBlocks(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -119,7 +119,7 @@ func (c *Client) ListDocumentBlocks(ctx context.Context, profile config.Profile,
 
 // GetDocumentBlock fetches the structured content of a single block.
 func (c *Client) GetDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -167,7 +167,7 @@ func (c *Client) GetDocumentBlock(ctx context.Context, profile config.Profile, i
 
 // GetDocumentBlockChildren returns child blocks under the given block with pagination support.
 func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -400,7 +400,7 @@ func (c *Client) AppendDocumentBlocks(ctx context.Context, profile config.Profil
 
 // GetDocumentRawContent fetches pure text content from a docx document.
 func (c *Client) GetDocumentRawContent(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
