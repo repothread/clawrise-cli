@@ -216,6 +216,73 @@ func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile,
 	return &session, nil
 }
 
+func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
+	if err != nil {
+		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
+	}
+	clientSecret, err := config.ResolveSecret(profile.Grant.ClientSecret)
+	if err != nil {
+		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, apperr.New("INVALID_INPUT", "authorization code is empty")
+	}
+
+	body := map[string]any{
+		"grant_type": "authorization_code",
+		"code":       code,
+	}
+	if strings.TrimSpace(redirectURI) != "" {
+		body["redirect_uri"] = strings.TrimSpace(redirectURI)
+	}
+
+	credentials := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + clientSecret))
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/oauth/token",
+		nil,
+		body,
+		"Basic "+credentials,
+		"",
+		map[string]string{
+			"Content-Type": "application/json; charset=utf-8",
+		},
+	)
+	if appErr != nil {
+		if appErr.Code == "AUTH_FAILED" {
+			appErr.Code = "AUTH_EXCHANGE_FAILED"
+		}
+		return nil, appErr
+	}
+
+	var response notionOAuthTokenResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion auth code response: %v", err))
+	}
+	if strings.TrimSpace(response.AccessToken) == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "access_token is empty in Notion auth code response")
+	}
+
+	profileName := adapter.ProfileNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), profileName, profile, response.AccessToken, response.RefreshToken, response.TokenType, response.ExpiresIn)
+	if session.Metadata == nil {
+		session.Metadata = map[string]string{}
+	}
+	if strings.TrimSpace(response.WorkspaceID) != "" {
+		session.Metadata["workspace_id"] = strings.TrimSpace(response.WorkspaceID)
+	}
+	if strings.TrimSpace(response.WorkspaceName) != "" {
+		session.Metadata["workspace_name"] = strings.TrimSpace(response.WorkspaceName)
+	}
+	if strings.TrimSpace(response.BotID) != "" {
+		session.Metadata["bot_id"] = strings.TrimSpace(response.BotID)
+	}
+	return &session, nil
+}
+
 func resolveNotionVersion(profile config.Profile) string {
 	if strings.TrimSpace(profile.Grant.NotionVer) != "" {
 		return strings.TrimSpace(profile.Grant.NotionVer)
@@ -368,10 +435,13 @@ type notionErrorResponse struct {
 }
 
 type notionOAuthTokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
+	AccessToken   string `json:"access_token"`
+	TokenType     string `json:"token_type"`
+	RefreshToken  string `json:"refresh_token"`
+	ExpiresIn     int    `json:"expires_in"`
+	WorkspaceID   string `json:"workspace_id"`
+	WorkspaceName string `json:"workspace_name"`
+	BotID         string `json:"bot_id"`
 }
 
 type notionPage struct {

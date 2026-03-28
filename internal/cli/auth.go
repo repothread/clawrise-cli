@@ -23,6 +23,8 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 	}
 
 	switch args[0] {
+	case "begin", "status", "continue":
+		return runAuthFlow(args, cfg, store, stdout)
 	case "list":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: clawrise auth list")
@@ -30,7 +32,7 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 		return output.WriteJSON(stdout, map[string]any{
 			"ok": true,
 			"data": map[string]any{
-				"profiles": config.SortedProfileInspections(cfg),
+				"connections": config.SortedProfileInspections(cfg),
 			},
 		})
 	case "inspect":
@@ -149,7 +151,10 @@ func writeCLIError(stdout io.Writer, code string, message string) error {
 }
 
 func printAuthHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|inspect|check|session|secret]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|inspect|check|begin|status|continue|session|secret]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth begin [connection] [--mode <name>] [--redirect-uri <uri>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth status <flow_id>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth continue <flow_id> [--callback-url <url> | --code <text>]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth session [inspect|clear|refresh] [connection]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth secret [set|delete] <connection> <field>")
 }

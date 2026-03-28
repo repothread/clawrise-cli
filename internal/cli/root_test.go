@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -684,6 +686,127 @@ func TestRunAuthSessionRefresh(t *testing.T) {
 	}
 }
 
+func TestRunAuthBeginNotionPublic(t *testing.T) {
+	copyExampleConfig(t)
+
+	result := runAuthBeginForTest(t, []string{
+		"auth", "begin", "notion_public_workspace_a",
+		"--mode", "manual_code",
+		"--redirect-uri", "https://example.com/callback",
+	})
+
+	authURL := nestedString(result, "data", "flow", "authorization_url")
+	if authURL == "" {
+		t.Fatalf("expected authorization_url in output, got: %+v", result)
+	}
+	if !strings.HasPrefix(authURL, "https://api.notion.com/v1/oauth/authorize") {
+		t.Fatalf("unexpected notion authorize url: %s", authURL)
+	}
+}
+
+func TestRunAuthContinueNotionPublicWithCallbackURL(t *testing.T) {
+	configPath := copyExampleConfig(t)
+	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
+
+	previousFactory := newNotionAuthFlowClient
+	t.Cleanup(func() {
+		newNotionAuthFlowClient = previousFactory
+	})
+
+	newNotionAuthFlowClient = func(sessionStore authcache.Store) (*notionadapter.Client, error) {
+		return notionadapter.NewClient(notionadapter.Options{
+			BaseURL: "https://api.notion.com",
+			HTTPClient: &http.Client{
+				Transport: &testRoundTripFunc{
+					handler: func(request *http.Request) (*http.Response, error) {
+						if request.URL.Path != "/v1/oauth/token" {
+							t.Fatalf("unexpected request path: %s", request.URL.Path)
+						}
+						var payload map[string]any
+						if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+							t.Fatalf("failed to decode auth code payload: %v", err)
+						}
+						if payload["grant_type"] != "authorization_code" {
+							t.Fatalf("unexpected grant_type: %+v", payload["grant_type"])
+						}
+						if payload["code"] != "demo-code" {
+							t.Fatalf("unexpected auth code: %+v", payload["code"])
+						}
+						return testJSONResponse(t, http.StatusOK, map[string]any{
+							"access_token":   "fresh-token",
+							"token_type":     "bearer",
+							"refresh_token":  "refresh-token-2",
+							"expires_in":     3600,
+							"workspace_id":   "workspace_demo",
+							"workspace_name": "Workspace Demo",
+							"bot_id":         "bot_demo",
+						}), nil
+					},
+				},
+			},
+			SessionStore: sessionStore,
+		})
+	}
+
+	beginResult := runAuthBeginForTest(t, []string{
+		"auth", "begin", "notion_public_workspace_a",
+		"--mode", "manual_code",
+		"--redirect-uri", "https://example.com/callback",
+	})
+
+	flowID := nestedString(beginResult, "data", "flow", "id")
+	authURL := nestedString(beginResult, "data", "flow", "authorization_url")
+	if flowID == "" || authURL == "" {
+		t.Fatalf("expected flow id and authorization_url, got: %+v", beginResult)
+	}
+
+	parsedURL, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("failed to parse authorization url: %v", err)
+	}
+	stateToken := parsedURL.Query().Get("state")
+	if stateToken == "" {
+		t.Fatalf("expected state token in authorization url: %s", authURL)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	callbackURL := "https://example.com/callback?code=demo-code&state=" + stateToken
+
+	err = Run([]string{"auth", "continue", flowID, "--callback-url", callbackURL}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"state": "completed"`)) {
+		t.Fatalf("expected completed flow output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"workspace_name": "Workspace Demo"`)) {
+		t.Fatalf("expected workspace metadata in output, got: %s", stdout.String())
+	}
+
+	sessionStore := authcache.NewFileStore(configPath)
+	session, err := sessionStore.Load("notion_public_workspace_a")
+	if err != nil {
+		t.Fatalf("failed to load exchanged session: %v", err)
+	}
+	if session.AccessToken != "fresh-token" {
+		t.Fatalf("unexpected access token: %s", session.AccessToken)
+	}
+	if session.RefreshToken != "refresh-token-2" {
+		t.Fatalf("unexpected refresh token in session: %s", session.RefreshToken)
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunDoctor(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
@@ -801,4 +924,39 @@ func runSecretSet(t *testing.T, connectionName string, fieldName string, value s
 	if err != nil {
 		t.Fatalf("failed to seed secret via CLI: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
+}
+
+func runAuthBeginForTest(t *testing.T, args []string) map[string]any {
+	t.Helper()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(args, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	result := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("failed to decode begin result: %v; output=%s", err, stdout.String())
+	}
+	return result
+}
+
+func nestedString(data map[string]any, keys ...string) string {
+	current := any(data)
+	for _, key := range keys {
+		record, ok := current.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current = record[key]
+	}
+	text, _ := current.(string)
+	return text
 }

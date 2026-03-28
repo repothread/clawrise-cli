@@ -134,6 +134,83 @@ func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Prof
 	return &session, nil
 }
 
+func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
+	if err != nil {
+		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_id: %v", err))
+	}
+	clientSecret, err := config.ResolveSecret(profile.Grant.ClientSecret)
+	if err != nil {
+		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_secret: %v", err))
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, apperr.New("INVALID_INPUT", "authorization code is empty")
+	}
+
+	body := map[string]any{
+		"grant_type":    "authorization_code",
+		"client_id":     clientID,
+		"client_secret": clientSecret,
+		"code":          code,
+	}
+	if strings.TrimSpace(redirectURI) != "" {
+		body["redirect_uri"] = strings.TrimSpace(redirectURI)
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPost,
+		"/open-apis/authen/v2/oauth/token",
+		nil,
+		body,
+		"",
+		map[string]string{
+			"Content-Type": "application/json; charset=utf-8",
+		},
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Feishu auth code response: %v", err))
+	}
+
+	if codeValue, ok := asInt(response["code"]); ok && codeValue != 0 {
+		message, _ := asString(response["msg"])
+		return nil, normalizeFeishuError(codeValue, message, 0)
+	}
+
+	payload := response
+	if data, ok := asMap(response["data"]); ok {
+		payload = data
+	}
+
+	accessToken := extractFirstNonEmptyString(payload, "access_token")
+	if accessToken == "" {
+		accessToken = extractFirstNonEmptyString(response, "access_token")
+	}
+	if accessToken == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "access_token is empty in Feishu auth code response")
+	}
+
+	refreshToken := extractFirstNonEmptyString(payload, "refresh_token")
+	if refreshToken == "" {
+		refreshToken = extractFirstNonEmptyString(response, "refresh_token")
+	}
+
+	tokenType := extractFirstNonEmptyString(payload, "token_type")
+	if tokenType == "" {
+		tokenType = extractFirstNonEmptyString(response, "token_type")
+	}
+
+	profileName := adapter.ProfileNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), profileName, profile, accessToken, refreshToken, tokenType, extractFeishuExpiresInSeconds(response, payload))
+	return &session, nil
+}
+
 func resolveFeishuRefreshToken(profile config.Profile, currentSession *authcache.Session) (string, error) {
 	if currentSession != nil && strings.TrimSpace(currentSession.RefreshToken) != "" {
 		return strings.TrimSpace(currentSession.RefreshToken), nil

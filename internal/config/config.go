@@ -242,7 +242,6 @@ func buildLegacyGrant(connectionName string, connection Connection) Grant {
 	case "feishu.oauth_user":
 		grant.ClientID = strings.TrimSpace(connection.Params.ClientID)
 		grant.ClientSecret = SecretRef(connectionName, "client_secret")
-		grant.AccessToken = SecretRef(connectionName, "access_token")
 		grant.RefreshToken = SecretRef(connectionName, "refresh_token")
 	case "notion.internal_token":
 		grant.Token = SecretRef(connectionName, "token")
@@ -250,7 +249,6 @@ func buildLegacyGrant(connectionName string, connection Connection) Grant {
 	case "notion.oauth_public":
 		grant.ClientID = strings.TrimSpace(connection.Params.ClientID)
 		grant.ClientSecret = SecretRef(connectionName, "client_secret")
-		grant.AccessToken = SecretRef(connectionName, "access_token")
 		grant.RefreshToken = SecretRef(connectionName, "refresh_token")
 		grant.NotionVer = strings.TrimSpace(connection.Params.NotionVersion)
 	default:

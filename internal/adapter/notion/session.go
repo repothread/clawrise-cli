@@ -120,3 +120,21 @@ func (c *Client) RefreshSession(ctx context.Context, profileName string, profile
 	c.saveCachedSession(ctx, profile, *session)
 	return session, nil
 }
+
+// ExchangeAuthorizationCode 使用授权码换取新的 OAuth session，并写回本地 cache。
+func (c *Client) ExchangeAuthorizationCode(ctx context.Context, profileName string, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+	if profile.Subject != "integration" {
+		return nil, apperr.New("SUBJECT_NOT_ALLOWED", "this Notion auth code exchange currently requires an integration profile")
+	}
+	if profile.Grant.Type != "oauth_refreshable" {
+		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion auth code exchange currently supports only oauth_refreshable, got %s", profile.Grant.Type))
+	}
+
+	ctx = adapter.WithProfileName(ctx, profileName)
+	session, appErr := c.exchangeAuthorizationCode(ctx, profile, code, redirectURI)
+	if appErr != nil {
+		return nil, appErr
+	}
+	c.saveCachedSession(ctx, profile, *session)
+	return session, nil
+}

@@ -26,7 +26,7 @@ var (
 	connectionCompletionCommands  = []string{"use", "current", "list"}
 	subjectCompletionCommands     = []string{"use", "current", "unset", "list"}
 	profileCompletionCommands     = connectionCompletionCommands
-	authCompletionCommands        = []string{"list", "inspect", "check", "session", "secret"}
+	authCompletionCommands        = []string{"list", "inspect", "check", "begin", "status", "continue", "session", "secret"}
 	authSessionCompletionCommands = []string{"inspect", "clear", "refresh"}
 	authSecretCompletionCommands  = []string{"set", "delete"}
 	configCompletionCommands      = []string{"init"}
