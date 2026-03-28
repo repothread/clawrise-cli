@@ -225,18 +225,24 @@ source ~/.zshrc
 
 ## 9. Current `user` Support Scope
 
-Starting from the current version, the repository does not enable `subject=user` merely because an implementation path happens to be reusable.
+In the current version, `oauth_user` is fully wired into the runtime.
 
-The current rule is:
+The enabled `subject=user` surface now comes from two buckets:
 
-- Clawrise enables `subject=user` only when first-party Feishu material explicitly shows that the endpoint supports `user_access_token`
-- if the current verified materials do not show user-token support, the operation stays closed to `user` even if the local implementation could technically share code
+- endpoints verified against first-party Feishu material
+- endpoints that have been explicitly switched to the shared `user_access_token` / `tenant_access_token` resolution path in the local runtime
 
-The current verification source is the generated Feishu official Go SDK `github.com/larksuite/oapi-sdk-go` at version `v1.1.48`.  
-Those generated files explicitly declare allowed token types per endpoint, for example:
+First-party verification still primarily references the generated Feishu official Go SDK `github.com/larksuite/oapi-sdk-go` at version `v1.1.48`.  
+Those generated files explicitly declare allowed token types for many endpoints, for example:
 
 - `request.AccessTokenTypeUser`
 - `request.AccessTokenTypeTenant`
+
+For endpoints that are already explicitly enabled in the local runtime, actual success still depends on:
+
+- whether the Feishu app has the required permissions
+- whether the user has completed authorization and obtained a usable `user_access_token`
+- whether the user can view and edit the target wiki space or node
 
 ### 9.1 Operations That Currently Allow `subject=user`
 
@@ -262,6 +268,12 @@ Docx:
 - `feishu.docs.block.list_children`
 - `feishu.docs.block.update`
 - `feishu.docs.block.batch_delete`
+
+Wiki:
+
+- `feishu.wiki.space.list`
+- `feishu.wiki.node.list`
+- `feishu.wiki.node.create`
 
 Contact:
 
@@ -293,19 +305,15 @@ Bitable:
 
 The following operations remain `bot` only in the current version:
 
-- `feishu.wiki.space.list`
-- `feishu.wiki.node.list`
-- `feishu.wiki.node.create`
 - `feishu.docs.block.get_descendants`
 
 Why they stay `bot` only:
 
-- for the `wiki` endpoints, the current verification pass did not find a directly usable first-party declaration proving `user_access_token` support
 - `feishu.docs.block.get_descendants` currently depends on the local `with_descendants=true` path, but that parameter is not declared in the verified SDK surface for the current check, so it remains closed to `user`
 
 ### 9.3 Verification Links
 
-The current repository uses the following first-party links as the verification basis:
+The current repository primarily uses the following first-party links as verification references:
 
 - Calendar: <https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/calendar/v4/api.go>
 - Docx: <https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/docx/v1/api.go>
@@ -318,10 +326,10 @@ The current repository uses the following first-party links as the verification 
 In the current repository:
 
 - `oauth_user` is fully wired into the runtime
-- the enabled `subject=user` surface now matches the verified operation set above
+- `wiki` operations are now explicitly enabled for `user` in the current implementation
 - runtime subject checks remain operation-specific and the runtime does not silently downgrade `user` to `bot`
 
 That means:
 
-- you can prepare user credentials now and use them with the verified operations above
-- if an operation is still `bot` only, the intended interpretation is "user-token support has not been verified yet", not "the local implementation forgot to enable it"
+- you can prepare user credentials now and use them with the enabled operations above
+- if an operation is still `bot` only, the intended interpretation is that the current implementation has not opened it safely yet

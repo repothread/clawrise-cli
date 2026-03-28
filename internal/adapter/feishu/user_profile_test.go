@@ -42,6 +42,9 @@ func TestRegisterOperationsAllowUserSubject(t *testing.T) {
 		"feishu.docs.document.edit":            true,
 		"feishu.docs.document.get_raw_content": true,
 		"feishu.docs.document.share":           true,
+		"feishu.wiki.space.list":               true,
+		"feishu.wiki.node.list":                true,
+		"feishu.wiki.node.create":              true,
 		"feishu.contact.user.get":              true,
 		"feishu.contact.user.search":           true,
 		"feishu.contact.department.list":       true,
@@ -247,6 +250,66 @@ func TestUserProfileCanCallFormerBotOnlyOperations(t *testing.T) {
 								"has_more": false,
 							},
 						}), nil
+					case "/open-apis/wiki/v2/spaces":
+						assertUserToken(request)
+						return jsonResponse(t, http.StatusOK, map[string]any{
+							"code": 0,
+							"data": map[string]any{
+								"items": []map[string]any{
+									{
+										"space_id":    "space_user_1",
+										"name":        "User Wiki Space",
+										"description": "Visible to user token",
+									},
+								},
+								"has_more": false,
+							},
+						}), nil
+					case "/open-apis/wiki/v2/spaces/space_user_1/nodes":
+						assertUserToken(request)
+						switch request.Method {
+						case http.MethodGet:
+							return jsonResponse(t, http.StatusOK, map[string]any{
+								"code": 0,
+								"data": map[string]any{
+									"items": []map[string]any{
+										{
+											"space_id":   "space_user_1",
+											"node_token": "wik_user_parent",
+											"obj_token":  "dox_user_existing",
+											"obj_type":   "docx",
+											"title":      "Existing User Wiki Doc",
+										},
+									},
+									"has_more": false,
+								},
+							}), nil
+						case http.MethodPost:
+							var payload map[string]any
+							if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+								t.Fatalf("failed to decode create wiki node payload: %v", err)
+							}
+							if payload["title"] != "User Wiki Doc" {
+								t.Fatalf("unexpected wiki node title: %+v", payload["title"])
+							}
+							return jsonResponse(t, http.StatusOK, map[string]any{
+								"code": 0,
+								"data": map[string]any{
+									"node": map[string]any{
+										"space_id":          "space_user_1",
+										"node_token":        "wik_user_new",
+										"obj_token":         "dox_user_new",
+										"obj_type":          "docx",
+										"parent_node_token": "wik_user_parent",
+										"node_type":         "origin",
+										"title":             "User Wiki Doc",
+									},
+								},
+							}), nil
+						default:
+							t.Fatalf("unexpected wiki method: %s", request.Method)
+							return nil, nil
+						}
 					default:
 						t.Fatalf("unexpected request path: %s", request.URL.Path)
 						return nil, nil
@@ -349,6 +412,36 @@ func TestUserProfileCanCallFormerBotOnlyOperations(t *testing.T) {
 	}
 	if len(departmentUsers["items"].([]map[string]any)) != 1 {
 		t.Fatalf("unexpected department users: %+v", departmentUsers["items"])
+	}
+
+	wikiSpaces, appErr := client.ListWikiSpaces(ctx, profile, map[string]any{})
+	if appErr != nil {
+		t.Fatalf("ListWikiSpaces returned error: %+v", appErr)
+	}
+	if len(wikiSpaces["items"].([]map[string]any)) != 1 {
+		t.Fatalf("unexpected wiki spaces: %+v", wikiSpaces["items"])
+	}
+
+	wikiNodes, appErr := client.ListWikiNodes(ctx, profile, map[string]any{
+		"space_id": "space_user_1",
+	})
+	if appErr != nil {
+		t.Fatalf("ListWikiNodes returned error: %+v", appErr)
+	}
+	if len(wikiNodes["items"].([]map[string]any)) != 1 {
+		t.Fatalf("unexpected wiki nodes: %+v", wikiNodes["items"])
+	}
+
+	createdWikiNode, appErr := client.CreateWikiNode(ctx, profile, map[string]any{
+		"space_id":          "space_user_1",
+		"parent_node_token": "wik_user_parent",
+		"title":             "User Wiki Doc",
+	})
+	if appErr != nil {
+		t.Fatalf("CreateWikiNode returned error: %+v", appErr)
+	}
+	if createdWikiNode["document_id"] != "dox_user_new" {
+		t.Fatalf("unexpected created wiki node: %+v", createdWikiNode)
 	}
 }
 

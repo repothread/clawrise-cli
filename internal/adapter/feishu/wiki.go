@@ -13,9 +13,9 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
-// ListWikiSpaces lists Feishu wiki spaces visible to the current bot.
+// ListWikiSpaces 列出当前执行身份可见的飞书知识库空间。
 func (c *Client) ListWikiSpaces(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -68,9 +68,9 @@ func (c *Client) ListWikiSpaces(ctx context.Context, profile config.Profile, inp
 	}, nil
 }
 
-// ListWikiNodes lists child wiki nodes under a given parent.
+// ListWikiNodes 列出指定知识库空间或父节点下的子节点。
 func (c *Client) ListWikiNodes(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -133,9 +133,9 @@ func (c *Client) ListWikiNodes(ctx context.Context, profile config.Profile, inpu
 	}, nil
 }
 
-// CreateWikiNode creates a docx node under the given wiki space/parent.
+// CreateWikiNode 在指定知识库空间或父节点下创建 docx 节点。
 func (c *Client) CreateWikiNode(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
-	accessToken, appErr := c.requireBotAccessToken(ctx, profile)
+	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
 	}

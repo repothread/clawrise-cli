@@ -225,18 +225,24 @@ source ~/.zshrc
 
 ## 9. 当前 user 支持范围
 
-从当前版本开始，仓库不再因为“代码路径刚好可复用”就放开 `subject=user`。
+当前版本里，`oauth_user` 已经完整接入运行时。
 
-当前规则是：
+运行时对 `subject=user` 的放开面分成两类：
 
-- 只有在飞书官方一手资料能明确证明接口支持 `user_access_token` 时，Clawrise 才允许 `subject=user`
-- 如果官方资料里暂时找不到 user token 支持声明，即使当前实现技术上可以共用，也不会放开
+- 已按官方一手资料核对并放开的接口
+- 已在本地实现中切到统一 `user_access_token` / `tenant_access_token` 解析路径并显式放开的接口
 
-当前核对依据为飞书官方 Go SDK `github.com/larksuite/oapi-sdk-go` 的生成代码，版本为 `v1.1.48`。  
-这些生成代码会在每个接口旁显式声明允许的 token 类型，例如：
+其中，官方核对仍优先参考飞书官方 Go SDK `github.com/larksuite/oapi-sdk-go` 的生成代码，版本为 `v1.1.48`。  
+这些生成代码会在不少接口旁显式声明允许的 token 类型，例如：
 
 - `request.AccessTokenTypeUser`
 - `request.AccessTokenTypeTenant`
+
+对于当前已经在本地实现中显式放开的接口，是否能真正成功调用，仍取决于：
+
+- 飞书应用是否申请了对应权限
+- 当前用户是否完成授权并拿到可用的 `user_access_token`
+- 当前用户是否对目标知识库空间或节点具备可见性与编辑权限
 
 ### 9.1 当前允许 `subject=user` 的 operation
 
@@ -262,6 +268,12 @@ source ~/.zshrc
 - `feishu.docs.block.list_children`
 - `feishu.docs.block.update`
 - `feishu.docs.block.batch_delete`
+
+知识库 Wiki：
+
+- `feishu.wiki.space.list`
+- `feishu.wiki.node.list`
+- `feishu.wiki.node.create`
 
 通讯录：
 
@@ -293,19 +305,15 @@ source ~/.zshrc
 
 以下 operation 在当前版本中仍然只允许 `subject=bot`：
 
-- `feishu.wiki.space.list`
-- `feishu.wiki.node.list`
-- `feishu.wiki.node.create`
 - `feishu.docs.block.get_descendants`
 
 保留为 `bot` only 的原因：
 
-- `wiki` 相关接口暂未在当前核对范围内找到可直接证明支持 `user_access_token` 的官方一手声明
 - `feishu.docs.block.get_descendants` 在当前实现里依赖 `with_descendants=true` 这一扩展参数，但在当前核对版本的官方 SDK 中没有找到对应声明，因此暂不放开给 `user`
 
 ### 9.3 官方核对链接
 
-以下链接是当前版本实际采用的官方核对依据：
+以下链接是当前版本优先采用的官方核对依据：
 
 - 日历：<https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/calendar/v4/api.go>
 - Docx：<https://github.com/larksuite/oapi-sdk-go/blob/v1.1.48/service/docx/v1/api.go>
@@ -318,10 +326,10 @@ source ~/.zshrc
 当前仓库中：
 
 - `oauth_user` 这种 profile 结构已经接入运行时
-- `subject=user` 的放开范围已经与上面的已核实 operation 对齐
+- `wiki` 相关 operation 已按当前实现放开给 `user`
 - 调用时仍需以 operation 级主体约束为准，运行时不会自动把 `user` 降级为 `bot`
 
 这意味着：
 
-- 你现在可以准备好用户授权凭证并直接用于上述已核实 operation
-- 如果某个 operation 仍是 `bot` only，应优先视为“官方支持范围尚未被确认”，而不是本地策略遗漏
+- 你现在可以准备好用户授权凭证并直接用于上述已放开 operation
+- 如果某个 operation 仍是 `bot only`，应优先视为当前实现还没有把它安全地放开

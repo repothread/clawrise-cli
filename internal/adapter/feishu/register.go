@@ -169,7 +169,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Platform:        "feishu",
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
-		AllowedSubjects: []string{"bot"},
+		AllowedSubjects: []string{"bot", "user"},
 		Spec:            wikiSpaceListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ListWikiSpaces(ctx, call.Profile, call.Input)
@@ -180,7 +180,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Platform:        "feishu",
 		Mutating:        false,
 		DefaultTimeout:  10 * time.Second,
-		AllowedSubjects: []string{"bot"},
+		AllowedSubjects: []string{"bot", "user"},
 		Spec:            wikiNodeListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ListWikiNodes(ctx, call.Profile, call.Input)
@@ -191,7 +191,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Platform:        "feishu",
 		Mutating:        true,
 		DefaultTimeout:  10 * time.Second,
-		AllowedSubjects: []string{"bot"},
+		AllowedSubjects: []string{"bot", "user"},
 		Spec:            wikiNodeCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.CreateWikiNode(ctx, call.Profile, call.Input)

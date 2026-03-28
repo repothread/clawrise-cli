@@ -53,7 +53,7 @@ Current subject rules:
 
 Additional note:
 
-- the current runtime also supports selected Feishu document operations under `subject=user`
+- the current runtime also supports selected Feishu document and wiki operations under `subject=user`
 - this document still describes the MVP baseline rather than every current runtime extension
 
 ## 3. MVP Scope
@@ -246,17 +246,18 @@ Recommended future extensions:
 
 Purpose:
 
-- list wiki spaces visible to the current bot
-- verify whether the bot has already been added to the target knowledge base
+- list wiki spaces visible to the current execution identity
+- verify whether the current execution identity has already been added to the target knowledge base
 
 Allowed subject:
 
 - `bot`
+- `user`
 
 Notes:
 
 - the official Feishu API does not return "My Library" in this list
-- an empty result can mean the bot has no wiki space access yet, not necessarily that the API failed
+- an empty result can mean the current execution identity has no wiki space access yet, not necessarily that the API failed
 
 ### feishu.wiki.node.list
 
@@ -278,6 +279,7 @@ Optional fields:
 Allowed subject:
 
 - `bot`
+- `user`
 
 ### feishu.wiki.node.create
 
@@ -299,6 +301,7 @@ Optional fields:
 Allowed subject:
 
 - `bot`
+- `user`
 
 Current implementation notes:
 
@@ -308,7 +311,7 @@ Current implementation notes:
 
 Precondition:
 
-- the bot must have container edit permission on the parent node
+- the current execution identity must have container edit permission on the parent node
 
 ### feishu.docs.document.edit
 
