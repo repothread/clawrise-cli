@@ -249,13 +249,13 @@ func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelop
 func resolveConnection(cfg *config.Config, platform string, explicitConnection string, explicitProfile string, explicitSubject string) (string, config.Profile, *apperr.AppError) {
 	cfg.Ensure()
 	desiredSubject := strings.TrimSpace(explicitSubject)
-	if desiredSubject == "" {
-		desiredSubject = strings.TrimSpace(cfg.Defaults.Subject)
-	}
 
 	selectedConnection := strings.TrimSpace(explicitConnection)
 	if selectedConnection == "" {
 		selectedConnection = strings.TrimSpace(explicitProfile)
+	}
+	if desiredSubject == "" && selectedConnection == "" {
+		desiredSubject = strings.TrimSpace(cfg.Defaults.Subject)
 	}
 
 	if selectedConnection != "" {

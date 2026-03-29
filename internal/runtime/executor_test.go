@@ -251,6 +251,56 @@ func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
 	}
 }
 
+func TestExecutorExplicitConnectionOverridesDefaultSubject(t *testing.T) {
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "feishu",
+			Subject:  "bot",
+			Connections: map[string]string{
+				"feishu": "feishu_bot_ops",
+			},
+		},
+		Profiles: map[string]config.Profile{
+			"feishu_bot_ops": {
+				Platform: "feishu",
+				Subject:  "bot",
+				Grant: config.Grant{
+					Type:  "client_credentials",
+					AppID: "app-id",
+				},
+			},
+			"feishu_user_alice": {
+				Platform: "feishu",
+				Subject:  "user",
+				Grant: config.Grant{
+					Type:     "oauth_user",
+					ClientID: "client-id",
+				},
+			},
+		},
+	})
+
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "docs.document.create",
+		ConnectionName: "feishu_user_alice",
+		DryRun:         true,
+		InputJSON:      `{}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected explicit connection to override default subject, got: %+v", envelope.Error)
+	}
+	if envelope.Context == nil {
+		t.Fatal("expected execution context to be present")
+	}
+	if envelope.Context.Profile != "feishu_user_alice" || envelope.Context.Subject != "user" {
+		t.Fatalf("unexpected context: %+v", envelope.Context)
+	}
+}
+
 func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 
