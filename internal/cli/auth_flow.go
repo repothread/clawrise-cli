@@ -106,7 +106,7 @@ func runAuthFlowConnect(args []string, cfg *config.Config, store *config.Store, 
 	var openBrowser bool
 	flags.StringVar(&options.mode, "mode", "", "授权交互模式：local_browser/manual_url/manual_code")
 	flags.StringVar(&options.redirectURI, "redirect-uri", "", "显式指定 OAuth redirect_uri")
-	flags.StringVar(&options.callbackHost, "callback-host", "127.0.0.1", "loopback 模式使用的本地回调主机")
+	flags.StringVar(&options.callbackHost, "callback-host", "", "loopback 模式使用的本地回调主机")
 	flags.StringVar(&options.callbackPath, "callback-path", "/callback", "loopback 模式使用的本地回调路径")
 	flags.BoolVar(&openBrowser, "open-browser", true, "创建 flow 后自动尝试打开授权链接")
 
@@ -330,7 +330,7 @@ func parseAuthFlowStartOptions(args []string, stdout io.Writer, flagSetName stri
 	options := authFlowStartOptions{}
 	flags.StringVar(&options.mode, "mode", "", "授权交互模式：local_browser/manual_url/manual_code")
 	flags.StringVar(&options.redirectURI, "redirect-uri", "", "显式指定 OAuth redirect_uri")
-	flags.StringVar(&options.callbackHost, "callback-host", "127.0.0.1", "loopback 模式使用的本地回调主机")
+	flags.StringVar(&options.callbackHost, "callback-host", "", "loopback 模式使用的本地回调主机")
 	flags.StringVar(&options.callbackPath, "callback-path", "/callback", "loopback 模式使用的本地回调路径")
 
 	if err := flags.Parse(args); err != nil {
@@ -367,22 +367,31 @@ func buildAuthorizationFlow(connectionName string, connection config.Connection,
 		Metadata:       map[string]string{},
 	}
 
+	if redirectURI == "" {
+		if inferredURI, inferredHost, inferredPort := inferDefaultRedirectURI(connection, callbackHost, callbackPath); inferredURI != "" {
+			redirectURI = inferredURI
+			flow.CallbackHost = inferredHost
+			flow.CallbackPort = inferredPort
+			flow.CallbackPath = callbackPath
+		}
+	}
+
 	if mode == "local_browser" {
-		if callbackHost == "" {
-			callbackHost = "127.0.0.1"
-		}
-		port, err := reserveLoopbackPort(callbackHost)
-		if err != nil {
-			return authflow.Flow{}, apperr.New("AUTH_CALLBACK_PREPARE_FAILED", err.Error())
-		}
-		flow.CallbackHost = callbackHost
-		flow.CallbackPort = port
-		flow.CallbackPath = callbackPath
 		if redirectURI == "" {
+			if callbackHost == "" {
+				callbackHost = "127.0.0.1"
+			}
+			port, err := reserveLoopbackPort(callbackHost)
+			if err != nil {
+				return authflow.Flow{}, apperr.New("AUTH_CALLBACK_PREPARE_FAILED", err.Error())
+			}
+			flow.CallbackHost = callbackHost
+			flow.CallbackPort = port
+			flow.CallbackPath = callbackPath
 			redirectURI = fmt.Sprintf("http://%s:%d%s", callbackHost, port, callbackPath)
 		}
 	} else if redirectURI == "" {
-		return authflow.Flow{}, apperr.New("REDIRECT_URI_REQUIRED", "manual_url and manual_code modes require an explicit --redirect-uri")
+		return authflow.Flow{}, apperr.New("REDIRECT_URI_REQUIRED", "manual_url and manual_code modes require an explicit --redirect-uri or a loopback redirect_mode config")
 	}
 
 	flow.RedirectURI = redirectURI
@@ -395,6 +404,24 @@ func buildAuthorizationFlow(connectionName string, connection config.Connection,
 	}
 	flow.AuthorizationURL = authorizationURL
 	return flow, nil
+}
+
+func inferDefaultRedirectURI(connection config.Connection, callbackHost string, callbackPath string) (string, string, int) {
+	if !strings.EqualFold(strings.TrimSpace(connection.Params.RedirectMode), "loopback") {
+		return "", "", 0
+	}
+
+	callbackHost = strings.TrimSpace(callbackHost)
+	if callbackHost == "" {
+		callbackHost = "localhost"
+	}
+	callbackPath = strings.TrimSpace(callbackPath)
+	if callbackPath == "" {
+		callbackPath = "/callback"
+	}
+
+	const callbackPort = 3333
+	return fmt.Sprintf("http://%s:%d%s", callbackHost, callbackPort, callbackPath), callbackHost, callbackPort
 }
 
 func buildAuthorizationURL(connection config.Connection, redirectURI string, stateToken string) (string, *apperr.AppError) {

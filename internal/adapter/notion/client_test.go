@@ -301,6 +301,36 @@ func TestGetPageWithOAuthRefreshableProfileUsesSessionCache(t *testing.T) {
 	}
 }
 
+func TestRequireAccessTokenRequiresInteractiveAuthorization(t *testing.T) {
+	t.Setenv("NOTION_CLIENT_ID", "client-id")
+	t.Setenv("NOTION_CLIENT_SECRET", "client-secret")
+
+	client := newTestClient(t, &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			t.Fatalf("unexpected request without completed authorization: %s", request.URL.Path)
+			return nil, nil
+		},
+	})
+	client.sessionStore = authcache.NewFileStore(filepath.Join(t.TempDir(), "config.yaml"))
+
+	ctx := adapter.WithProfileName(context.Background(), "notion_public_workspace_a")
+	_, _, appErr := client.requireAccessToken(ctx, config.Profile{
+		Platform: "notion",
+		Subject:  "integration",
+		Grant: config.Grant{
+			Type:         "oauth_refreshable",
+			ClientID:     "env:NOTION_CLIENT_ID",
+			ClientSecret: "env:NOTION_CLIENT_SECRET",
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected requireAccessToken to request interactive authorization")
+	}
+	if appErr.Code != "AUTHORIZATION_REQUIRED" {
+		t.Fatalf("unexpected error: %+v", appErr)
+	}
+}
+
 func TestCreatePageDataSourceRequiresTitleProperty(t *testing.T) {
 	client := newTestClient(t, nil)
 

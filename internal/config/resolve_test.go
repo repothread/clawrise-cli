@@ -84,6 +84,24 @@ func TestValidateGrantNotionOAuthRefreshable(t *testing.T) {
 	}
 }
 
+func TestValidateGrantAllowsInteractiveOAuthWithoutRefreshTokenBeforeAuthorization(t *testing.T) {
+	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_ID", "client-id")
+	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_SECRET", "client-secret")
+
+	err := ValidateGrant(Profile{
+		Platform: "feishu",
+		Subject:  "user",
+		Grant: Grant{
+			Type:         "oauth_user",
+			ClientID:     "env:CLAWRISE_TEST_FEISHU_CLIENT_ID",
+			ClientSecret: "env:CLAWRISE_TEST_FEISHU_CLIENT_SECRET",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateGrant returned error: %v", err)
+	}
+}
+
 func TestInspectProfileRedactsResolvedSecrets(t *testing.T) {
 	t.Setenv("CLAWRISE_TEST_APP_ID", "app-id")
 	t.Setenv("CLAWRISE_TEST_APP_SECRET", "app-secret")
@@ -106,5 +124,31 @@ func TestInspectProfileRedactsResolvedSecrets(t *testing.T) {
 	}
 	if inspection.Fields[0].ResolvedValue == "app-id" || inspection.Fields[1].ResolvedValue == "app-secret" {
 		t.Fatalf("expected resolved values to be redacted: %+v", inspection.Fields)
+	}
+}
+
+func TestInspectProfileMarksInteractiveOAuthAsAuthorizationRequiredBeforeAuthorization(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_ID", "client-id")
+	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_SECRET", "client-secret")
+
+	inspection := InspectProfile("feishu_user_alice", Profile{
+		Platform: "feishu",
+		Subject:  "user",
+		Grant: Grant{
+			Type:         "oauth_user",
+			ClientID:     "env:CLAWRISE_TEST_FEISHU_CLIENT_ID",
+			ClientSecret: "env:CLAWRISE_TEST_FEISHU_CLIENT_SECRET",
+		},
+	})
+
+	if !inspection.ShapeValid || !inspection.ResolvedValid {
+		t.Fatalf("expected inspection config to be valid: %+v", inspection)
+	}
+	if inspection.Ready {
+		t.Fatalf("expected inspection to require authorization: %+v", inspection)
+	}
+	if inspection.AuthStatus != "authorization_required" {
+		t.Fatalf("unexpected auth status: %+v", inspection)
 	}
 }

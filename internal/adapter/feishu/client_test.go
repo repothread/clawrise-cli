@@ -284,6 +284,36 @@ func TestRequireUserAccessTokenUsesSessionCacheAndRotatedRefreshToken(t *testing
 	}
 }
 
+func TestRequireUserAccessTokenRequiresInteractiveAuthorization(t *testing.T) {
+	t.Setenv("FEISHU_CLIENT_ID", "client-id")
+	t.Setenv("FEISHU_CLIENT_SECRET", "client-secret")
+
+	client, err := NewClient(Options{
+		BaseURL:      "https://open.feishu.cn",
+		SessionStore: authcache.NewFileStore(filepath.Join(t.TempDir(), "config.yaml")),
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	ctx := adapter.WithProfileName(context.Background(), "feishu_user_alice")
+	_, appErr := client.requireUserAccessToken(ctx, config.Profile{
+		Platform: "feishu",
+		Subject:  "user",
+		Grant: config.Grant{
+			Type:         "oauth_user",
+			ClientID:     "env:FEISHU_CLIENT_ID",
+			ClientSecret: "env:FEISHU_CLIENT_SECRET",
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected requireUserAccessToken to request interactive authorization")
+	}
+	if appErr.Code != "AUTHORIZATION_REQUIRED" {
+		t.Fatalf("unexpected error: %+v", appErr)
+	}
+}
+
 func TestListWikiSpacesSuccess(t *testing.T) {
 	t.Setenv("FEISHU_APP_ID", "app-id")
 	t.Setenv("FEISHU_APP_SECRET", "app-secret")

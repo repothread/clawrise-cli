@@ -54,3 +54,29 @@ func TestBuildInitConfigForNotionIntegration(t *testing.T) {
 		t.Fatalf("unexpected notion version: %s", connection.Params.NotionVersion)
 	}
 }
+
+func TestBuildInitConfigForFeishuUserScopesAndSecrets(t *testing.T) {
+	result, err := BuildInitConfig(InitOptions{
+		Platform:   "feishu",
+		Subject:    "user",
+		Connection: "feishu_user_alice",
+		Scopes:     []string{"offline_access", "docx:document", "offline_access"},
+	})
+	if err != nil {
+		t.Fatalf("BuildInitConfig returned error: %v", err)
+	}
+
+	connection := result.Config.Connections["feishu_user_alice"]
+	if connection.Method != "feishu.oauth_user" {
+		t.Fatalf("unexpected method: %s", connection.Method)
+	}
+	if len(connection.Params.Scopes) != 2 {
+		t.Fatalf("unexpected scopes: %+v", connection.Params.Scopes)
+	}
+	if connection.Params.Scopes[0] != "offline_access" || connection.Params.Scopes[1] != "docx:document" {
+		t.Fatalf("unexpected scopes order: %+v", connection.Params.Scopes)
+	}
+	if len(result.SecretFields) != 1 || result.SecretFields[0] != "client_secret" {
+		t.Fatalf("unexpected secret fields: %+v", result.SecretFields)
+	}
+}

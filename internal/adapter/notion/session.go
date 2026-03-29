@@ -2,6 +2,7 @@ package notion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
+
+var errNotionAuthorizationRequired = errors.New("notion interactive authorization is required")
 
 func newDefaultSessionStore() authcache.Store {
 	configPath, err := config.DefaultPath()
@@ -78,7 +81,22 @@ func resolveNotionRefreshToken(profile config.Profile, currentSession *authcache
 	if currentSession != nil && strings.TrimSpace(currentSession.RefreshToken) != "" {
 		return strings.TrimSpace(currentSession.RefreshToken), nil
 	}
-	return config.ResolveSecret(profile.Grant.RefreshToken)
+	raw := strings.TrimSpace(profile.Grant.RefreshToken)
+	if raw == "" {
+		return "", errNotionAuthorizationRequired
+	}
+
+	refreshToken, err := config.ResolveSecret(raw)
+	if err != nil {
+		if shouldTreatOAuthSecretAsPending(raw, err) {
+			return "", errNotionAuthorizationRequired
+		}
+		return "", err
+	}
+	if strings.TrimSpace(refreshToken) == "" {
+		return "", errNotionAuthorizationRequired
+	}
+	return strings.TrimSpace(refreshToken), nil
 }
 
 func sessionMatchesProfile(session *authcache.Session, profile config.Profile) bool {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
 	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
+	"github.com/clawrise/clawrise-cli/internal/config"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
@@ -136,6 +138,64 @@ func TestRunSubjectUse(t *testing.T) {
 	}
 }
 
+func TestRunConnectionUseSynchronizesSubject(t *testing.T) {
+	copyExampleConfig(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"connection", "use", "feishu_user_alice"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "user"`)) {
+		t.Fatalf("expected connection use to expose user subject, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"subject", "current"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "user"`)) {
+		t.Fatalf("expected connection use to synchronize default subject, got: %s", stdout.String())
+	}
+}
+
+func TestRunProfileUseUsesProfileCommandBehavior(t *testing.T) {
+	copyExampleConfig(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"profile", "use", "notion_team_docs"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"profile": "notion_team_docs"`)) {
+		t.Fatalf("expected profile response payload, got: %s", stdout.String())
+	}
+	if bytes.Contains(stdout.Bytes(), []byte(`"connection"`)) {
+		t.Fatalf("expected profile command to avoid connection payload shape, got: %s", stdout.String())
+	}
+}
+
 func TestRunProfileUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
@@ -187,6 +247,53 @@ func TestRunProfileUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunSubjectUseInfluencesBareOperationResolution(t *testing.T) {
+	configPath := copyExampleConfig(t)
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+
+	cfgStore := config.NewStore(configPath)
+	cfg, err := cfgStore.Load()
+	if err != nil {
+		t.Fatalf("failed to load example config: %v", err)
+	}
+	cfg.Auth.SecretStore.Backend = "encrypted_file"
+	cfg.Auth.SecretStore.FallbackBackend = "encrypted_file"
+	if err := cfgStore.Save(cfg); err != nil {
+		t.Fatalf("failed to persist encrypted secret backend: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err = Run([]string{"subject", "use", "user"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"docs.document.create", "--dry-run", "--json", `{}`}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"profile": "feishu_user_alice"`)) {
+		t.Fatalf("expected user profile to be selected after subject switch, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "user"`)) {
+		t.Fatalf("expected user subject after subject switch, got: %s", stdout.String())
 	}
 }
 
@@ -549,6 +656,41 @@ func TestRunAuthCheck(t *testing.T) {
 	}
 }
 
+func TestRunAuthCheckReportsAuthorizationPending(t *testing.T) {
+	copyExampleConfig(t)
+	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"auth", "check", "notion_public_workspace_a"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err == nil {
+		t.Fatalf("expected auth check to fail before interactive authorization, stdout=%s", stdout.String())
+	}
+
+	var exitErr ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 1 {
+		t.Fatalf("expected exit code 1, got: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"resolved_valid": true`)) {
+		t.Fatalf("expected resolved config to be valid, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": false`)) {
+		t.Fatalf("expected ready=false in auth check output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"auth_status": "authorization_required"`)) {
+		t.Fatalf("expected authorization_required status, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunAuthSessionInspectAndClear(t *testing.T) {
 	configPath := copyExampleConfig(t)
 
@@ -701,6 +843,23 @@ func TestRunAuthBeginNotionPublic(t *testing.T) {
 	}
 	if !strings.HasPrefix(authURL, "https://api.notion.com/v1/oauth/authorize") {
 		t.Fatalf("unexpected notion authorize url: %s", authURL)
+	}
+}
+
+func TestRunAuthBeginUsesLoopbackRedirectModeDefault(t *testing.T) {
+	copyExampleConfig(t)
+
+	result := runAuthBeginForTest(t, []string{
+		"auth", "begin", "notion_public_workspace_a",
+		"--mode", "manual_code",
+	})
+
+	if got := nestedString(result, "data", "flow", "redirect_uri"); got != "http://localhost:3333/callback" {
+		t.Fatalf("unexpected default redirect_uri: %+v", result)
+	}
+	authURL := nestedString(result, "data", "flow", "authorization_url")
+	if !strings.Contains(authURL, "redirect_uri=http%3A%2F%2Flocalhost%3A3333%2Fcallback") {
+		t.Fatalf("expected loopback redirect uri in authorization url, got: %s", authURL)
 	}
 }
 
@@ -956,6 +1115,19 @@ func runSecretSet(t *testing.T, connectionName string, fieldName string, value s
 	t.Helper()
 
 	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+	configPath := os.Getenv("CLAWRISE_CONFIG")
+	if strings.TrimSpace(configPath) != "" {
+		store := config.NewStore(configPath)
+		cfg, err := store.Load()
+		if err != nil {
+			t.Fatalf("failed to load test config before seeding secret: %v", err)
+		}
+		cfg.Auth.SecretStore.Backend = "encrypted_file"
+		cfg.Auth.SecretStore.FallbackBackend = "encrypted_file"
+		if err := store.Save(cfg); err != nil {
+			t.Fatalf("failed to persist encrypted_file secret backend for tests: %v", err)
+		}
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

@@ -37,6 +37,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 	var profileAlias string
 	var method string
 	var grantTypeAlias string
+	var scopes []string
 	var force bool
 
 	flags.StringVar(&platform, "platform", "", "设置默认连接所属的平台")
@@ -45,6 +46,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 	flags.StringVar(&profileAlias, "profile", "", "兼容旧参数，等同于 --connection")
 	flags.StringVar(&method, "method", "", "覆盖连接使用的授权接入方式")
 	flags.StringVar(&grantTypeAlias, "grant-type", "", "兼容旧参数，会自动映射到 method")
+	flags.StringSliceVar(&scopes, "scope", nil, "为交互式 OAuth 连接追加授权 scope，可重复传入")
 	flags.BoolVar(&force, "force", false, "overwrite the existing config file")
 
 	if err := flags.Parse(args); err != nil {
@@ -54,7 +56,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 		return err
 	}
 	if len(flags.Args()) != 0 {
-		return fmt.Errorf("usage: clawrise config init [--platform <name>] [--subject <name>] [--connection <name>] [--method <name>] [--force]")
+		return fmt.Errorf("usage: clawrise config init [--platform <name>] [--subject <name>] [--connection <name>] [--method <name>] [--scope <name>] [--force]")
 	}
 	if strings.TrimSpace(connection) == "" {
 		connection = strings.TrimSpace(profileAlias)
@@ -74,6 +76,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 		Subject:    subject,
 		Connection: connection,
 		Method:     method,
+		Scopes:     scopes,
 	})
 	if err != nil {
 		return err
@@ -92,6 +95,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 			"subject":          result.Subject,
 			"method":           result.Method,
 			"grant_type":       config.LegacyGrantTypeForMethod(result.Method),
+			"scopes":           result.Config.Connections[result.ConnectionName].Params.Scopes,
 			"secret_backend":   result.SecretBackend,
 			"session_backend":  result.SessionBackend,
 			"required_secrets": result.SecretFields,
@@ -100,7 +104,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 }
 
 func printConfigHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init [--platform <name>] [--subject <name>] [--connection <name>] [--method <name>] [--force]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init [--platform <name>] [--subject <name>] [--connection <name>] [--method <name>] [--scope <name>] [--force]")
 }
 
 func legacyGrantTypeToMethod(grantType string) string {

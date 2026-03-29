@@ -59,7 +59,7 @@ func Run(args []string, deps Dependencies) error {
 	case "subject":
 		return runSubject(args[1:], store, deps.Stdout)
 	case "profile":
-		return runConnection(args[1:], store, deps.Stdout)
+		return runProfile(args[1:], store, deps.Stdout)
 	case "version":
 		return runVersion(deps.Version, deps.Stdout)
 	case "doctor":
@@ -441,11 +441,15 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	}
 
 	invalidProfiles := 0
+	pendingAuthProfiles := 0
 	for _, inspection := range profileInspections {
-		if inspection.ShapeValid && inspection.ResolvedValid {
+		if !inspection.ShapeValid || !inspection.ResolvedValid {
+			invalidProfiles++
 			continue
 		}
-		invalidProfiles++
+		if !inspection.Ready {
+			pendingAuthProfiles++
+		}
 	}
 	if invalidProfiles > 0 {
 		checks = append(checks, map[string]any{
@@ -454,6 +458,14 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"message": fmt.Sprintf("%d configured profiles have invalid or unresolved auth fields", invalidProfiles),
 		})
 		nextSteps = append(nextSteps, "run `clawrise auth check <profile>` to inspect invalid profile details")
+	}
+	if pendingAuthProfiles > 0 {
+		checks = append(checks, map[string]any{
+			"code":    "AUTHORIZATION_PENDING",
+			"status":  "warn",
+			"message": fmt.Sprintf("%d interactive auth profiles still need user authorization before they can execute", pendingAuthProfiles),
+		})
+		nextSteps = append(nextSteps, "run `clawrise auth connect <profile>` to finish interactive authorization")
 	}
 
 	runtimeSummary := map[string]any{

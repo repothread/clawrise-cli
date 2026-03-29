@@ -2,8 +2,12 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
+	"time"
+
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 )
 
 // GrantFieldInspection 描述一个授权字段的检查结果。
@@ -27,6 +31,9 @@ type ProfileInspection struct {
 	GrantType     string                 `json:"grant_type"`
 	ShapeValid    bool                   `json:"shape_valid"`
 	ResolvedValid bool                   `json:"resolved_valid"`
+	Ready         bool                   `json:"ready"`
+	AuthStatus    string                 `json:"auth_status,omitempty"`
+	AuthMessage   string                 `json:"auth_message,omitempty"`
 	ShapeError    string                 `json:"shape_error,omitempty"`
 	ResolvedError string                 `json:"resolved_error,omitempty"`
 	Fields        []GrantFieldInspection `json:"fields"`
@@ -161,6 +168,11 @@ func InspectProfile(name string, profile Profile) ProfileInspection {
 	} else {
 		inspection.ResolvedValid = true
 	}
+
+	authState := inspectProfileAuthState(name, profile, inspection.ShapeValid && inspection.ResolvedValid)
+	inspection.Ready = authState.Ready
+	inspection.AuthStatus = authState.Status
+	inspection.AuthMessage = authState.Message
 	return inspection
 }
 
@@ -202,13 +214,11 @@ func requiredGrantFieldSpecs(profile Profile) ([]grantFieldSpec, error) {
 		return []grantFieldSpec{
 			{Name: "client_id", Secret: false, Required: true, Value: func(g Grant) string { return g.ClientID }},
 			{Name: "client_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientSecret }},
-			{Name: "refresh_token", Secret: true, Required: true, Value: func(g Grant) string { return g.RefreshToken }},
 		}, nil
 	case "oauth_refreshable":
 		return []grantFieldSpec{
 			{Name: "client_id", Secret: false, Required: true, Value: func(g Grant) string { return g.ClientID }},
 			{Name: "client_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientSecret }},
-			{Name: "refresh_token", Secret: true, Required: true, Value: func(g Grant) string { return g.RefreshToken }},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported grant type: %s", profile.Grant.Type)
@@ -280,4 +290,98 @@ func redactSecret(value string) string {
 		return "***"
 	}
 	return value[:2] + "***" + value[len(value)-2:]
+}
+
+type profileAuthState struct {
+	Ready   bool
+	Status  string
+	Message string
+}
+
+func inspectProfileAuthState(name string, profile Profile, configValid bool) profileAuthState {
+	if !configValid {
+		return profileAuthState{
+			Ready:  false,
+			Status: "invalid_config",
+		}
+	}
+
+	switch profile.Grant.Type {
+	case "oauth_user", "oauth_refreshable":
+		if session, ok := loadMatchingSession(name, profile); ok {
+			now := time.Now().UTC()
+			if session.UsableAt(now, authcache.DefaultRefreshSkew) {
+				return profileAuthState{
+					Ready:  true,
+					Status: "session_valid",
+				}
+			}
+			if session.CanRefresh() {
+				return profileAuthState{
+					Ready:  true,
+					Status: "refreshable",
+				}
+			}
+		}
+
+		if hasResolvedSecretValue(profile.Grant.AccessToken) {
+			return profileAuthState{
+				Ready:  true,
+				Status: "access_token_configured",
+			}
+		}
+		if hasResolvedSecretValue(profile.Grant.RefreshToken) {
+			return profileAuthState{
+				Ready:  true,
+				Status: "refresh_token_configured",
+			}
+		}
+		return profileAuthState{
+			Ready:   false,
+			Status:  "authorization_required",
+			Message: "interactive authorization has not been completed yet",
+		}
+	default:
+		return profileAuthState{
+			Ready:  true,
+			Status: "configured",
+		}
+	}
+}
+
+func loadMatchingSession(name string, profile Profile) (*authcache.Session, bool) {
+	configPath, err := DefaultPath()
+	if err != nil {
+		return nil, false
+	}
+
+	sessionStore := authcache.NewFileStore(configPath)
+	session, err := sessionStore.Load(name)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false
+		}
+		return nil, false
+	}
+	if session == nil {
+		return nil, false
+	}
+	if strings.TrimSpace(session.Platform) != strings.TrimSpace(profile.Platform) {
+		return nil, false
+	}
+	if strings.TrimSpace(session.Subject) != strings.TrimSpace(profile.Subject) {
+		return nil, false
+	}
+	if strings.TrimSpace(session.GrantType) != strings.TrimSpace(profile.Grant.Type) {
+		return nil, false
+	}
+	return session, true
+}
+
+func hasResolvedSecretValue(raw string) bool {
+	value, err := ResolveSecret(raw)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(value) != ""
 }

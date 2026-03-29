@@ -14,6 +14,7 @@ type InitOptions struct {
 	Subject    string
 	Connection string
 	Method     string
+	Scopes     []string
 }
 
 // InitResult 描述初始化后生成的配置与提示信息。
@@ -53,7 +54,7 @@ func BuildInitConfig(opts InitOptions) (InitResult, error) {
 		connectionName = defaultConnectionName(platform, subject)
 	}
 
-	connection, secretFields, err := buildConnectionTemplate(platform, subject, method)
+	connection, secretFields, err := buildConnectionTemplate(platform, subject, method, opts.Scopes)
 	if err != nil {
 		return InitResult{}, err
 	}
@@ -94,7 +95,7 @@ func BuildInitConfig(opts InitOptions) (InitResult, error) {
 	}, nil
 }
 
-func buildConnectionTemplate(platform, subject, method string) (Connection, []string, error) {
+func buildConnectionTemplate(platform, subject, method string, scopes []string) (Connection, []string, error) {
 	connection := Connection{
 		Platform: platform,
 		Subject:  subject,
@@ -110,8 +111,9 @@ func buildConnectionTemplate(platform, subject, method string) (Connection, []st
 	case "feishu.oauth_user":
 		connection.Params.ClientID = "<请填写 client_id>"
 		connection.Params.RedirectMode = "loopback"
-		connection.Params.Scopes = []string{"offline_access"}
-		secretFields = []string{"client_secret", "refresh_token"}
+		connection.Params.Scopes = normalizeInitScopes(scopes, []string{"offline_access"})
+		// 首次交互式授权前只需要 client_secret，refresh_token 会在授权完成后自动写回。
+		secretFields = []string{"client_secret"}
 	case "notion.internal_token":
 		connection.Params.NotionVersion = defaultNotionVersion
 		secretFields = []string{"token"}
@@ -119,7 +121,8 @@ func buildConnectionTemplate(platform, subject, method string) (Connection, []st
 		connection.Params.ClientID = "<请填写 client_id>"
 		connection.Params.NotionVersion = defaultNotionVersion
 		connection.Params.RedirectMode = "loopback"
-		secretFields = []string{"client_secret", "refresh_token"}
+		// 首次交互式授权前只需要 client_secret，refresh_token 会在授权完成后自动写回。
+		secretFields = []string{"client_secret"}
 	default:
 		return Connection{}, nil, fmt.Errorf("unsupported method: %s", method)
 	}
@@ -129,6 +132,34 @@ func buildConnectionTemplate(platform, subject, method string) (Connection, []st
 	}
 	sort.Strings(secretFields)
 	return connection, secretFields, nil
+}
+
+func normalizeInitScopes(scopes []string, defaults []string) []string {
+	items := make([]string, 0, len(scopes))
+	seen := map[string]struct{}{}
+
+	appendScope := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+
+	for _, value := range scopes {
+		appendScope(value)
+	}
+	if len(items) > 0 {
+		return items
+	}
+	for _, value := range defaults {
+		appendScope(value)
+	}
+	return items
 }
 
 func defaultSubjectForPlatform(platform string) string {

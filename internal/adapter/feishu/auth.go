@@ -3,6 +3,7 @@ package feishu
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
+
+var errFeishuAuthorizationRequired = errors.New("feishu interactive authorization is required")
 
 func (c *Client) requireFeishuAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
 	switch profile.Subject {
@@ -70,6 +73,9 @@ func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Prof
 	}
 	refreshToken, err := resolveFeishuRefreshToken(profile, currentSession)
 	if err != nil {
+		if errors.Is(err, errFeishuAuthorizationRequired) {
+			return nil, buildFeishuAuthorizationRequiredError(ctx)
+		}
 		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing refresh_token: %v", err))
 	}
 
@@ -215,7 +221,22 @@ func resolveFeishuRefreshToken(profile config.Profile, currentSession *authcache
 	if currentSession != nil && strings.TrimSpace(currentSession.RefreshToken) != "" {
 		return strings.TrimSpace(currentSession.RefreshToken), nil
 	}
-	return config.ResolveSecret(profile.Grant.RefreshToken)
+	raw := strings.TrimSpace(profile.Grant.RefreshToken)
+	if raw == "" {
+		return "", errFeishuAuthorizationRequired
+	}
+
+	refreshToken, err := config.ResolveSecret(raw)
+	if err != nil {
+		if shouldTreatOAuthSecretAsPending(raw, err) {
+			return "", errFeishuAuthorizationRequired
+		}
+		return "", err
+	}
+	if strings.TrimSpace(refreshToken) == "" {
+		return "", errFeishuAuthorizationRequired
+	}
+	return strings.TrimSpace(refreshToken), nil
 }
 
 func extractFeishuExpiresInSeconds(response map[string]any, payload map[string]any) int {
@@ -232,4 +253,27 @@ func extractFeishuExpiresInSeconds(response map[string]any, payload map[string]a
 		return value
 	}
 	return 0
+}
+
+func buildFeishuAuthorizationRequiredError(ctx context.Context) *apperr.AppError {
+	profileName := strings.TrimSpace(adapter.ProfileNameFromContext(ctx))
+	if profileName == "" {
+		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth connect <connection>` first")
+	}
+	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for connection %s; run `clawrise auth connect %s` first", profileName, profileName))
+}
+
+func shouldTreatOAuthSecretAsPending(raw string, err error) bool {
+	if err == nil {
+		return false
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return true
+	}
+	if strings.HasPrefix(raw, "secret:") || strings.HasPrefix(raw, "env:") {
+		message := err.Error()
+		return strings.Contains(message, "is not set") || strings.Contains(message, "is empty")
+	}
+	return false
 }

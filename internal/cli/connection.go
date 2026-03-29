@@ -36,6 +36,7 @@ func runConnection(args []string, store *config.Store, stdout io.Writer) error {
 
 		cfg.Defaults.Platform = connection.Platform
 		cfg.Defaults.Profile = name
+		cfg.Defaults.Subject = connection.Subject
 		cfg.Defaults.Connections[connection.Platform] = name
 		if err := store.Save(cfg); err != nil {
 			return err

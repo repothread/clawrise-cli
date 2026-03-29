@@ -249,6 +249,9 @@ func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelop
 func resolveConnection(cfg *config.Config, platform string, explicitConnection string, explicitProfile string, explicitSubject string) (string, config.Profile, *apperr.AppError) {
 	cfg.Ensure()
 	desiredSubject := strings.TrimSpace(explicitSubject)
+	if desiredSubject == "" {
+		desiredSubject = strings.TrimSpace(cfg.Defaults.Subject)
+	}
 
 	selectedConnection := strings.TrimSpace(explicitConnection)
 	if selectedConnection == "" {
@@ -277,10 +280,9 @@ func resolveConnection(cfg *config.Config, platform string, explicitConnection s
 		if profile.Platform != platform {
 			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default connection %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
 		}
-		if desiredSubject != "" && profile.Subject != desiredSubject {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("default connection %s has subject %s and cannot be used when subject %s is selected", defaultConnection, profile.Subject, desiredSubject))
+		if desiredSubject == "" || profile.Subject == desiredSubject {
+			return defaultConnection, profile, nil
 		}
-		return defaultConnection, profile, nil
 	}
 	if defaultConnection := strings.TrimSpace(cfg.Defaults.Profile); defaultConnection != "" {
 		profile, ok := cfg.Profiles[defaultConnection]
@@ -290,10 +292,9 @@ func resolveConnection(cfg *config.Config, platform string, explicitConnection s
 		if profile.Platform != platform {
 			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default connection %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
 		}
-		if desiredSubject != "" && profile.Subject != desiredSubject {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("default connection %s has subject %s and cannot be used when subject %s is selected", defaultConnection, profile.Subject, desiredSubject))
+		if desiredSubject == "" || profile.Subject == desiredSubject {
+			return defaultConnection, profile, nil
 		}
-		return defaultConnection, profile, nil
 	}
 
 	candidates := cfg.CandidateProfilesBySubject(platform, desiredSubject)

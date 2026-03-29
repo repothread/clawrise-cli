@@ -35,7 +35,7 @@ var (
 	completionShells              = []string{"bash", "zsh", "fish"}
 	operationCompletionFlags      = []string{"--connection", "--profile", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
 	specExportCompletionFlags     = []string{"--format", "--help", "-h"}
-	configInitCompletionFlags     = []string{"--platform", "--subject", "--connection", "--method", "--force", "--help", "-h"}
+	configInitCompletionFlags     = []string{"--platform", "--subject", "--connection", "--method", "--scope", "--force", "--help", "-h"}
 )
 
 // runCompletion 输出 shell completion 脚本。

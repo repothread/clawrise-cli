@@ -147,6 +147,110 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 	}
 }
 
+func TestExecutorUsesDefaultSubjectToSelectMatchingConnection(t *testing.T) {
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "feishu",
+			Subject:  "user",
+			Connections: map[string]string{
+				"feishu": "feishu_bot_ops",
+			},
+		},
+		Profiles: map[string]config.Profile{
+			"feishu_bot_ops": {
+				Platform: "feishu",
+				Subject:  "bot",
+				Grant: config.Grant{
+					Type:  "client_credentials",
+					AppID: "app-id",
+				},
+			},
+			"feishu_user_alice": {
+				Platform: "feishu",
+				Subject:  "user",
+				Grant: config.Grant{
+					Type:     "oauth_user",
+					ClientID: "client-id",
+				},
+			},
+		},
+	})
+
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "docs.document.create",
+		DryRun:         true,
+		InputJSON:      `{}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected dry-run success, got error: %+v", envelope.Error)
+	}
+	if envelope.Context == nil {
+		t.Fatal("expected execution context to be present")
+	}
+	if envelope.Context.Profile != "feishu_user_alice" {
+		t.Fatalf("unexpected selected profile: %+v", envelope.Context)
+	}
+	if envelope.Context.Subject != "user" {
+		t.Fatalf("unexpected selected subject: %+v", envelope.Context)
+	}
+}
+
+func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "feishu",
+			Connections: map[string]string{
+				"feishu": "feishu_bot_ops",
+			},
+		},
+		Profiles: map[string]config.Profile{
+			"feishu_bot_ops": {
+				Platform: "feishu",
+				Subject:  "bot",
+				Grant: config.Grant{
+					Type:  "client_credentials",
+					AppID: "app-id",
+				},
+			},
+			"feishu_user_alice": {
+				Platform: "feishu",
+				Subject:  "user",
+				Grant: config.Grant{
+					Type:     "oauth_user",
+					ClientID: "client-id",
+				},
+			},
+		},
+	})
+
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "docs.document.create",
+		SubjectName:    "user",
+		DryRun:         true,
+		InputJSON:      `{}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected dry-run success, got error: %+v", envelope.Error)
+	}
+	if envelope.Context == nil {
+		t.Fatal("expected execution context to be present")
+	}
+	if envelope.Context.Profile != "feishu_user_alice" {
+		t.Fatalf("unexpected selected profile: %+v", envelope.Context)
+	}
+	if envelope.Context.Subject != "user" {
+		t.Fatalf("unexpected selected subject: %+v", envelope.Context)
+	}
+}
+
 func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

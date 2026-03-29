@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -173,6 +174,9 @@ func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile,
 	}
 	refreshToken, err := resolveNotionRefreshToken(profile, currentSession)
 	if err != nil {
+		if errors.Is(err, errNotionAuthorizationRequired) {
+			return nil, buildNotionAuthorizationRequiredError(ctx)
+		}
 		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
 	}
 
@@ -288,6 +292,29 @@ func resolveNotionVersion(profile config.Profile) string {
 		return strings.TrimSpace(profile.Grant.NotionVer)
 	}
 	return defaultNotionVersion
+}
+
+func buildNotionAuthorizationRequiredError(ctx context.Context) *apperr.AppError {
+	profileName := strings.TrimSpace(adapter.ProfileNameFromContext(ctx))
+	if profileName == "" {
+		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth connect <connection>` first")
+	}
+	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for connection %s; run `clawrise auth connect %s` first", profileName, profileName))
+}
+
+func shouldTreatOAuthSecretAsPending(raw string, err error) bool {
+	if err == nil {
+		return false
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return true
+	}
+	if strings.HasPrefix(raw, "secret:") || strings.HasPrefix(raw, "env:") {
+		message := err.Error()
+		return strings.Contains(message, "is not set") || strings.Contains(message, "is empty")
+	}
+	return false
 }
 
 func normalizeNotionHTTPError(httpStatus int, headers http.Header, responseBody []byte) *apperr.AppError {

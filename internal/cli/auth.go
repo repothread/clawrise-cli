@@ -72,7 +72,7 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 
 		inspection := config.InspectProfile(resolvedName, profile)
 		summary := buildAuthOperationSummary(profile, manager)
-		valid := inspection.ShapeValid && inspection.ResolvedValid
+		valid := inspection.ShapeValid && inspection.ResolvedValid && inspection.Ready
 
 		if err := output.WriteJSON(stdout, map[string]any{
 			"ok": valid,

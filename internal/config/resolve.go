@@ -70,7 +70,9 @@ func ResolveSecret(raw string) (string, error) {
 	}
 }
 
-// ValidateGrant validates grant completeness without exposing secret values.
+// ValidateGrant 校验执行所需的静态授权配置是否齐全。
+// 对交互式 OAuth 连接，这里只校验 client_id/client_secret 这类静态材料，
+// 不把首次授权后才会产生的 refresh_token 当成前置阻塞项。
 func ValidateGrant(profile Profile) error {
 	if err := ValidateConnectionShape(profile); err != nil {
 		return err
