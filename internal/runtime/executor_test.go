@@ -26,9 +26,9 @@ func TestExecutorDryRunSuccess(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
-			Profile:  "feishu_bot_ops",
+			Account:  "feishu_bot_ops",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -38,7 +38,7 @@ func TestExecutorDryRunSuccess(t *testing.T) {
 					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
 				},
 			},
-		},
+		}),
 	})
 
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
@@ -81,7 +81,7 @@ func TestExecutorReadOperationOmitsIdempotency(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -90,7 +90,7 @@ func TestExecutorReadOperationOmitsIdempotency(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
@@ -118,7 +118,7 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -127,7 +127,7 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
@@ -153,7 +153,7 @@ func TestExecutorUsesDefaultSubjectToSelectMatchingConnection(t *testing.T) {
 			Platform: "feishu",
 			Subject:  "user",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -170,7 +170,7 @@ func TestExecutorUsesDefaultSubjectToSelectMatchingConnection(t *testing.T) {
 					ClientID: "client-id",
 				},
 			},
-		},
+		}),
 	})
 
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
@@ -201,7 +201,7 @@ func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
 		Defaults: config.Defaults{
 			Platform: "feishu",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -218,7 +218,7 @@ func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
 					ClientID: "client-id",
 				},
 			},
-		},
+		}),
 	})
 
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
@@ -251,7 +251,7 @@ func TestExecutorExplicitAccountOverridesDefaultSubject(t *testing.T) {
 			Platform: "feishu",
 			Subject:  "bot",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -268,7 +268,7 @@ func TestExecutorExplicitAccountOverridesDefaultSubject(t *testing.T) {
 					ClientID: "client-id",
 				},
 			},
-		},
+		}),
 	})
 
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
@@ -300,7 +300,7 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -309,7 +309,7 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{
@@ -381,9 +381,9 @@ func TestExecutorExecutesNotionPageMarkdownGet(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -392,7 +392,7 @@ func TestExecutorExecutesNotionPageMarkdownGet(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{
@@ -444,9 +444,9 @@ func TestExecutorExecutesNotionSearch(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -455,7 +455,7 @@ func TestExecutorExecutesNotionSearch(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{
@@ -524,9 +524,9 @@ func TestExecutorExecutesFeishuDocumentBlockGet(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
-			Profile:  "feishu_bot_ops",
+			Account:  "feishu_bot_ops",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -536,7 +536,7 @@ func TestExecutorExecutesFeishuDocumentBlockGet(t *testing.T) {
 					AppSecret: "env:FEISHU_APP_SECRET",
 				},
 			},
-		},
+		}),
 	})
 
 	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{
@@ -613,9 +613,9 @@ func TestExecutorExecutesFeishuDocumentBlockUpdate(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
-			Profile:  "feishu_bot_ops",
+			Account:  "feishu_bot_ops",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -625,7 +625,7 @@ func TestExecutorExecutesFeishuDocumentBlockUpdate(t *testing.T) {
 					AppSecret: "env:FEISHU_APP_SECRET",
 				},
 			},
-		},
+		}),
 	})
 
 	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{
@@ -703,9 +703,9 @@ func TestExecutorExecutesFeishuDocumentBlockDescendants(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
-			Profile:  "feishu_bot_ops",
+			Account:  "feishu_bot_ops",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -715,7 +715,7 @@ func TestExecutorExecutesFeishuDocumentBlockDescendants(t *testing.T) {
 					AppSecret: "env:FEISHU_APP_SECRET",
 				},
 			},
-		},
+		}),
 	})
 
 	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{
@@ -798,9 +798,9 @@ func TestExecutorExecutesNotionDataSourceQuery(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -809,7 +809,7 @@ func TestExecutorExecutesNotionDataSourceQuery(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{
@@ -878,9 +878,9 @@ func TestExecutorExecutesNotionBlockListChildren(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -889,7 +889,7 @@ func TestExecutorExecutesNotionBlockListChildren(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{
@@ -966,14 +966,14 @@ func TestExecutorPersistsIdempotencyAndReplaysWrite(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
-			Profile:  "feishu_bot_ops",
+			Account:  "feishu_bot_ops",
 		},
 		Runtime: config.RuntimeConfig{
 			Retry: config.RetryConfig{
 				MaxAttempts: 0,
 			},
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -983,7 +983,7 @@ func TestExecutorPersistsIdempotencyAndReplaysWrite(t *testing.T) {
 					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
 				},
 			},
-		},
+		}),
 	})
 
 	registry := adapter.NewRegistry()
@@ -1055,9 +1055,9 @@ func TestExecutorRejectsIdempotencyConflict(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
-			Profile:  "feishu_bot_ops",
+			Account:  "feishu_bot_ops",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
@@ -1067,7 +1067,7 @@ func TestExecutorRejectsIdempotencyConflict(t *testing.T) {
 					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
 				},
 			},
-		},
+		}),
 	})
 
 	registry := adapter.NewRegistry()
@@ -1123,7 +1123,7 @@ func TestExecutorRetriesRetryableReadByConfig(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
 		Runtime: config.RuntimeConfig{
 			Retry: config.RetryConfig{
@@ -1132,7 +1132,7 @@ func TestExecutorRetriesRetryableReadByConfig(t *testing.T) {
 				MaxDelayMS:  1,
 			},
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -1141,7 +1141,7 @@ func TestExecutorRetriesRetryableReadByConfig(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	registry := adapter.NewRegistry()
@@ -1190,9 +1190,9 @@ func TestExecutorWritesRedactedAuditLog(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
-		Profiles: map[string]config.Profile{
+		Accounts: accountsFromProfiles(map[string]config.Profile{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
@@ -1201,7 +1201,7 @@ func TestExecutorWritesRedactedAuditLog(t *testing.T) {
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
 			},
-		},
+		}),
 	})
 
 	registry := adapter.NewRegistry()
@@ -1287,6 +1287,113 @@ func newTestStore(t *testing.T, cfg *config.Config) *config.Store {
 		t.Fatalf("failed to save test config: %v", err)
 	}
 	return store
+}
+
+func accountsFromProfiles(profiles map[string]config.Profile) map[string]config.Account {
+	accounts := make(map[string]config.Account, len(profiles))
+	for name, profile := range profiles {
+		method := strings.TrimSpace(profile.Method)
+		if method == "" {
+			switch strings.TrimSpace(profile.Grant.Type) {
+			case "client_credentials":
+				method = "feishu.app_credentials"
+			case "oauth_user":
+				method = "feishu.oauth_user"
+			case "static_token":
+				method = "notion.internal_token"
+			case "oauth_refreshable":
+				method = "notion.oauth_public"
+			}
+		}
+
+		account := config.Account{
+			Title:    profile.Title,
+			Platform: profile.Platform,
+			Subject:  profile.Subject,
+			Auth: config.AccountAuth{
+				Method:     method,
+				Public:     map[string]any{},
+				SecretRefs: map[string]string{},
+			},
+		}
+
+		switch method {
+		case "feishu.app_credentials":
+			if strings.TrimSpace(profile.Params.AppID) != "" {
+				account.Auth.Public["app_id"] = strings.TrimSpace(profile.Params.AppID)
+			} else if strings.TrimSpace(profile.Grant.AppID) != "" {
+				account.Auth.Public["app_id"] = strings.TrimSpace(profile.Grant.AppID)
+			}
+			if strings.TrimSpace(profile.Grant.AppSecret) != "" {
+				account.Auth.SecretRefs["app_secret"] = strings.TrimSpace(profile.Grant.AppSecret)
+			}
+		case "feishu.oauth_user":
+			if strings.TrimSpace(profile.Params.ClientID) != "" {
+				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Params.ClientID)
+			} else if strings.TrimSpace(profile.Grant.ClientID) != "" {
+				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Grant.ClientID)
+			}
+			if strings.TrimSpace(profile.Params.RedirectMode) != "" {
+				account.Auth.Public["redirect_mode"] = strings.TrimSpace(profile.Params.RedirectMode)
+			}
+			if len(profile.Params.Scopes) > 0 {
+				account.Auth.Public["scopes"] = append([]string(nil), profile.Params.Scopes...)
+			}
+			if strings.TrimSpace(profile.Grant.ClientSecret) != "" {
+				account.Auth.SecretRefs["client_secret"] = strings.TrimSpace(profile.Grant.ClientSecret)
+			}
+			if strings.TrimSpace(profile.Grant.AccessToken) != "" {
+				account.Auth.SecretRefs["access_token"] = strings.TrimSpace(profile.Grant.AccessToken)
+			}
+			if strings.TrimSpace(profile.Grant.RefreshToken) != "" {
+				account.Auth.SecretRefs["refresh_token"] = strings.TrimSpace(profile.Grant.RefreshToken)
+			}
+		case "notion.internal_token":
+			if strings.TrimSpace(profile.Params.NotionVersion) != "" {
+				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Params.NotionVersion)
+			} else if strings.TrimSpace(profile.Grant.NotionVer) != "" {
+				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Grant.NotionVer)
+			}
+			if strings.TrimSpace(profile.Grant.Token) != "" {
+				account.Auth.SecretRefs["token"] = strings.TrimSpace(profile.Grant.Token)
+			}
+		case "notion.oauth_public":
+			if strings.TrimSpace(profile.Params.ClientID) != "" {
+				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Params.ClientID)
+			} else if strings.TrimSpace(profile.Grant.ClientID) != "" {
+				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Grant.ClientID)
+			}
+			if strings.TrimSpace(profile.Params.NotionVersion) != "" {
+				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Params.NotionVersion)
+			} else if strings.TrimSpace(profile.Grant.NotionVer) != "" {
+				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Grant.NotionVer)
+			}
+			if strings.TrimSpace(profile.Params.RedirectMode) != "" {
+				account.Auth.Public["redirect_mode"] = strings.TrimSpace(profile.Params.RedirectMode)
+			}
+			if len(profile.Params.Scopes) > 0 {
+				account.Auth.Public["scopes"] = append([]string(nil), profile.Params.Scopes...)
+			}
+			if strings.TrimSpace(profile.Grant.ClientSecret) != "" {
+				account.Auth.SecretRefs["client_secret"] = strings.TrimSpace(profile.Grant.ClientSecret)
+			}
+			if strings.TrimSpace(profile.Grant.AccessToken) != "" {
+				account.Auth.SecretRefs["access_token"] = strings.TrimSpace(profile.Grant.AccessToken)
+			}
+			if strings.TrimSpace(profile.Grant.RefreshToken) != "" {
+				account.Auth.SecretRefs["refresh_token"] = strings.TrimSpace(profile.Grant.RefreshToken)
+			}
+		}
+
+		if len(account.Auth.Public) == 0 {
+			account.Auth.Public = nil
+		}
+		if len(account.Auth.SecretRefs) == 0 {
+			account.Auth.SecretRefs = nil
+		}
+		accounts[name] = account
+	}
+	return accounts
 }
 
 func newTestRegistry(t *testing.T, feishuClient *feishuadapter.Client, notionClient *notionadapter.Client) *adapter.Registry {

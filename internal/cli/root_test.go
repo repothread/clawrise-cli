@@ -548,6 +548,98 @@ func TestRunSpecExportMarkdown(t *testing.T) {
 	}
 }
 
+func TestRunSpecExportMarkdownToDirectory(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	outputDir := filepath.Join(t.TempDir(), "generated-spec")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"spec", "export", "notion.page", "--format", "markdown", "--out-dir", outputDir}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"written_files"`)) {
+		t.Fatalf("expected written_files in export output, got: %s", stdout.String())
+	}
+	indexPath := filepath.Join(outputDir, "index.md")
+	if _, err := os.Stat(indexPath); err != nil {
+		t.Fatalf("expected markdown index to be written: %v", err)
+	}
+	operationPath := filepath.Join(outputDir, "operations", "notion", "page", "create.md")
+	if _, err := os.Stat(operationPath); err != nil {
+		t.Fatalf("expected markdown operation file to be written: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunBatchDryRun(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", "../../examples/config.example.yaml")
+	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
+	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{
+		"batch",
+		"--json",
+		`{
+		  "requests": [
+		    {
+		      "operation": "feishu.calendar.event.create",
+		      "dry_run": true,
+		      "input": {
+		        "calendar_id": "cal_demo",
+		        "summary": "Batch Demo",
+		        "start_at": "2026-03-30T10:00:00+08:00",
+		        "end_at": "2026-03-30T11:00:00+08:00"
+		      }
+		    },
+		    {
+		      "operation": "feishu.calendar.event.create",
+		      "dry_run": true,
+		      "input": {
+		        "calendar_id": "cal_demo",
+		        "summary": "Batch Demo 2",
+		        "start_at": "2026-03-30T12:00:00+08:00",
+		        "end_at": "2026-03-30T13:00:00+08:00"
+		      }
+		    }
+		  ]
+		}`,
+	}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"success_count": 2`)) {
+		t.Fatalf("expected two successful batch requests, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"operation": "feishu.calendar.event.create"`)) {
+		t.Fatalf("expected feishu operation in batch output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"Batch Demo 2"`)) {
+		t.Fatalf("expected second batch payload in output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunCompletionBash(t *testing.T) {
 	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
 

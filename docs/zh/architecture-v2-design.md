@@ -31,6 +31,8 @@
 - `locator` 已补齐路径解析来源输出，`doctor` 会直接暴露 config/state/runtime 的实际生效路径与来源
 - Feishu / Notion 当前已按各自公开 OAuth 能力接入交互式授权，第一方 provider 暂不把 `device_code` 作为近期交付项
 - `storage_backend` plugin kind 与外部 `secret_store` plugin 的 manifest / 安装 / 发现 / 调用链路已落地
+- 顶层 `profile` / `connection` 配置输入 shim 已从 core 配置模型中删除
+- `spec export` 已支持把 Markdown 批量写入目录，docs 生成可以直接复用同一份 metadata
 
 部分完成：
 
@@ -38,7 +40,7 @@
 - `subject` 的外部硬编码限制已移除，但内部仍保留少量 config inspection / legacy shim 类型名
 - `device_code` 的 core 协议、flow 持久化与 CLI 主流程已落地，但第一方 provider 是否接入该模式将按未来 provider 公开能力与真实需求再决定
 - secret/session/authflow/governance 已具备可切换与注册扩展的 backend 接口，其中 `secret_store` 已打通外部 plugin 形态，其他 backend 类型仍可继续扩展
-- docs 自动生成已经可以复用统一 metadata 导出 Markdown，但独立的 docs 生成流水线仍可继续收敛
+- docs 自动生成已经可以复用统一 metadata 导出 Markdown，并支持批量写目录，但独立的 docs 生成流水线仍可继续收敛
 - `profile` / `connection` / `account` 的内部收敛已经不再阻塞 core execute 路径，但 `config` 包里仍保留少量 legacy inspection shim
 
 尚未完成：

@@ -32,7 +32,8 @@ var (
 	specCompletionCommands       = []string{"list", "get", "status", "export"}
 	completionShells             = []string{"bash", "zsh", "fish"}
 	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
-	specExportCompletionFlags    = []string{"--format", "--help", "-h"}
+	batchCompletionFlags         = []string{"--json", "--input", "--help", "-h"}
+	specExportCompletionFlags    = []string{"--format", "--out-dir", "--help", "-h"}
 	configInitCompletionFlags    = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
@@ -156,7 +157,11 @@ _clawrise_completion() {
       COMPREPLY=( $(compgen -W '%s' -- "$cur") )
       return 0
       ;;
-    doctor|version|batch)
+    batch)
+      COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+      return 0
+      ;;
+    doctor|version)
       COMPREPLY=()
       return 0
       ;;
@@ -171,8 +176,8 @@ complete -F _clawrise_completion clawrise
 `,
 		rootWords,
 		shellWords(platformCompletionCommands),
-		shellWords(accountCompletionCommands),
 		shellWords(subjectCompletionCommands),
+		shellWords(accountCompletionCommands),
 		shellWords(authCompletionCommands),
 		shellWords(authSecretCompletionCommands),
 		shellWords(configCompletionCommands),
@@ -182,6 +187,7 @@ complete -F _clawrise_completion clawrise
 		specPaths,
 		shellWords(specExportCompletionFlags),
 		shellWords(completionShells),
+		shellWords(batchCompletionFlags),
 		shellWords(operationCompletionFlags),
 	)
 }
@@ -204,11 +210,12 @@ local -a spec_paths
 local -a operation_flags
 local -a config_init_flags
 local -a spec_export_flags
+local -a batch_flags
 
 root_commands=(%s)
 platform_commands=(%s)
-account_commands=(%s)
 subject_commands=(%s)
+account_commands=(%s)
 auth_commands=(%s)
 auth_secret_commands=(%s)
 config_commands=(%s)
@@ -220,6 +227,7 @@ spec_paths=(%s)
 operation_flags=(%s)
 config_init_flags=(%s)
 spec_export_flags=(%s)
+batch_flags=(%s)
 
 if (( CURRENT == 2 )); then
   compadd -- $root_commands $operations
@@ -271,7 +279,10 @@ case "$words[2]" in
   completion)
     compadd -- $completion_shells
     ;;
-  doctor|version|batch)
+  batch)
+    compadd -- $batch_flags
+    ;;
+  doctor|version)
     ;;
   *)
     compadd -- $operation_flags
@@ -279,8 +290,8 @@ case "$words[2]" in
 esac
 `, zshWords(append(append([]string{}, rootCompletionCommands...), data.Operations...)),
 		zshWords(platformCompletionCommands),
-		zshWords(accountCompletionCommands),
 		zshWords(subjectCompletionCommands),
+		zshWords(accountCompletionCommands),
 		zshWords(authCompletionCommands),
 		zshWords(authSecretCompletionCommands),
 		zshWords(configCompletionCommands),
@@ -292,6 +303,7 @@ esac
 		zshWords(operationCompletionFlags),
 		zshWords(configInitCompletionFlags),
 		zshWords(specExportCompletionFlags),
+		zshWords(batchCompletionFlags),
 	)
 }
 
@@ -325,6 +337,12 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 	}
 	for _, flag := range specExportCompletionFlags {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from spec export' -l '%s'", strings.TrimLeft(flag, "-")))
+	}
+	for _, flag := range batchCompletionFlags {
+		if !strings.HasPrefix(flag, "--") {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from batch' -l '%s'", strings.TrimPrefix(flag, "--")))
 	}
 	for _, flag := range configInitCompletionFlags {
 		if !strings.HasPrefix(flag, "--") {

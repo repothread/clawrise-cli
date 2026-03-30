@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -75,7 +77,9 @@ func runSpecExport(args []string, stdout io.Writer, service *spec.Service) error
 	flags.SetOutput(stdout)
 
 	var format string
+	var outDir string
 	flags.StringVar(&format, "format", "json", "set the export format: json or markdown")
+	flags.StringVar(&outDir, "out-dir", "", "write exported files into the target directory")
 
 	if err := flags.Parse(args); err != nil {
 		if err == pflag.ErrHelp {
@@ -94,6 +98,9 @@ func runSpecExport(args []string, stdout io.Writer, service *spec.Service) error
 
 	switch strings.TrimSpace(format) {
 	case "json":
+		if strings.TrimSpace(outDir) != "" {
+			return fmt.Errorf("--out-dir is supported only when --format markdown is used")
+		}
 		result, err := service.Export(path)
 		if err != nil {
 			return writeSpecError(stdout, err)
@@ -103,6 +110,25 @@ func runSpecExport(args []string, stdout io.Writer, service *spec.Service) error
 			"data": result,
 		})
 	case "markdown":
+		if strings.TrimSpace(outDir) != "" {
+			documents, err := service.ExportMarkdownDocuments(path)
+			if err != nil {
+				return writeSpecError(stdout, err)
+			}
+			writtenFiles, err := writeSpecExportDocuments(outDir, documents)
+			if err != nil {
+				return err
+			}
+			return output.WriteJSON(stdout, map[string]any{
+				"ok": true,
+				"data": map[string]any{
+					"path":          path,
+					"format":        "markdown",
+					"output_dir":    strings.TrimSpace(outDir),
+					"written_files": writtenFiles,
+				},
+			})
+		}
 		document, err := service.ExportMarkdown(path)
 		if err != nil {
 			return writeSpecError(stdout, err)
@@ -123,6 +149,7 @@ func printSpecHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "  clawrise spec get notion.page.create")
 	_, _ = fmt.Fprintln(stdout, "  clawrise spec export")
 	_, _ = fmt.Fprintln(stdout, "  clawrise spec export notion.page.create --format markdown")
+	_, _ = fmt.Fprintln(stdout, "  clawrise spec export notion.page --format markdown --out-dir ./docs/generated")
 }
 
 func writeSpecError(stdout io.Writer, err error) error {
@@ -141,4 +168,31 @@ func writeSpecError(stdout io.Writer, err error) error {
 		return writeErr
 	}
 	return ExitError{Code: 1}
+}
+
+func writeSpecExportDocuments(rootDir string, documents map[string]string) ([]string, error) {
+	rootDir = strings.TrimSpace(rootDir)
+	if rootDir == "" {
+		return nil, fmt.Errorf("output directory is required")
+	}
+	if err := os.MkdirAll(rootDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create spec export output dir: %w", err)
+	}
+
+	paths := make([]string, 0, len(documents))
+	for relativePath, document := range documents {
+		relativePath = strings.TrimSpace(relativePath)
+		if relativePath == "" {
+			continue
+		}
+		targetPath := filepath.Join(rootDir, relativePath)
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create spec export directory: %w", err)
+		}
+		if err := os.WriteFile(targetPath, []byte(document), 0o644); err != nil {
+			return nil, fmt.Errorf("failed to write spec export document: %w", err)
+		}
+		paths = append(paths, targetPath)
+	}
+	return paths, nil
 }

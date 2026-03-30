@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -244,6 +245,39 @@ func (s *Service) ExportMarkdown(path string) (string, error) {
 	}
 
 	return strings.TrimSpace(buffer.String()) + "\n", nil
+}
+
+// ExportMarkdownDocuments returns a file-path to markdown-document map for one spec scope.
+func (s *Service) ExportMarkdownDocuments(path string) (map[string]string, error) {
+	result, err := s.Export(path)
+	if err != nil {
+		return nil, err
+	}
+
+	documents := map[string]string{}
+	indexDocument, err := s.ExportMarkdown(path)
+	if err != nil {
+		return nil, err
+	}
+	documents["index.md"] = indexDocument
+
+	if result.NodeType == "operation" {
+		return documents, nil
+	}
+
+	for _, operation := range result.Operations {
+		document, err := s.ExportMarkdown(operation.Operation)
+		if err != nil {
+			return nil, err
+		}
+		documents[filepath.Join("operations", operationMarkdownRelativePath(operation.Operation))] = document
+	}
+	return documents, nil
+}
+
+func operationMarkdownRelativePath(operation string) string {
+	parts := strings.Split(strings.TrimSpace(operation), ".")
+	return filepath.Join(parts...) + ".md"
 }
 
 func matchesSpecPath(operation string, parts []string) bool {

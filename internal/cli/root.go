@@ -114,7 +114,12 @@ func Run(args []string, deps Dependencies) error {
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runCompletion(args[1:], deps.Stdout, metadataService.Spec())
 	case "batch":
-		return runPlaceholder(args[0], deps.Stdout)
+		manager, err := resolvePluginManager(deps)
+		if err != nil {
+			return err
+		}
+		executor := runtime.NewExecutorWithManager(store, manager)
+		return runBatch(args[1:], deps.Stdout, deps.Stderr, executor)
 	default:
 		manager, err := resolvePluginManager(deps)
 		if err != nil {
@@ -568,16 +573,6 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	})
 }
 
-func runPlaceholder(name string, stdout io.Writer) error {
-	return output.WriteJSON(stdout, map[string]any{
-		"ok": false,
-		"error": map[string]any{
-			"code":    "NOT_IMPLEMENTED",
-			"message": fmt.Sprintf("%s is reserved for future implementation", name),
-		},
-	})
-}
-
 func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Clawrise is an agent-native CLI execution layer.")
 	_, _ = fmt.Fprintln(w, "")
@@ -591,6 +586,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise config init")
 	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
+	_, _ = fmt.Fprintln(w, "  clawrise batch [--json <payload> | --input <path>]")
 	_, _ = fmt.Fprintln(w, "  clawrise completion [bash|zsh|fish]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")

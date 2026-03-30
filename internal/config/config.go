@@ -13,23 +13,15 @@ type Config struct {
 	Auth     AuthConfig         `yaml:"auth,omitempty"`
 	Runtime  RuntimeConfig      `yaml:"runtime,omitempty"`
 	Accounts map[string]Account `yaml:"accounts,omitempty"`
-	// Legacy-only input shim. New code should use Accounts.
-	Connections map[string]Connection `yaml:"-"`
-	// Legacy-only input shim. New code should use Accounts.
-	Profiles map[string]Profile `yaml:"-"`
 }
 
 // Defaults stores the default platform and default execution connection.
 type Defaults struct {
-	Platform string `yaml:"platform,omitempty"`
-	// Legacy-only input shim. New code should use PlatformAccounts.
-	Connections      map[string]string `yaml:"-"`
+	Platform         string            `yaml:"platform,omitempty"`
 	PlatformAccounts map[string]string `yaml:"platform_accounts,omitempty"`
 	Account          string            `yaml:"account,omitempty"`
 
-	// Subject is still user-visible, but Profile is a legacy input shim only.
 	Subject string `yaml:"subject,omitempty"`
-	Profile string `yaml:"-"`
 }
 
 // AuthConfig describes low-level auth storage settings.
@@ -137,26 +129,8 @@ func (c *Config) Ensure() {
 	if c.Accounts == nil {
 		c.Accounts = map[string]Account{}
 	}
-	if len(c.Accounts) == 0 && len(c.Connections) > 0 {
-		for name, connection := range c.Connections {
-			c.Accounts[name] = buildAccountFromConnection(name, connection)
-		}
-	}
-	if len(c.Accounts) == 0 && len(c.Profiles) > 0 {
-		for name, profile := range c.Profiles {
-			c.Accounts[name] = buildAccountFromConnection(name, profile)
-		}
-	}
 	if c.Defaults.PlatformAccounts == nil {
 		c.Defaults.PlatformAccounts = map[string]string{}
-	}
-	if c.Defaults.Account == "" && strings.TrimSpace(c.Defaults.Profile) != "" {
-		c.Defaults.Account = strings.TrimSpace(c.Defaults.Profile)
-	}
-	if len(c.Defaults.PlatformAccounts) == 0 && len(c.Defaults.Connections) > 0 {
-		for platform, accountName := range c.Defaults.Connections {
-			c.Defaults.PlatformAccounts[platform] = accountName
-		}
 	}
 }
 
@@ -168,13 +142,7 @@ func DefaultPath() (string, error) {
 // Marshal encodes the config as YAML.
 func (c *Config) Marshal() ([]byte, error) {
 	c.Ensure()
-
-	cloned := *c
-	cloned.Profiles = nil
-	cloned.Connections = nil
-	cloned.Defaults.Connections = nil
-	cloned.Defaults.Profile = ""
-	return yaml.Marshal(&cloned)
+	return yaml.Marshal(c)
 }
 
 func buildAccountFromConnection(connectionName string, connection Connection) Account {

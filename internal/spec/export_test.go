@@ -1,6 +1,8 @@
 package spec
 
 import (
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -125,5 +127,32 @@ func TestServiceCompletionDataIncludesOperationsAndPaths(t *testing.T) {
 		if !found {
 			t.Fatalf("expected spec path %s in completion data, got: %+v", path, data.SpecPaths)
 		}
+	}
+}
+
+func TestServiceExportMarkdownDocumentsWritesIndexAndOperationFiles(t *testing.T) {
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
+
+	documents, err := service.ExportMarkdownDocuments("notion.page")
+	if err != nil {
+		t.Fatalf("ExportMarkdownDocuments returned error: %v", err)
+	}
+
+	expectedPaths := []string{
+		"index.md",
+		filepath.Join("operations", "notion", "page", "create.md"),
+		filepath.Join("operations", "notion", "page", "get.md"),
+		filepath.Join("operations", "notion", "page", "markdown", "get.md"),
+		filepath.Join("operations", "notion", "page", "markdown", "update.md"),
+		filepath.Join("operations", "notion", "page", "update.md"),
+	}
+	for _, path := range expectedPaths {
+		if _, ok := documents[path]; !ok {
+			t.Fatalf("expected markdown document %s, got keys: %+v", path, reflect.ValueOf(documents).MapKeys())
+		}
+	}
+	if !strings.Contains(documents["index.md"], "# Clawrise Spec Export") {
+		t.Fatalf("expected index markdown document, got: %s", documents["index.md"])
 	}
 }
