@@ -176,6 +176,10 @@ func runAuthLogin(args []string, cfg *config.Config, store *config.Store, stdout
 	if !ok {
 		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
 	}
+	selectedMode := strings.TrimSpace(mode)
+	if selectedMode == "" {
+		selectedMode = resolvePreferredAuthLoginMode(context.Background(), manager, account)
+	}
 
 	authAccount, err := buildPluginAuthAccount(cfg, store, accountName, account)
 	if err != nil {
@@ -183,7 +187,7 @@ func runAuthLogin(args []string, cfg *config.Config, store *config.Store, stdout
 	}
 	result, err := manager.BeginAuth(context.Background(), account.Platform, pluginruntime.AuthBeginParams{
 		Account:      authAccount,
-		Mode:         strings.TrimSpace(mode),
+		Mode:         selectedMode,
 		RedirectURI:  strings.TrimSpace(redirectURI),
 		CallbackHost: strings.TrimSpace(callbackHost),
 		CallbackPath: strings.TrimSpace(callbackPath),
@@ -562,4 +566,54 @@ func selectLaunchableAuthAction(actions []pluginruntime.AuthAction) (pluginrunti
 		}
 	}
 	return pluginruntime.AuthAction{}, false
+}
+
+func resolvePreferredAuthLoginMode(ctx context.Context, manager *pluginruntime.Manager, account config.Account) string {
+	if manager == nil {
+		return ""
+	}
+
+	methods, err := manager.ListAuthMethods(ctx, account.Platform)
+	if err != nil {
+		return ""
+	}
+	targetMethod := strings.TrimSpace(account.Auth.Method)
+	for _, method := range methods {
+		if strings.TrimSpace(method.ID) != targetMethod {
+			continue
+		}
+		if !method.Interactive {
+			return ""
+		}
+		return selectPreferredInteractiveMode(method.InteractiveModes)
+	}
+	return ""
+}
+
+func selectPreferredInteractiveMode(modes []string) string {
+	normalizedModes := make([]string, 0, len(modes))
+	seen := map[string]struct{}{}
+	for _, mode := range modes {
+		mode = strings.TrimSpace(mode)
+		if mode == "" {
+			continue
+		}
+		if _, ok := seen[mode]; ok {
+			continue
+		}
+		seen[mode] = struct{}{}
+		normalizedModes = append(normalizedModes, mode)
+	}
+	if len(normalizedModes) == 0 {
+		return ""
+	}
+
+	for _, preferred := range []string{"device_code", "local_browser", "manual_code", "manual_url"} {
+		for _, mode := range normalizedModes {
+			if mode == preferred {
+				return mode
+			}
+		}
+	}
+	return normalizedModes[0]
 }

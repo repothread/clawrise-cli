@@ -35,11 +35,38 @@ type Store interface {
 	Delete(connectionName string, field string) error
 }
 
+// StoreFactory 描述一个可注册的 secret store backend 构造器。
+type StoreFactory func(configPath string, stateDir string) (Store, error)
+
 // Options 描述创建 store 时的基础参数。
 type Options struct {
 	ConfigPath      string
 	Backend         string
 	FallbackBackend string
+}
+
+var storeFactories = map[string]StoreFactory{
+	"keychain": func(configPath string, stateDir string) (Store, error) {
+		return newMacOSKeychainStore(), nil
+	},
+	"secret_service": func(configPath string, stateDir string) (Store, error) {
+		return newLinuxSecretServiceStore(), nil
+	},
+	"encrypted_file": func(configPath string, stateDir string) (Store, error) {
+		return newEncryptedFileStore(stateDir, "encrypted_file"), nil
+	},
+	"windows_dpapi_file": func(configPath string, stateDir string) (Store, error) {
+		return newEncryptedFileStore(stateDir, "windows_dpapi_file"), nil
+	},
+}
+
+// RegisterStoreBackend 注册一个可扩展的 secret store backend。
+func RegisterStoreBackend(name string, factory StoreFactory) {
+	name = normalizeBackendName(name)
+	if name == "" || name == "auto" || factory == nil {
+		return
+	}
+	storeFactories[name] = factory
 }
 
 // Open 根据配置和当前操作系统创建 secret store。
@@ -68,17 +95,23 @@ func Open(options Options) (Store, error) {
 func openAutoStore(configPath string, stateDir string, fallback string) (Store, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		store := newMacOSKeychainStore()
-		if status := store.Status(); status.Supported && status.Readable && status.Writable {
-			return store, nil
+		store, err := openNamedStore(configPath, stateDir, "keychain")
+		if err == nil {
+			status := store.Status()
+			if status.Supported && status.Readable && status.Writable {
+				return store, nil
+			}
 		}
 	case "linux":
-		store := newLinuxSecretServiceStore()
-		if status := store.Status(); status.Supported && status.Readable && status.Writable {
-			return store, nil
+		store, err := openNamedStore(configPath, stateDir, "secret_service")
+		if err == nil {
+			status := store.Status()
+			if status.Supported && status.Readable && status.Writable {
+				return store, nil
+			}
 		}
 	case "windows":
-		return newEncryptedFileStore(stateDir, "windows_dpapi_file"), nil
+		return openNamedStore(configPath, stateDir, "windows_dpapi_file")
 	}
 
 	backend := normalizeBackendName(fallback)
@@ -89,26 +122,25 @@ func openAutoStore(configPath string, stateDir string, fallback string) (Store, 
 }
 
 func openExplicitStore(configPath string, stateDir string, backend string) (Store, error) {
-	switch backend {
-	case "keychain":
-		store := newMacOSKeychainStore()
-		if status := store.Status(); !status.Supported {
-			return nil, fmt.Errorf("macOS keychain is not supported: %s", status.Detail)
+	store, err := openNamedStore(configPath, stateDir, backend)
+	if err != nil {
+		return nil, err
+	}
+	if status := store.Status(); !status.Supported {
+		if strings.TrimSpace(status.Detail) != "" {
+			return nil, fmt.Errorf("secret store backend %s is not supported: %s", backend, status.Detail)
 		}
-		return store, nil
-	case "secret_service":
-		store := newLinuxSecretServiceStore()
-		if status := store.Status(); !status.Supported {
-			return nil, fmt.Errorf("linux secret service is not supported: %s", status.Detail)
-		}
-		return store, nil
-	case "encrypted_file":
-		return newEncryptedFileStore(stateDir, "encrypted_file"), nil
-	case "windows_dpapi_file":
-		return newEncryptedFileStore(stateDir, "windows_dpapi_file"), nil
-	default:
+		return nil, fmt.Errorf("secret store backend %s is not supported", backend)
+	}
+	return store, nil
+}
+
+func openNamedStore(configPath string, stateDir string, backend string) (Store, error) {
+	factory, ok := storeFactories[backend]
+	if !ok {
 		return nil, fmt.Errorf("unsupported secret store backend: %s", backend)
 	}
+	return factory(configPath, stateDir)
 }
 
 func normalizeBackendName(value string) string {

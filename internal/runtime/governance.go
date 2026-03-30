@@ -59,6 +59,17 @@ var governanceStoreFactories = map[string]governanceStoreFactory{
 	},
 }
 
+// RegisterGovernanceStoreBackend 注册一个可扩展的 runtime governance backend。
+func RegisterGovernanceStoreBackend(name string, factory func(rootDir string) governanceStore) {
+	name = strings.TrimSpace(strings.ToLower(name))
+	if name == "" || factory == nil {
+		return
+	}
+	governanceStoreFactories[name] = func(paths runtimePaths) governanceStore {
+		return factory(paths.rootDir)
+	}
+}
+
 // persistedIdempotencyRecord is the on-disk idempotency record.
 type persistedIdempotencyRecord struct {
 	Key        string     `json:"key"`

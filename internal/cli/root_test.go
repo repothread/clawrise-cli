@@ -961,6 +961,9 @@ accounts:
 			}, nil
 		},
 		begin: func(ctx context.Context, params pluginruntime.AuthBeginParams) (pluginruntime.AuthBeginResult, error) {
+			if params.Mode != "device_code" {
+				t.Fatalf("expected auth login to prefer device_code mode, got: %+v", params)
+			}
 			return pluginruntime.AuthBeginResult{
 				HumanRequired: true,
 				Flow: pluginruntime.AuthFlowPayload{
@@ -1081,6 +1084,24 @@ accounts:
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"status": "ready"`)) {
 		t.Fatalf("expected ready status in auth complete output, got: %s", stdout.String())
+	}
+}
+
+func TestSelectPreferredInteractiveMode(t *testing.T) {
+	if mode := selectPreferredInteractiveMode([]string{"manual_code", "device_code", "local_browser"}); mode != "device_code" {
+		t.Fatalf("expected device_code to win, got: %s", mode)
+	}
+	if mode := selectPreferredInteractiveMode([]string{"manual_code", "local_browser"}); mode != "local_browser" {
+		t.Fatalf("expected local_browser to win when device_code is unavailable, got: %s", mode)
+	}
+	if mode := selectPreferredInteractiveMode([]string{"manual_url", "custom_mode"}); mode != "manual_url" {
+		t.Fatalf("expected manual_url to win over unknown modes, got: %s", mode)
+	}
+	if mode := selectPreferredInteractiveMode([]string{"custom_mode"}); mode != "custom_mode" {
+		t.Fatalf("expected first unknown mode to be preserved, got: %s", mode)
+	}
+	if mode := selectPreferredInteractiveMode(nil); mode != "" {
+		t.Fatalf("expected empty mode for empty input, got: %s", mode)
 	}
 }
 
@@ -1273,6 +1294,47 @@ func TestRunDoctor(t *testing.T) {
 	}
 	if bytes.Contains(stdout.Bytes(), []byte(`"auth":`)) {
 		t.Fatalf("expected doctor account items to expose flattened auth fields, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunDoctorUsesLocatorResolvedPaths(t *testing.T) {
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "config.yaml")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	configYAML := `paths:
+  state_dir: .state-data
+`
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o600); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	expectedStateDir := filepath.Join(configDir, ".state-data")
+	expectedRuntimeDir := filepath.Join(expectedStateDir, "runtime")
+	if !bytes.Contains(stdout.Bytes(), []byte(expectedStateDir)) {
+		t.Fatalf("expected doctor output to expose resolved state dir, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(expectedRuntimeDir)) {
+		t.Fatalf("expected doctor output to expose resolved runtime dir, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"source": "config.paths.state_dir"`)) {
+		t.Fatalf("expected doctor output to expose locator source, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

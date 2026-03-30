@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/clawrise/clawrise-cli/internal/config"
+	"github.com/clawrise/clawrise-cli/internal/locator"
 	"github.com/clawrise/clawrise-cli/internal/metadata"
 	"github.com/clawrise/clawrise-cli/internal/output"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
@@ -449,13 +450,51 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 		nextSteps = append(nextSteps, "run `clawrise auth login <account>` to finish interactive authorization")
 	}
 
+	configResolution, configResolutionErr := locator.ResolveConfigPathResolution()
+	stateResolution, stateResolutionErr := locator.ResolveStateDirResolution(store.Path())
+	runtimeResolution, runtimeResolutionErr := locator.ResolveRuntimeDirResolution(store.Path())
+
+	pathsSummary := map[string]any{
+		"config": map[string]any{
+			"path": store.Path(),
+		},
+	}
+	if configResolutionErr == nil {
+		pathsSummary["config"] = map[string]any{
+			"path":   configResolution.Path,
+			"source": configResolution.Source,
+		}
+	}
+	if stateResolutionErr == nil {
+		pathsSummary["state"] = map[string]any{
+			"path":   stateResolution.Path,
+			"source": stateResolution.Source,
+		}
+		pathsSummary["sessions"] = map[string]any{
+			"path": filepath.Join(stateResolution.Path, "auth", "sessions"),
+		}
+		pathsSummary["auth_flows"] = map[string]any{
+			"path": filepath.Join(stateResolution.Path, "auth", "flows"),
+		}
+	}
+	if runtimeResolutionErr == nil {
+		pathsSummary["runtime"] = map[string]any{
+			"path":   runtimeResolution.Path,
+			"source": runtimeResolution.Source,
+		}
+	}
+
+	runtimeRootDir := filepath.Join(filepath.Dir(store.Path()), "runtime")
+	if runtimeResolutionErr == nil {
+		runtimeRootDir = runtimeResolution.Path
+	}
 	runtimeSummary := map[string]any{
 		"registered_operation_count": 0,
 		"catalog_entry_count":        0,
 		"storage": map[string]any{
-			"root_dir":        filepath.Join(filepath.Dir(store.Path()), "runtime"),
-			"idempotency_dir": filepath.Join(filepath.Dir(store.Path()), "runtime", "idempotency"),
-			"audit_dir":       filepath.Join(filepath.Dir(store.Path()), "runtime", "audit"),
+			"root_dir":        runtimeRootDir,
+			"idempotency_dir": filepath.Join(runtimeRootDir, "idempotency"),
+			"audit_dir":       filepath.Join(runtimeRootDir, "audit"),
 		},
 		"retry_policy": map[string]any{
 			"max_attempts":  cfg.Runtime.Retry.MaxAttempts,
@@ -516,6 +555,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			},
 			"plugins":   discovery,
 			"runtime":   runtimeSummary,
+			"paths":     pathsSummary,
 			"playbooks": playbookValidation,
 			"environment": map[string]any{
 				"go_version": runtimeVersion(),

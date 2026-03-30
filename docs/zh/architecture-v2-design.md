@@ -26,21 +26,33 @@
 - `internal/spec/catalog` 的内置平台清单已删除
 - `PathsConfig` 已开始通过 `locator` 模块参与状态路径解析
 - playbook 索引校验已接入统一 metadata，并在 `doctor` 中暴露结果
+- `auth login` 已开始基于 auth method descriptor 自动按 `device_code -> local_browser -> manual_code -> manual_url` 选择默认交互模式
+- `secret/session/authflow/governance` 四类状态存储都已具备 backend 注册点
+- `locator` 已补齐路径解析来源输出，`doctor` 会直接暴露 config/state/runtime 的实际生效路径与来源
+- Feishu / Notion 当前已按各自公开 OAuth 能力接入交互式授权，第一方 provider 暂不把 `device_code` 作为近期交付项
 
 部分完成：
 
 - 文档和内部遗留命名仍在继续清理
 - `subject` 的外部硬编码限制已移除，但内部仍保留少量 config inspection / legacy shim 类型名
-- `device_code` 的 core 协议、flow 持久化与 CLI 主流程已落地，但第一方 provider 还没有全部接成真实 device code
-- secret/session/authflow/governance 已具备可切换 backend 的注册点，但外部可分发 backend/plugin 形态仍可继续扩展
+- `device_code` 的 core 协议、flow 持久化与 CLI 主流程已落地，但第一方 provider 是否接入该模式将按未来 provider 公开能力与真实需求再决定
+- secret/session/authflow/governance 已具备可切换与注册扩展的 backend 接口，但外部可分发 backend/plugin 形态仍可继续扩展
 - docs 自动生成已经可以复用统一 metadata 导出 Markdown，但独立的 docs 生成流水线仍可继续收敛
 - `profile` / `connection` / `account` 的内部收敛已经不再阻塞 core execute 路径，但 `config` 包里仍保留少量 legacy inspection shim
+- `PathsConfig` 的解析优先级已经统一收敛到 `locator`，但它是否长期作为用户可见配置保留仍未最终定案
 
 尚未完成：
 
-- 第一方 provider 级的真实 `device_code` 对接还没有全部补齐
 - storage backend 的外部分发 / 安装 / 协议化形态还没有像 provider plugin 一样完全独立
 - `PathsConfig` 是否长期保留仍未最终定案
+
+### 0.1 按 Phase 粗略进度
+
+- Phase 1：已完成
+- Phase 2：已完成
+- Phase 3：已完成；`device_code` 保留为可选通用模式，未来按 provider 能力再接入
+- Phase 4：已完成，metadata/playbook/locator/doctor 已收敛到统一事实源与统一路径解析
+- Phase 5：已基本完成，Feishu / Notion 已迁移到新协议并按当前公开能力完成边界验证
 
 ## 1. 目标
 
@@ -58,12 +70,11 @@
 
 当前实现已经具备不错的 provider runtime 抽象，但仍有几类结构性边界还没有完全收好：
 
-- 第一方 provider 的真实 `device_code` 对接还没有全部补齐
-- storage backend 已经开始走可切换注册点，但外部分发与独立协议仍未完全落地
+- storage backend 已经具备可切换与注册扩展的接口，但外部分发与独立协议仍未完全落地
 - `profile` / `connection` / `account` 的内部遗留命名仍在继续清理，但已不再阻塞 core execute 边界
 - `subject` 的外部限制已经移除，但 config inspection 里仍保留少量 legacy bridge 结构
 - playbook 校验已经接到统一 metadata，但 docs 自动生成流水线仍可继续收敛
-- `PathsConfig` 已开始参与 locator 路径解析，但长期是否继续作为用户可见配置仍未最终定案
+- `PathsConfig` 的解析优先级已经统一收敛到 `locator`，但长期是否继续作为用户可见配置仍未最终定案
 
 这些问题不是单点 bug，而是边界没有完全收好。
 
@@ -256,7 +267,7 @@ accounts:
 }
 ```
 
-对于交互式 OAuth：
+对于交互式 OAuth（以下示例使用当前第一方 provider 已公开支持的模式集合）：
 
 ```json
 {
@@ -266,7 +277,7 @@ accounts:
   "subjects": ["integration"],
   "kind": "interactive",
   "interactive": true,
-  "interactive_modes": ["device_code", "local_browser", "manual_code"],
+  "interactive_modes": ["local_browser", "manual_code"],
   "public_fields": [
     { "name": "client_id", "required": true },
     { "name": "redirect_mode", "required": false },
@@ -296,9 +307,9 @@ accounts:
 - `auth.presets.list`
   - 返回面向用户的账号模板，例如“飞书 Bot”“飞书用户态”“Notion internal token”
 - `auth.begin`
-  - 启动交互式授权，返回授权 URL、device code、下一步动作等
+  - 启动交互式授权，返回授权 URL、device code（如该模式受支持）、下一步动作等
 - `auth.complete`
-  - 用 callback URL、code、device_code 轮询结果完成授权
+  - 用 callback URL、code，或在 provider 支持时使用 `device_code` 轮询结果完成授权
 - `auth.resolve`
   - 在执行前把账号配置、secret、session 解析成“可执行认证上下文”
 - `auth.inspect`
@@ -398,7 +409,7 @@ clawrise auth inspect notion_workspace_main
 
 ### 9.3 交互式 OAuth 的模式优先级
 
-为了兼顾安全和低门槛，建议模式优先级为：
+对于同时支持多种交互模式的 provider，为了兼顾安全和低门槛，建议模式优先级为：
 
 1. `device_code`
 2. `local_browser + loopback`
@@ -410,7 +421,7 @@ clawrise auth inspect notion_workspace_main
 - `local_browser` 对纯人类终端最顺手
 - `manual_code` 作为兜底
 
-如果 provider 不支持 `device_code`，再退到 `local_browser`。
+当前第一方 provider（Feishu / Notion）公开能力里并没有 `device_code`，因此现阶段仍以 `local_browser` / `manual_code` 为主；若未来有 provider 公开支持该模式，再按上述优先级接入即可。
 
 ### 9.4 secret 输入策略
 
