@@ -17,6 +17,7 @@ var (
 		"config",
 		"plugin",
 		"spec",
+		"docs",
 		"completion",
 		"doctor",
 		"version",
@@ -30,10 +31,12 @@ var (
 	configCompletionCommands     = []string{"init"}
 	pluginCompletionCommands     = []string{"list", "install", "info", "remove", "verify"}
 	specCompletionCommands       = []string{"list", "get", "status", "export"}
+	docsCompletionCommands       = []string{"generate"}
 	completionShells             = []string{"bash", "zsh", "fish"}
 	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
 	batchCompletionFlags         = []string{"--json", "--input", "--help", "-h"}
 	specExportCompletionFlags    = []string{"--format", "--out-dir", "--help", "-h"}
+	docsGenerateCompletionFlags  = []string{"--out-dir", "--help", "-h"}
 	configInitCompletionFlags    = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
@@ -153,6 +156,18 @@ _clawrise_completion() {
           ;;
       esac
       ;;
+    docs)
+      if [[ ${COMP_CWORD} -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+        return 0
+      fi
+      case "$second" in
+        generate)
+          COMPREPLY=( $(compgen -W '%s %s' -- "$cur") )
+          return 0
+          ;;
+      esac
+      ;;
     completion)
       COMPREPLY=( $(compgen -W '%s' -- "$cur") )
       return 0
@@ -186,6 +201,9 @@ complete -F _clawrise_completion clawrise
 		shellWords(specCompletionCommands),
 		specPaths,
 		shellWords(specExportCompletionFlags),
+		shellWords(docsCompletionCommands),
+		specPaths,
+		shellWords(docsGenerateCompletionFlags),
 		shellWords(completionShells),
 		shellWords(batchCompletionFlags),
 		shellWords(operationCompletionFlags),
@@ -204,12 +222,14 @@ local -a auth_secret_commands
 local -a config_commands
 local -a plugin_commands
 local -a spec_commands
+local -a docs_commands
 local -a completion_shells
 local -a operations
 local -a spec_paths
 local -a operation_flags
 local -a config_init_flags
 local -a spec_export_flags
+local -a docs_generate_flags
 local -a batch_flags
 
 root_commands=(%s)
@@ -221,12 +241,14 @@ auth_secret_commands=(%s)
 config_commands=(%s)
 plugin_commands=(%s)
 spec_commands=(%s)
+docs_commands=(%s)
 completion_shells=(%s)
 operations=(%s)
 spec_paths=(%s)
 operation_flags=(%s)
 config_init_flags=(%s)
 spec_export_flags=(%s)
+docs_generate_flags=(%s)
 batch_flags=(%s)
 
 if (( CURRENT == 2 )); then
@@ -276,6 +298,17 @@ case "$words[2]" in
       esac
     fi
     ;;
+  docs)
+    if (( CURRENT == 3 )); then
+      compadd -- $docs_commands
+    else
+      case "$words[3]" in
+        generate)
+          compadd -- $spec_paths $docs_generate_flags
+          ;;
+      esac
+    fi
+    ;;
   completion)
     compadd -- $completion_shells
     ;;
@@ -297,12 +330,14 @@ esac
 		zshWords(configCompletionCommands),
 		zshWords(pluginCompletionCommands),
 		zshWords(specCompletionCommands),
+		zshWords(docsCompletionCommands),
 		zshWords(completionShells),
 		zshWords(data.Operations),
 		zshWords(data.SpecPaths),
 		zshWords(operationCompletionFlags),
 		zshWords(configInitCompletionFlags),
 		zshWords(specExportCompletionFlags),
+		zshWords(docsGenerateCompletionFlags),
 		zshWords(batchCompletionFlags),
 	)
 }
@@ -330,13 +365,18 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 	lines = append(lines, fishCommandCompletions("config", configCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("plugin", pluginCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("spec", specCompletionCommands)...)
+	lines = append(lines, fishCommandCompletions("docs", docsCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("completion", completionShells)...)
 
 	for _, path := range data.SpecPaths {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from spec; and not __fish_seen_subcommand_from status' -a '%s'", path))
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from docs generate' -a '%s'", path))
 	}
 	for _, flag := range specExportCompletionFlags {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from spec export' -l '%s'", strings.TrimLeft(flag, "-")))
+	}
+	for _, flag := range docsGenerateCompletionFlags {
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from docs generate' -l '%s'", strings.TrimLeft(flag, "-")))
 	}
 	for _, flag := range batchCompletionFlags {
 		if !strings.HasPrefix(flag, "--") {

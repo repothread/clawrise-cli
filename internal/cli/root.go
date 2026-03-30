@@ -84,6 +84,13 @@ func Run(args []string, deps Dependencies) error {
 		}
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runSpec(args[1:], deps.Stdout, metadataService.Spec())
+	case "docs":
+		manager, err := resolvePluginManager(deps)
+		if err != nil {
+			return err
+		}
+		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
+		return runDocs(args[1:], deps.Stdout, metadataService.Spec())
 	case "auth":
 		var manager *pluginruntime.Manager
 		if deps.PluginManager != nil {
@@ -586,6 +593,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise config init")
 	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
+	_, _ = fmt.Fprintln(w, "  clawrise docs generate [path] [--out-dir <dir>]")
 	_, _ = fmt.Fprintln(w, "  clawrise batch [--json <payload> | --input <path>]")
 	_, _ = fmt.Fprintln(w, "  clawrise completion [bash|zsh|fish]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")

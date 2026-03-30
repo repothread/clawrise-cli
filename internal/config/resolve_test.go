@@ -102,17 +102,21 @@ func TestValidateGrantAllowsInteractiveOAuthWithoutRefreshTokenBeforeAuthorizati
 	}
 }
 
-func TestInspectProfileRedactsResolvedSecrets(t *testing.T) {
+func TestInspectAccountRedactsResolvedSecrets(t *testing.T) {
 	t.Setenv("CLAWRISE_TEST_APP_ID", "app-id")
 	t.Setenv("CLAWRISE_TEST_APP_SECRET", "app-secret")
 
-	inspection := InspectProfile("feishu_bot_ops", Profile{
+	inspection := InspectAccount("feishu_bot_ops", Account{
 		Platform: "feishu",
 		Subject:  "bot",
-		Grant: Grant{
-			Type:      "client_credentials",
-			AppID:     "env:CLAWRISE_TEST_APP_ID",
-			AppSecret: "env:CLAWRISE_TEST_APP_SECRET",
+		Auth: AccountAuth{
+			Method: "feishu.app_credentials",
+			Public: map[string]any{
+				"app_id": "env:CLAWRISE_TEST_APP_ID",
+			},
+			SecretRefs: map[string]string{
+				"app_secret": "env:CLAWRISE_TEST_APP_SECRET",
+			},
 		},
 	})
 
@@ -127,18 +131,22 @@ func TestInspectProfileRedactsResolvedSecrets(t *testing.T) {
 	}
 }
 
-func TestInspectProfileMarksInteractiveOAuthAsAuthorizationRequiredBeforeAuthorization(t *testing.T) {
+func TestInspectAccountMarksInteractiveOAuthAsAuthorizationRequiredBeforeAuthorization(t *testing.T) {
 	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
 	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_ID", "client-id")
 	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_SECRET", "client-secret")
 
-	inspection := InspectProfile("feishu_user_alice", Profile{
+	inspection := InspectAccount("feishu_user_alice", Account{
 		Platform: "feishu",
 		Subject:  "user",
-		Grant: Grant{
-			Type:         "oauth_user",
-			ClientID:     "env:CLAWRISE_TEST_FEISHU_CLIENT_ID",
-			ClientSecret: "env:CLAWRISE_TEST_FEISHU_CLIENT_SECRET",
+		Auth: AccountAuth{
+			Method: "feishu.oauth_user",
+			Public: map[string]any{
+				"client_id": "env:CLAWRISE_TEST_FEISHU_CLIENT_ID",
+			},
+			SecretRefs: map[string]string{
+				"client_secret": "env:CLAWRISE_TEST_FEISHU_CLIENT_SECRET",
+			},
 		},
 	})
 

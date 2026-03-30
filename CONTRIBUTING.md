@@ -28,6 +28,7 @@ go build ./...
 go test ./...
 go run ./cmd/clawrise version
 go run ./cmd/clawrise doctor
+go run ./cmd/clawrise docs generate notion.page --out-dir ./docs/generated
 ```
 
 If local Go caches are restricted, use:

@@ -146,6 +146,7 @@ The current repository state includes:
   - `clawrise spec get <operation>`
   - `clawrise spec status`
   - `clawrise spec export [path] [--format json|markdown]`
+  - `clawrise docs generate [path] [--out-dir <dir>]`
   - `clawrise completion <bash|zsh|fish>`
 - current runtime governance:
   - persisted local idempotency state for write operations

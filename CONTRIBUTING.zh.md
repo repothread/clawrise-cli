@@ -28,6 +28,7 @@ go build ./...
 go test ./...
 go run ./cmd/clawrise version
 go run ./cmd/clawrise doctor
+go run ./cmd/clawrise docs generate notion.page --out-dir ./docs/generated
 ```
 
 如果本地 Go 缓存目录受限，可使用：

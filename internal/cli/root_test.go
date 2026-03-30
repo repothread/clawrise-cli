@@ -43,6 +43,9 @@ func TestRunRootHelpFlag(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise spec [list|get|status|export]")) {
 		t.Fatalf("expected spec usage in root help, got: %s", stdout.String())
 	}
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise docs generate [path] [--out-dir <dir>]")) {
+		t.Fatalf("expected docs usage in root help, got: %s", stdout.String())
+	}
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")) {
 		t.Fatalf("expected auth usage in root help, got: %s", stdout.String())
 	}
@@ -665,6 +668,9 @@ func TestRunCompletionBash(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("notion.page.markdown")) {
 		t.Fatalf("expected spec path completion entry, got: %s", stdout.String())
 	}
+	if !bytes.Contains(stdout.Bytes(), []byte("docs")) {
+		t.Fatalf("expected docs command completion entry, got: %s", stdout.String())
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
@@ -688,6 +694,61 @@ func TestRunSpecHelpFlag(t *testing.T) {
 
 	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise spec [list|get|status|export]")) {
 		t.Fatalf("expected spec help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunDocsHelpFlag(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"docs", "--help"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise docs generate [path] [--out-dir <dir>]")) {
+		t.Fatalf("expected docs help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunDocsGenerate(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	outputDir := filepath.Join(t.TempDir(), "generated")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"docs", "generate", "notion.page", "--out-dir", outputDir}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(outputDir, "index.md")); err != nil {
+		t.Fatalf("expected generated index markdown, got error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "operations", "notion", "page", "create.md")); err != nil {
+		t.Fatalf("expected generated operation markdown, got error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"output_dir"`)) {
+		t.Fatalf("expected docs generate output to include output_dir, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
