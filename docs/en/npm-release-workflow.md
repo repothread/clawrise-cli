@@ -4,7 +4,7 @@ This document is for repository maintainers. It explains how Clawrise Go build o
 
 ## Goal
 
-- build precompiled binaries for each target platform after code is merged into a version branch
+- build precompiled binaries for each target platform after a release tag is created from `main`
 - publish a `clawrise-cli` root package so users can run:
 
 ```bash
@@ -46,13 +46,7 @@ When a scope is enabled, package names become:
 - `@scope/clawrise-cli`
 - `@scope/clawrise-cli-linux-x64`
 
-## Version Branch Convention
-
-Recommended version branch format:
-
-```text
-release/v0.1.0
-```
+## Standard Release Source
 
 Release scripts resolve the version in this order:
 
@@ -64,8 +58,24 @@ Accepted formats:
 
 - `0.1.0`
 - `v0.1.0`
-- `release/0.1.0`
-- `release/v0.1.0`
+
+Recommended standard flow:
+
+1. merge release-ready changes into `main`
+2. run the local preflight on `main`
+3. create a tag on the current `main` commit, for example `v1.2.3`
+4. push the tag
+5. GitHub Actions listens to `v*` tags and completes the build, GitHub Release, and npm publish steps
+
+Example:
+
+```bash
+git checkout main
+git pull origin main
+bash ./scripts/release/check-release-ready.sh 1.2.3
+git tag -a v1.2.3 -m "Release v1.2.3"
+git push origin v1.2.3
+```
 
 ## Local Build
 
@@ -133,8 +143,13 @@ Workflow file:
 
 Triggers:
 
-- push to `release/**`
+- push to `v*` tags
 - `workflow_dispatch`
+
+Where:
+
+- tag push is the standard release path
+- `workflow_dispatch` is better for reruns, backfills, or operational recovery
 
 The workflow does:
 
@@ -154,6 +169,24 @@ Supported workflow inputs and repository variables:
 - `vars.CLAWRISE_NPM_SCOPE`
 - `vars.CLAWRISE_NPM_PACKAGE_PREFIX`
 - `vars.CLAWRISE_NPM_DIST_TAG`
+
+## Local Preflight
+
+Run this on `main` before creating the tag:
+
+```bash
+bash ./scripts/release/check-release-ready.sh 1.2.3
+```
+
+It checks:
+
+- that you are on `main`
+- that the worktree is clean
+- that the target tag `v1.2.3` does not already exist
+- `go test ./...`
+- multi-platform bundles and npm package directory generation
+- release notes generation
+- `npm pack` for the root package and the current platform package
 
 ## Release Notes
 

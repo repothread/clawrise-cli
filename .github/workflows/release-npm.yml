@@ -2,12 +2,12 @@ name: Release NPM
 
 on:
   push:
-    branches:
-      - 'release/**'
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: '发布版本，例如 0.1.0；留空时从分支名推导'
+        description: '发布版本，例如 1.2.3；手动补发时使用'
         required: false
         type: string
       npm_scope:
@@ -26,6 +26,10 @@ on:
 permissions:
   contents: write
   id-token: write
+
+concurrency:
+  group: release-${{ github.ref_name || github.event.inputs.version || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   release:

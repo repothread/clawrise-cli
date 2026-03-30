@@ -28,8 +28,9 @@ Run the local preflight script first:
 It validates:
 
 - version resolution
-- release branch and version alignment
+- that you are on `main`
 - clean worktree state
+- that the target release tag does not already exist
 - `go test ./...`
 - multi-platform bundle build
 - npm package directory generation
@@ -40,6 +41,12 @@ If you intentionally test in a dirty local workspace:
 
 ```bash
 CLAWRISE_RELEASE_ALLOW_DIRTY=1 ./scripts/release/check-release-ready.sh 0.1.0-rc.1
+```
+
+If you intentionally need to run from a detached HEAD:
+
+```bash
+CLAWRISE_RELEASE_ALLOW_DETACHED=1 ./scripts/release/check-release-ready.sh 0.1.0-rc.1
 ```
 
 If you also want to validate remote auth:

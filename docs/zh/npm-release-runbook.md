@@ -28,8 +28,9 @@
 脚本会验证：
 
 - 版本解析
-- release 分支与版本是否匹配
+- 当前是否位于 `main`
 - 工作区是否干净
+- 目标版本 tag 是否已经存在
 - `go test ./...`
 - 多平台 bundle 构建
 - npm 发布目录生成
@@ -40,6 +41,12 @@
 
 ```bash
 CLAWRISE_RELEASE_ALLOW_DIRTY=1 ./scripts/release/check-release-ready.sh 0.1.0-rc.1
+```
+
+如果你确实要在 detached HEAD 上做特殊演练，可设置：
+
+```bash
+CLAWRISE_RELEASE_ALLOW_DETACHED=1 ./scripts/release/check-release-ready.sh 0.1.0-rc.1
 ```
 
 如果还需要检查远端认证：

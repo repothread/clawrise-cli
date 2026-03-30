@@ -4,7 +4,7 @@
 
 ## 目标
 
-- 合并到指定版本分支后，自动构建各平台预编译二进制
+- 从 `main` 上选定发布提交并打版本 tag 后，自动构建各平台预编译二进制
 - 发布 `clawrise-cli` 根包，让用户可以直接执行：
 
 ```bash
@@ -46,13 +46,7 @@ npm install -g clawrise-cli
 - `@scope/clawrise-cli`
 - `@scope/clawrise-cli-linux-x64`
 
-## 版本分支约定
-
-建议版本分支使用：
-
-```text
-release/v0.1.0
-```
+## 标准发版来源
 
 发布脚本会按以下优先级解析版本：
 
@@ -64,8 +58,24 @@ release/v0.1.0
 
 - `0.1.0`
 - `v0.1.0`
-- `release/0.1.0`
-- `release/v0.1.0`
+
+标准推荐流程：
+
+1. 所有功能先合并到 `main`
+2. 在 `main` 上完成发版前检查
+3. 在 `main` 当前提交上打 tag，例如 `v1.2.3`
+4. push 该 tag
+5. GitHub Actions 监听 `v*` tag 并自动完成构建、GitHub Release 和 npm 发布
+
+示例：
+
+```bash
+git checkout main
+git pull origin main
+bash ./scripts/release/check-release-ready.sh 1.2.3
+git tag -a v1.2.3 -m "Release v1.2.3"
+git push origin v1.2.3
+```
 
 ## 本地构建
 
@@ -133,8 +143,13 @@ export CLAWRISE_NPM_DIST_TAG=beta
 
 触发方式：
 
-- push 到 `release/**`
+- push 到 `v*` tag
 - `workflow_dispatch`
+
+其中：
+
+- `push tags` 是标准正式发版路径
+- `workflow_dispatch` 更适合补发、重试或运维场景
 
 工作流会执行：
 
@@ -154,6 +169,24 @@ export CLAWRISE_NPM_DIST_TAG=beta
 - `vars.CLAWRISE_NPM_SCOPE`
 - `vars.CLAWRISE_NPM_PACKAGE_PREFIX`
 - `vars.CLAWRISE_NPM_DIST_TAG`
+
+## 本地发版前检查
+
+建议在 `main` 上执行：
+
+```bash
+bash ./scripts/release/check-release-ready.sh 1.2.3
+```
+
+脚本会校验：
+
+- 当前是否位于 `main`
+- 工作区是否干净
+- 目标 tag `v1.2.3` 是否已存在
+- `go test ./...`
+- 多平台 bundle 与 npm 包目录生成
+- release notes 生成
+- 当前平台 npm 包是否能成功 `npm pack`
 
 ## Release Notes
 

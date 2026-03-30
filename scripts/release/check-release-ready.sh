@@ -6,6 +6,9 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 version="$("${repo_root}/scripts/release/resolve-version.sh" "${1:-}")"
 allow_dirty="${CLAWRISE_RELEASE_ALLOW_DIRTY:-0}"
 check_remote="${CLAWRISE_RELEASE_CHECK_REMOTE:-0}"
+release_branch="${CLAWRISE_RELEASE_BASE_BRANCH:-main}"
+release_remote="${CLAWRISE_RELEASE_REMOTE:-origin}"
+allow_detached="${CLAWRISE_RELEASE_ALLOW_DETACHED:-0}"
 pack_verify_root="${repo_root}/dist/release/pack-verify"
 npm_cache_dir="${CLAWRISE_NPM_CACHE_DIR:-${repo_root}/.cache/npm}"
 
@@ -27,18 +30,35 @@ check_git_state() {
   local current_branch
   current_branch="$(git -C "${repo_root}" branch --show-current 2>/dev/null || true)"
 
-  if [[ -n "${current_branch}" && "${current_branch}" == release/* ]]; then
-    local branch_version
-    branch_version="$("${repo_root}/scripts/release/resolve-version.sh" "${current_branch}")"
-    if [[ "${branch_version}" != "${version}" ]]; then
-      echo "当前 release 分支版本与目标版本不一致: branch=${current_branch}, version=${version}" >&2
+  if [[ -z "${current_branch}" ]]; then
+    if [[ "${allow_detached}" != "1" ]]; then
+      echo "当前处于 detached HEAD。标准发版前检查应在 ${release_branch} 分支执行；如确需跳过，请设置 CLAWRISE_RELEASE_ALLOW_DETACHED=1。" >&2
       exit 1
     fi
+  elif [[ "${current_branch}" != "${release_branch}" ]]; then
+    echo "标准发版前检查应在 ${release_branch} 分支执行，当前分支为 ${current_branch}。" >&2
+    exit 1
   fi
 
   if [[ "${allow_dirty}" != "1" ]] && ! git -C "${repo_root}" diff --quiet --ignore-submodules HEAD --; then
     echo "当前工作区存在未提交修改，发布前检查中止。可设置 CLAWRISE_RELEASE_ALLOW_DIRTY=1 跳过。" >&2
     exit 1
+  fi
+}
+
+check_tag_state() {
+  local tag_name="v${version}"
+
+  if git -C "${repo_root}" rev-parse -q --verify "refs/tags/${tag_name}" >/dev/null 2>&1; then
+    echo "本地已存在同名 tag: ${tag_name}" >&2
+    exit 1
+  fi
+
+  if [[ "${check_remote}" == "1" ]]; then
+    if git -C "${repo_root}" ls-remote --tags "${release_remote}" "refs/tags/${tag_name}" | grep -q .; then
+      echo "远端 ${release_remote} 已存在同名 tag: ${tag_name}" >&2
+      exit 1
+    fi
   fi
 }
 
@@ -109,6 +129,7 @@ require_command node
 require_command npm
 
 check_git_state
+check_tag_state
 
 echo "运行单元测试"
 go test ./...
