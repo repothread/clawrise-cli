@@ -87,10 +87,16 @@ type ExecuteEnvelope struct {
 
 // ExecuteIdentity describes the resolved execution identity.
 type ExecuteIdentity struct {
-	Platform    string         `json:"platform"`
-	Subject     string         `json:"subject"`
-	AccountName string         `json:"account_name"`
-	Auth        map[string]any `json:"auth"`
+	Platform    string      `json:"platform"`
+	Subject     string      `json:"subject"`
+	AccountName string      `json:"account_name"`
+	Auth        ExecuteAuth `json:"auth"`
+}
+
+// ExecuteAuth describes the structured execution auth context.
+type ExecuteAuth struct {
+	Method        string         `json:"method"`
+	ExecutionAuth map[string]any `json:"execution_auth,omitempty"`
 }
 
 // ExecuteRPCResult describes the plugin execute response payload.

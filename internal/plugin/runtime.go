@@ -59,7 +59,8 @@ type ExecuteRequest struct {
 	Operation      string
 	AccountName    string
 	Profile        config.Profile
-	IdentityAuth   map[string]any
+	AuthMethod     string
+	ExecutionAuth  map[string]any
 	Input          map[string]any
 	IdempotencyKey string
 }
@@ -143,6 +144,8 @@ func NewManagerWithOptions(ctx context.Context, runtimes []Runtime, options Mana
 					Operation:      operation,
 					AccountName:    call.ProfileName,
 					Profile:        call.Profile,
+					AuthMethod:     strings.TrimSpace(call.Profile.Method),
+					ExecutionAuth:  buildResolvedAuthPayload(call.Profile),
 					Input:          call.Input,
 					IdempotencyKey: call.IdempotencyKey,
 				})

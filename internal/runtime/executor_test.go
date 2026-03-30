@@ -142,7 +142,7 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 	if envelope.OK {
 		t.Fatal("expected execution to fail because of subject mismatch")
 	}
-	if envelope.Error == nil || envelope.Error.Code != "PROFILE_PLATFORM_MISMATCH" {
+	if envelope.Error == nil || envelope.Error.Code != "ACCOUNT_PLATFORM_MISMATCH" {
 		t.Fatalf("unexpected error payload: %+v", envelope.Error)
 	}
 }

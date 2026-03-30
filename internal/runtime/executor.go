@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -280,59 +281,69 @@ func resolveConnection(cfg *config.Config, platform string, explicitAccount stri
 	cfg.Ensure()
 	desiredSubject := strings.TrimSpace(explicitSubject)
 
-	selectedConnection := strings.TrimSpace(explicitAccount)
-	if desiredSubject == "" && selectedConnection == "" {
+	selectedAccount := strings.TrimSpace(explicitAccount)
+	if desiredSubject == "" && selectedAccount == "" {
 		desiredSubject = strings.TrimSpace(cfg.Defaults.Subject)
 	}
 
-	if selectedConnection != "" {
-		profile, ok := cfg.Profiles[selectedConnection]
+	if selectedAccount != "" {
+		account, ok := cfg.Accounts[selectedAccount]
 		if !ok {
-			return "", config.Profile{}, apperr.New("PROFILE_NOT_FOUND", fmt.Sprintf("connection %s does not exist", selectedConnection))
+			return "", config.Profile{}, apperr.New("ACCOUNT_NOT_FOUND", fmt.Sprintf("account %s does not exist", selectedAccount))
 		}
-		if profile.Platform != platform {
-			return "", config.Profile{}, apperr.New("PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("connection %s belongs to platform %s and cannot be used for %s", selectedConnection, profile.Platform, platform))
+		if account.Platform != platform {
+			return "", config.Profile{}, apperr.New("ACCOUNT_PLATFORM_MISMATCH", fmt.Sprintf("account %s belongs to platform %s and cannot be used for %s", selectedAccount, account.Platform, platform))
 		}
-		if desiredSubject != "" && profile.Subject != desiredSubject {
-			return "", config.Profile{}, apperr.New("PROFILE_SUBJECT_MISMATCH", fmt.Sprintf("connection %s has subject %s and cannot be used when subject %s is selected", selectedConnection, profile.Subject, desiredSubject))
+		if desiredSubject != "" && account.Subject != desiredSubject {
+			return "", config.Profile{}, apperr.New("ACCOUNT_SUBJECT_MISMATCH", fmt.Sprintf("account %s has subject %s and cannot be used when subject %s is selected", selectedAccount, account.Subject, desiredSubject))
 		}
-		return selectedConnection, profile, nil
+		return selectedAccount, cfg.ResolvedAccount(selectedAccount), nil
 	}
 
-	if defaultConnection := strings.TrimSpace(cfg.Defaults.PlatformAccounts[platform]); defaultConnection != "" {
-		profile, ok := cfg.Profiles[defaultConnection]
+	if defaultAccount := strings.TrimSpace(cfg.Defaults.PlatformAccounts[platform]); defaultAccount != "" {
+		account, ok := cfg.Accounts[defaultAccount]
 		if !ok {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default account %s does not exist", defaultConnection))
+			return "", config.Profile{}, apperr.New("DEFAULT_ACCOUNT_NOT_FOUND", fmt.Sprintf("default account %s does not exist", defaultAccount))
 		}
-		if profile.Platform != platform {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default account %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
+		if account.Platform != platform {
+			return "", config.Profile{}, apperr.New("DEFAULT_ACCOUNT_PLATFORM_MISMATCH", fmt.Sprintf("default account %s belongs to platform %s and cannot be used for %s", defaultAccount, account.Platform, platform))
 		}
-		if desiredSubject == "" || profile.Subject == desiredSubject {
-			return defaultConnection, profile, nil
+		if desiredSubject == "" || account.Subject == desiredSubject {
+			return defaultAccount, cfg.ResolvedAccount(defaultAccount), nil
 		}
 	}
 	if defaultAccount := strings.TrimSpace(cfg.Defaults.Account); defaultAccount != "" {
-		profile, ok := cfg.Profiles[defaultAccount]
+		account, ok := cfg.Accounts[defaultAccount]
 		if !ok {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default account %s does not exist", defaultAccount))
+			return "", config.Profile{}, apperr.New("DEFAULT_ACCOUNT_NOT_FOUND", fmt.Sprintf("default account %s does not exist", defaultAccount))
 		}
-		if profile.Platform != platform {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default account %s belongs to platform %s and cannot be used for %s", defaultAccount, profile.Platform, platform))
+		if account.Platform != platform {
+			return "", config.Profile{}, apperr.New("DEFAULT_ACCOUNT_PLATFORM_MISMATCH", fmt.Sprintf("default account %s belongs to platform %s and cannot be used for %s", defaultAccount, account.Platform, platform))
 		}
-		if desiredSubject == "" || profile.Subject == desiredSubject {
-			return defaultAccount, profile, nil
+		if desiredSubject == "" || account.Subject == desiredSubject {
+			return defaultAccount, cfg.ResolvedAccount(defaultAccount), nil
 		}
 	}
 
-	candidates := cfg.CandidateProfilesBySubject(platform, desiredSubject)
-	switch len(candidates) {
+	candidateNames := make([]string, 0)
+	for name, account := range cfg.Accounts {
+		if account.Platform != platform {
+			continue
+		}
+		if desiredSubject != "" && account.Subject != desiredSubject {
+			continue
+		}
+		candidateNames = append(candidateNames, name)
+	}
+	sort.Strings(candidateNames)
+	switch len(candidateNames) {
 	case 0:
 		if desiredSubject != "" {
 			return "", config.Profile{}, apperr.New("ACCOUNT_REQUIRED", fmt.Sprintf("platform %s has no available %s account; run `clawrise account use <name>` or pass --account", platform, desiredSubject))
 		}
 		return "", config.Profile{}, apperr.New("ACCOUNT_REQUIRED", fmt.Sprintf("platform %s has no available account; run `clawrise account use <name>` or pass --account", platform))
 	case 1:
-		return candidates[0].Name, candidates[0].Profile, nil
+		return candidateNames[0], cfg.ResolvedAccount(candidateNames[0]), nil
 	default:
 		if desiredSubject != "" {
 			return "", config.Profile{}, apperr.New("ACCOUNT_AMBIGUOUS", fmt.Sprintf("platform %s has multiple %s accounts; specify --account explicitly", platform, desiredSubject))

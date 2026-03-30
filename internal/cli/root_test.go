@@ -618,8 +618,8 @@ func TestRunConfigInit(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "notion_team_docs"`)) {
 		t.Fatalf("expected account name in output, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"grant_type": "static_token"`)) {
-		t.Fatalf("expected grant type in output, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"method": "notion.internal_token"`)) {
+		t.Fatalf("expected auth method in output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

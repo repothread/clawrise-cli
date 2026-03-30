@@ -160,7 +160,7 @@ func TestBuildExecuteIdentityUsesMethodAndExecutionAuthShape(t *testing.T) {
 		Platform: "demo",
 		Subject:  "integration",
 		Method:   "demo.token",
-	}, map[string]any{
+	}, "demo.token", map[string]any{
 		"type":         "resolved_access_token",
 		"access_token": "demo-token",
 	})
@@ -168,13 +168,10 @@ func TestBuildExecuteIdentityUsesMethodAndExecutionAuthShape(t *testing.T) {
 	if identity.Platform != "demo" || identity.Subject != "integration" {
 		t.Fatalf("unexpected identity header: %+v", identity)
 	}
-	if method, _ := identity.Auth["method"].(string); method != "demo.token" {
+	if identity.Auth.Method != "demo.token" {
 		t.Fatalf("expected auth method in identity payload, got: %+v", identity.Auth)
 	}
-	executionAuth, ok := identity.Auth["execution_auth"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected nested execution_auth payload, got: %+v", identity.Auth)
-	}
+	executionAuth := identity.Auth.ExecutionAuth
 	if executionAuth["access_token"] != "demo-token" {
 		t.Fatalf("unexpected execution_auth payload: %+v", executionAuth)
 	}
@@ -185,9 +182,9 @@ func TestBuildProfileFromIdentitySupportsNestedExecutionAuth(t *testing.T) {
 		Platform:    "notion",
 		Subject:     "integration",
 		AccountName: "demo_account",
-		Auth: map[string]any{
-			"method": "notion.oauth_public",
-			"execution_auth": map[string]any{
+		Auth: ExecuteAuth{
+			Method: "notion.oauth_public",
+			ExecutionAuth: map[string]any{
 				"type":           "resolved_access_token",
 				"access_token":   "nested-token",
 				"notion_version": "2026-03-11",

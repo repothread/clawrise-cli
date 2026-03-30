@@ -1,15 +1,18 @@
 package spec
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
 	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
+	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
 func TestServiceListRoot(t *testing.T) {
-	service := NewService(newTestRegistry(t))
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
 
 	result, err := service.List("")
 	if err != nil {
@@ -30,7 +33,8 @@ func TestServiceListRoot(t *testing.T) {
 }
 
 func TestServiceListGroup(t *testing.T) {
-	service := NewService(newTestRegistry(t))
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
 
 	result, err := service.List("feishu.docs")
 	if err != nil {
@@ -51,7 +55,8 @@ func TestServiceListGroup(t *testing.T) {
 }
 
 func TestServiceGetOperation(t *testing.T) {
-	service := NewService(newTestRegistry(t))
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
 
 	result, err := service.Get("notion.page.create")
 	if err != nil {
@@ -90,7 +95,7 @@ func TestServiceGetStubbedOperation(t *testing.T) {
 			},
 		},
 	})
-	service := NewService(registry)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
 
 	result, err := service.Get("demo.page.stubbed")
 	if err != nil {
@@ -105,7 +110,8 @@ func TestServiceGetStubbedOperation(t *testing.T) {
 }
 
 func TestServiceListRejectsOperationPath(t *testing.T) {
-	service := NewService(newTestRegistry(t))
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
 
 	_, err := service.List("notion.page.create")
 	if err == nil {
@@ -138,4 +144,21 @@ func newTestRegistry(t *testing.T) *adapter.Registry {
 	feishuadapter.RegisterOperations(registry, feishuClient)
 	notionadapter.RegisterOperations(registry, notionClient)
 	return registry
+}
+
+func catalogEntriesFromRegistry(registry *adapter.Registry) []speccatalog.Entry {
+	if registry == nil {
+		return nil
+	}
+	definitions := registry.Definitions()
+	entries := make([]speccatalog.Entry, 0, len(definitions))
+	for _, definition := range definitions {
+		entries = append(entries, speccatalog.Entry{
+			Operation: definition.Operation,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Operation < entries[j].Operation
+	})
+	return entries
 }

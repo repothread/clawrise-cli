@@ -17,7 +17,7 @@ type Service struct {
 
 // NewService creates a `spec` service.
 func NewService(registry *adapter.Registry) *Service {
-	return newServiceWithCatalog(registry, speccatalog.All())
+	return newServiceWithCatalog(registry, nil)
 }
 
 // NewServiceWithCatalog creates a `spec` service with an explicit catalog source.

@@ -51,8 +51,9 @@ func TestServiceStatusReportsRuntimeAndCatalogDrift(t *testing.T) {
 	}
 }
 
-func TestDefaultCatalogCoversRegisteredOperations(t *testing.T) {
-	service := NewService(newTestRegistry(t))
+func TestExplicitCatalogCoversRegisteredOperations(t *testing.T) {
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
 
 	result, err := service.Status()
 	if err != nil {

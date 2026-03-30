@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/config"
@@ -144,7 +145,8 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 				Operation:      params.Request.Operation,
 				AccountName:    params.Identity.AccountName,
 				Profile:        buildProfileFromIdentity(params.Identity),
-				IdentityAuth:   params.Identity.Auth,
+				AuthMethod:     strings.TrimSpace(params.Identity.Auth.Method),
+				ExecutionAuth:  cloneExecutionAuth(params.Identity.Auth.ExecutionAuth),
 				Input:          params.Request.Input,
 				IdempotencyKey: params.Request.IdempotencyKey,
 			})
@@ -227,8 +229,8 @@ func writeRPCResponse(writer io.Writer, response RPCResponse) error {
 }
 
 func buildProfileFromIdentity(identity ExecuteIdentity) config.Profile {
-	method := asStringOrEmpty(identity.Auth["method"])
-	executionAuth := identityExecutionAuth(identity.Auth)
+	method := strings.TrimSpace(identity.Auth.Method)
+	executionAuth := identity.Auth.ExecutionAuth
 	authType := asStringOrEmpty(executionAuth["type"])
 	if authType == "resolved_access_token" {
 		return config.Profile{
@@ -262,16 +264,15 @@ func buildProfileFromIdentity(identity ExecuteIdentity) config.Profile {
 	return profile
 }
 
-func identityExecutionAuth(auth map[string]any) map[string]any {
-	if len(auth) == 0 {
+func cloneExecutionAuth(values map[string]any) map[string]any {
+	if len(values) == 0 {
 		return nil
 	}
-	if executionAuth, ok := auth["execution_auth"].(map[string]any); ok {
-		return executionAuth
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
 	}
-	// Keep backward compatibility with the legacy flat auth payload so older
-	// plugins do not break immediately during rollout.
-	return auth
+	return cloned
 }
 
 func asStringOrEmpty(value any) string {

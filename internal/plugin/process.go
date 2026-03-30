@@ -152,9 +152,13 @@ func (r *ProcessRuntime) LaunchAuth(ctx context.Context, params AuthLaunchParams
 
 func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 	var result ExecuteRPCResult
-	identityAuth := req.IdentityAuth
-	if identityAuth == nil {
-		identityAuth = buildResolvedAuthPayload(req.Profile)
+	executionAuth := req.ExecutionAuth
+	if executionAuth == nil {
+		executionAuth = buildResolvedAuthPayload(req.Profile)
+	}
+	authMethod := strings.TrimSpace(req.AuthMethod)
+	if authMethod == "" {
+		authMethod = strings.TrimSpace(req.Profile.Method)
 	}
 	if err := r.call(ctx, "clawrise.execute", ExecuteParams{
 		Request: ExecuteEnvelope{
@@ -164,7 +168,7 @@ func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (Execu
 			IdempotencyKey: req.IdempotencyKey,
 			DryRun:         false,
 		},
-		Identity: buildExecuteIdentity(req.AccountName, req.Profile, identityAuth),
+		Identity: buildExecuteIdentity(req.AccountName, req.Profile, authMethod, executionAuth),
 	}, &result); err != nil {
 		return ExecuteResult{}, err
 	}
@@ -312,17 +316,14 @@ func NewProcessRuntimes(manifests []Manifest) []Runtime {
 	return runtimes
 }
 
-func buildExecuteIdentity(accountName string, profile config.Profile, authPayload map[string]any) ExecuteIdentity {
-	if authPayload == nil {
-		authPayload = map[string]any{}
-	}
+func buildExecuteIdentity(accountName string, profile config.Profile, authMethod string, executionAuth map[string]any) ExecuteIdentity {
 	return ExecuteIdentity{
 		Platform:    profile.Platform,
 		Subject:     profile.Subject,
 		AccountName: strings.TrimSpace(accountName),
-		Auth: map[string]any{
-			"method":         strings.TrimSpace(profile.Method),
-			"execution_auth": cloneMap(authPayload),
+		Auth: ExecuteAuth{
+			Method:        strings.TrimSpace(authMethod),
+			ExecutionAuth: cloneMap(executionAuth),
 		},
 	}
 }

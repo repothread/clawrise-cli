@@ -77,7 +77,8 @@ func TestServiceExportSupportsCatalogOnlyOperationPath(t *testing.T) {
 }
 
 func TestServiceExportMarkdownUsesSameMetadata(t *testing.T) {
-	service := NewService(newTestRegistry(t))
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
 
 	document, err := service.ExportMarkdown("notion.page.create")
 	if err != nil {

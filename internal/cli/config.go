@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/pflag"
 
@@ -35,7 +34,6 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 	var subject string
 	var account string
 	var method string
-	var grantTypeAlias string
 	var scopes []string
 	var force bool
 
@@ -43,7 +41,6 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 	flags.StringVar(&subject, "subject", "", "set the subject for the default account")
 	flags.StringVar(&account, "account", "", "set the account name")
 	flags.StringVar(&method, "method", "", "override the auth method")
-	flags.StringVar(&grantTypeAlias, "grant-type", "", "map a legacy grant type to an auth method")
 	flags.StringSliceVar(&scopes, "scope", nil, "append auth scopes for interactive OAuth")
 	flags.BoolVar(&force, "force", false, "overwrite the existing config file")
 
@@ -55,9 +52,6 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 	}
 	if len(flags.Args()) != 0 {
 		return fmt.Errorf("usage: clawrise config init [--platform <name>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
-	}
-	if strings.TrimSpace(method) == "" {
-		method = legacyGrantTypeToMethod(grantTypeAlias)
 	}
 
 	if _, err := os.Stat(store.Path()); err == nil && !force {
@@ -88,7 +82,6 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 			"platform":         result.Platform,
 			"subject":          result.Subject,
 			"method":           result.Method,
-			"grant_type":       config.LegacyGrantTypeForMethod(result.Method),
 			"scopes":           result.Config.ResolvedAccount(result.AccountName).Params.Scopes,
 			"secret_backend":   result.SecretBackend,
 			"session_backend":  result.SessionBackend,
@@ -99,22 +92,4 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 
 func printConfigHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init [--platform <name>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
-}
-
-func legacyGrantTypeToMethod(grantType string) string {
-	grantType = strings.TrimSpace(grantType)
-	switch grantType {
-	case "":
-		return ""
-	case "client_credentials":
-		return "feishu.app_credentials"
-	case "oauth_user":
-		return "feishu.oauth_user"
-	case "static_token":
-		return "notion.internal_token"
-	case "oauth_refreshable":
-		return "notion.oauth_public"
-	default:
-		return ""
-	}
 }
