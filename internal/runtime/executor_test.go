@@ -19,6 +19,36 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
+// legacyTestAccount 仅用于构造运行时测试所需的旧授权桥接输入。
+type legacyTestAccount struct {
+	Title      string
+	Platform   string
+	Subject    string
+	Method     string
+	Params     legacyTestAuthParams
+	LegacyAuth legacyTestAuth
+}
+
+type legacyTestAuthParams struct {
+	AppID         string
+	ClientID      string
+	NotionVersion string
+	RedirectMode  string
+	Scopes        []string
+}
+
+type legacyTestAuth struct {
+	Type         string
+	AppID        string
+	AppSecret    string
+	Token        string
+	ClientID     string
+	ClientSecret string
+	AccessToken  string
+	RefreshToken string
+	NotionVer    string
+}
+
 func TestExecutorDryRunSuccess(t *testing.T) {
 	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
 	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
@@ -28,11 +58,11 @@ func TestExecutorDryRunSuccess(t *testing.T) {
 			Platform: "feishu",
 			Account:  "feishu_bot_ops",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:      "client_credentials",
 					AppID:     "env:FEISHU_BOT_OPS_APP_ID",
 					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
@@ -81,11 +111,11 @@ func TestExecutorReadOperationOmitsIdempotency(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -118,11 +148,11 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -153,11 +183,11 @@ func TestExecutorUsesDefaultSubjectToSelectMatchingConnection(t *testing.T) {
 			Platform: "feishu",
 			Subject:  "user",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "client_credentials",
 					AppID: "app-id",
 				},
@@ -165,7 +195,7 @@ func TestExecutorUsesDefaultSubjectToSelectMatchingConnection(t *testing.T) {
 			"feishu_user_alice": {
 				Platform: "feishu",
 				Subject:  "user",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:     "oauth_user",
 					ClientID: "client-id",
 				},
@@ -201,11 +231,11 @@ func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
 		Defaults: config.Defaults{
 			Platform: "feishu",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "client_credentials",
 					AppID: "app-id",
 				},
@@ -213,7 +243,7 @@ func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
 			"feishu_user_alice": {
 				Platform: "feishu",
 				Subject:  "user",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:     "oauth_user",
 					ClientID: "client-id",
 				},
@@ -251,11 +281,11 @@ func TestExecutorExplicitAccountOverridesDefaultSubject(t *testing.T) {
 			Platform: "feishu",
 			Subject:  "bot",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "client_credentials",
 					AppID: "app-id",
 				},
@@ -263,7 +293,7 @@ func TestExecutorExplicitAccountOverridesDefaultSubject(t *testing.T) {
 			"feishu_user_alice": {
 				Platform: "feishu",
 				Subject:  "user",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:     "oauth_user",
 					ClientID: "client-id",
 				},
@@ -300,11 +330,11 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -383,11 +413,11 @@ func TestExecutorExecutesNotionPageMarkdownGet(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -446,11 +476,11 @@ func TestExecutorExecutesNotionSearch(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -526,11 +556,11 @@ func TestExecutorExecutesFeishuDocumentBlockGet(t *testing.T) {
 			Platform: "feishu",
 			Account:  "feishu_bot_ops",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:      "client_credentials",
 					AppID:     "env:FEISHU_APP_ID",
 					AppSecret: "env:FEISHU_APP_SECRET",
@@ -615,11 +645,11 @@ func TestExecutorExecutesFeishuDocumentBlockUpdate(t *testing.T) {
 			Platform: "feishu",
 			Account:  "feishu_bot_ops",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:      "client_credentials",
 					AppID:     "env:FEISHU_APP_ID",
 					AppSecret: "env:FEISHU_APP_SECRET",
@@ -705,11 +735,11 @@ func TestExecutorExecutesFeishuDocumentBlockDescendants(t *testing.T) {
 			Platform: "feishu",
 			Account:  "feishu_bot_ops",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:      "client_credentials",
 					AppID:     "env:FEISHU_APP_ID",
 					AppSecret: "env:FEISHU_APP_SECRET",
@@ -800,11 +830,11 @@ func TestExecutorExecutesNotionDataSourceQuery(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -880,11 +910,11 @@ func TestExecutorExecutesNotionBlockListChildren(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -973,11 +1003,11 @@ func TestExecutorPersistsIdempotencyAndReplaysWrite(t *testing.T) {
 				MaxAttempts: 0,
 			},
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:      "client_credentials",
 					AppID:     "env:FEISHU_BOT_OPS_APP_ID",
 					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
@@ -1057,11 +1087,11 @@ func TestExecutorRejectsIdempotencyConflict(t *testing.T) {
 			Platform: "feishu",
 			Account:  "feishu_bot_ops",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"feishu_bot_ops": {
 				Platform: "feishu",
 				Subject:  "bot",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:      "client_credentials",
 					AppID:     "env:FEISHU_BOT_OPS_APP_ID",
 					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
@@ -1132,11 +1162,11 @@ func TestExecutorRetriesRetryableReadByConfig(t *testing.T) {
 				MaxDelayMS:  1,
 			},
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -1192,11 +1222,11 @@ func TestExecutorWritesRedactedAuditLog(t *testing.T) {
 			Platform: "notion",
 			Account:  "notion_team_docs",
 		},
-		Accounts: accountsFromProfiles(map[string]config.Profile{
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
 			"notion_team_docs": {
 				Platform: "notion",
 				Subject:  "integration",
-				Grant: config.Grant{
+				LegacyAuth: legacyTestAuth{
 					Type:  "static_token",
 					Token: "env:NOTION_ACCESS_TOKEN",
 				},
@@ -1289,12 +1319,12 @@ func newTestStore(t *testing.T, cfg *config.Config) *config.Store {
 	return store
 }
 
-func accountsFromProfiles(profiles map[string]config.Profile) map[string]config.Account {
+func accountsFromLegacyAccounts(profiles map[string]legacyTestAccount) map[string]config.Account {
 	accounts := make(map[string]config.Account, len(profiles))
 	for name, profile := range profiles {
 		method := strings.TrimSpace(profile.Method)
 		if method == "" {
-			switch strings.TrimSpace(profile.Grant.Type) {
+			switch strings.TrimSpace(profile.LegacyAuth.Type) {
 			case "client_credentials":
 				method = "feishu.app_credentials"
 			case "oauth_user":
@@ -1321,17 +1351,17 @@ func accountsFromProfiles(profiles map[string]config.Profile) map[string]config.
 		case "feishu.app_credentials":
 			if strings.TrimSpace(profile.Params.AppID) != "" {
 				account.Auth.Public["app_id"] = strings.TrimSpace(profile.Params.AppID)
-			} else if strings.TrimSpace(profile.Grant.AppID) != "" {
-				account.Auth.Public["app_id"] = strings.TrimSpace(profile.Grant.AppID)
+			} else if strings.TrimSpace(profile.LegacyAuth.AppID) != "" {
+				account.Auth.Public["app_id"] = strings.TrimSpace(profile.LegacyAuth.AppID)
 			}
-			if strings.TrimSpace(profile.Grant.AppSecret) != "" {
-				account.Auth.SecretRefs["app_secret"] = strings.TrimSpace(profile.Grant.AppSecret)
+			if strings.TrimSpace(profile.LegacyAuth.AppSecret) != "" {
+				account.Auth.SecretRefs["app_secret"] = strings.TrimSpace(profile.LegacyAuth.AppSecret)
 			}
 		case "feishu.oauth_user":
 			if strings.TrimSpace(profile.Params.ClientID) != "" {
 				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Params.ClientID)
-			} else if strings.TrimSpace(profile.Grant.ClientID) != "" {
-				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Grant.ClientID)
+			} else if strings.TrimSpace(profile.LegacyAuth.ClientID) != "" {
+				account.Auth.Public["client_id"] = strings.TrimSpace(profile.LegacyAuth.ClientID)
 			}
 			if strings.TrimSpace(profile.Params.RedirectMode) != "" {
 				account.Auth.Public["redirect_mode"] = strings.TrimSpace(profile.Params.RedirectMode)
@@ -1339,34 +1369,34 @@ func accountsFromProfiles(profiles map[string]config.Profile) map[string]config.
 			if len(profile.Params.Scopes) > 0 {
 				account.Auth.Public["scopes"] = append([]string(nil), profile.Params.Scopes...)
 			}
-			if strings.TrimSpace(profile.Grant.ClientSecret) != "" {
-				account.Auth.SecretRefs["client_secret"] = strings.TrimSpace(profile.Grant.ClientSecret)
+			if strings.TrimSpace(profile.LegacyAuth.ClientSecret) != "" {
+				account.Auth.SecretRefs["client_secret"] = strings.TrimSpace(profile.LegacyAuth.ClientSecret)
 			}
-			if strings.TrimSpace(profile.Grant.AccessToken) != "" {
-				account.Auth.SecretRefs["access_token"] = strings.TrimSpace(profile.Grant.AccessToken)
+			if strings.TrimSpace(profile.LegacyAuth.AccessToken) != "" {
+				account.Auth.SecretRefs["access_token"] = strings.TrimSpace(profile.LegacyAuth.AccessToken)
 			}
-			if strings.TrimSpace(profile.Grant.RefreshToken) != "" {
-				account.Auth.SecretRefs["refresh_token"] = strings.TrimSpace(profile.Grant.RefreshToken)
+			if strings.TrimSpace(profile.LegacyAuth.RefreshToken) != "" {
+				account.Auth.SecretRefs["refresh_token"] = strings.TrimSpace(profile.LegacyAuth.RefreshToken)
 			}
 		case "notion.internal_token":
 			if strings.TrimSpace(profile.Params.NotionVersion) != "" {
 				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Params.NotionVersion)
-			} else if strings.TrimSpace(profile.Grant.NotionVer) != "" {
-				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Grant.NotionVer)
+			} else if strings.TrimSpace(profile.LegacyAuth.NotionVer) != "" {
+				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.LegacyAuth.NotionVer)
 			}
-			if strings.TrimSpace(profile.Grant.Token) != "" {
-				account.Auth.SecretRefs["token"] = strings.TrimSpace(profile.Grant.Token)
+			if strings.TrimSpace(profile.LegacyAuth.Token) != "" {
+				account.Auth.SecretRefs["token"] = strings.TrimSpace(profile.LegacyAuth.Token)
 			}
 		case "notion.oauth_public":
 			if strings.TrimSpace(profile.Params.ClientID) != "" {
 				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Params.ClientID)
-			} else if strings.TrimSpace(profile.Grant.ClientID) != "" {
-				account.Auth.Public["client_id"] = strings.TrimSpace(profile.Grant.ClientID)
+			} else if strings.TrimSpace(profile.LegacyAuth.ClientID) != "" {
+				account.Auth.Public["client_id"] = strings.TrimSpace(profile.LegacyAuth.ClientID)
 			}
 			if strings.TrimSpace(profile.Params.NotionVersion) != "" {
 				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Params.NotionVersion)
-			} else if strings.TrimSpace(profile.Grant.NotionVer) != "" {
-				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.Grant.NotionVer)
+			} else if strings.TrimSpace(profile.LegacyAuth.NotionVer) != "" {
+				account.Auth.Public["notion_version"] = strings.TrimSpace(profile.LegacyAuth.NotionVer)
 			}
 			if strings.TrimSpace(profile.Params.RedirectMode) != "" {
 				account.Auth.Public["redirect_mode"] = strings.TrimSpace(profile.Params.RedirectMode)
@@ -1374,14 +1404,14 @@ func accountsFromProfiles(profiles map[string]config.Profile) map[string]config.
 			if len(profile.Params.Scopes) > 0 {
 				account.Auth.Public["scopes"] = append([]string(nil), profile.Params.Scopes...)
 			}
-			if strings.TrimSpace(profile.Grant.ClientSecret) != "" {
-				account.Auth.SecretRefs["client_secret"] = strings.TrimSpace(profile.Grant.ClientSecret)
+			if strings.TrimSpace(profile.LegacyAuth.ClientSecret) != "" {
+				account.Auth.SecretRefs["client_secret"] = strings.TrimSpace(profile.LegacyAuth.ClientSecret)
 			}
-			if strings.TrimSpace(profile.Grant.AccessToken) != "" {
-				account.Auth.SecretRefs["access_token"] = strings.TrimSpace(profile.Grant.AccessToken)
+			if strings.TrimSpace(profile.LegacyAuth.AccessToken) != "" {
+				account.Auth.SecretRefs["access_token"] = strings.TrimSpace(profile.LegacyAuth.AccessToken)
 			}
-			if strings.TrimSpace(profile.Grant.RefreshToken) != "" {
-				account.Auth.SecretRefs["refresh_token"] = strings.TrimSpace(profile.Grant.RefreshToken)
+			if strings.TrimSpace(profile.LegacyAuth.RefreshToken) != "" {
+				account.Auth.SecretRefs["refresh_token"] = strings.TrimSpace(profile.LegacyAuth.RefreshToken)
 			}
 		}
 

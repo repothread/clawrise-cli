@@ -14,65 +14,65 @@ func TestResolveSecretWithEnvReference(t *testing.T) {
 	}
 }
 
-func TestValidateGrantClientCredentials(t *testing.T) {
+func TestValidateAccountAuthBridgeClientCredentials(t *testing.T) {
 	t.Setenv("CLAWRISE_TEST_APP_ID", "app-id")
 	t.Setenv("CLAWRISE_TEST_APP_SECRET", "app-secret")
 
-	err := ValidateGrant(Profile{
+	err := ValidateAccountAuthBridge(accountAuthBridge{
 		Platform: "feishu",
 		Subject:  "bot",
-		Grant: Grant{
+		LegacyAuth: legacyAuthConfig{
 			Type:      "client_credentials",
 			AppID:     "env:CLAWRISE_TEST_APP_ID",
 			AppSecret: "env:CLAWRISE_TEST_APP_SECRET",
 		},
 	})
 	if err != nil {
-		t.Fatalf("ValidateGrant returned error: %v", err)
+		t.Fatalf("ValidateAccountAuthBridge returned error: %v", err)
 	}
 }
 
-func TestValidateGrantNotionStaticToken(t *testing.T) {
+func TestValidateAccountAuthBridgeNotionStaticToken(t *testing.T) {
 	t.Setenv("CLAWRISE_TEST_NOTION_TOKEN", "notion-token")
 
-	err := ValidateGrant(Profile{
+	err := ValidateAccountAuthBridge(accountAuthBridge{
 		Platform: "notion",
 		Subject:  "integration",
-		Grant: Grant{
+		LegacyAuth: legacyAuthConfig{
 			Type:  "static_token",
 			Token: "env:CLAWRISE_TEST_NOTION_TOKEN",
 		},
 	})
 	if err != nil {
-		t.Fatalf("ValidateGrant returned error: %v", err)
+		t.Fatalf("ValidateAccountAuthBridge returned error: %v", err)
 	}
 }
 
-func TestValidateGrantRejectsNotionSubjectMismatch(t *testing.T) {
+func TestValidateAccountAuthBridgeRejectsNotionSubjectMismatch(t *testing.T) {
 	t.Setenv("CLAWRISE_TEST_NOTION_TOKEN", "notion-token")
 
-	err := ValidateGrant(Profile{
+	err := ValidateAccountAuthBridge(accountAuthBridge{
 		Platform: "notion",
 		Subject:  "user",
-		Grant: Grant{
+		LegacyAuth: legacyAuthConfig{
 			Type:  "static_token",
 			Token: "env:CLAWRISE_TEST_NOTION_TOKEN",
 		},
 	})
 	if err == nil {
-		t.Fatal("expected ValidateGrant to reject notion subject mismatch")
+		t.Fatal("expected ValidateAccountAuthBridge to reject notion subject mismatch")
 	}
 }
 
-func TestValidateGrantNotionOAuthRefreshable(t *testing.T) {
+func TestValidateAccountAuthBridgeNotionOAuthRefreshable(t *testing.T) {
 	t.Setenv("CLAWRISE_TEST_NOTION_CLIENT_ID", "client-id")
 	t.Setenv("CLAWRISE_TEST_NOTION_CLIENT_SECRET", "client-secret")
 	t.Setenv("CLAWRISE_TEST_NOTION_REFRESH_TOKEN", "refresh-token")
 
-	err := ValidateGrant(Profile{
+	err := ValidateAccountAuthBridge(accountAuthBridge{
 		Platform: "notion",
 		Subject:  "integration",
-		Grant: Grant{
+		LegacyAuth: legacyAuthConfig{
 			Type:         "oauth_refreshable",
 			ClientID:     "env:CLAWRISE_TEST_NOTION_CLIENT_ID",
 			ClientSecret: "env:CLAWRISE_TEST_NOTION_CLIENT_SECRET",
@@ -80,25 +80,25 @@ func TestValidateGrantNotionOAuthRefreshable(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("ValidateGrant returned error: %v", err)
+		t.Fatalf("ValidateAccountAuthBridge returned error: %v", err)
 	}
 }
 
-func TestValidateGrantAllowsInteractiveOAuthWithoutRefreshTokenBeforeAuthorization(t *testing.T) {
+func TestValidateAccountAuthBridgeAllowsInteractiveOAuthWithoutRefreshTokenBeforeAuthorization(t *testing.T) {
 	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_ID", "client-id")
 	t.Setenv("CLAWRISE_TEST_FEISHU_CLIENT_SECRET", "client-secret")
 
-	err := ValidateGrant(Profile{
+	err := ValidateAccountAuthBridge(accountAuthBridge{
 		Platform: "feishu",
 		Subject:  "user",
-		Grant: Grant{
+		LegacyAuth: legacyAuthConfig{
 			Type:         "oauth_user",
 			ClientID:     "env:CLAWRISE_TEST_FEISHU_CLIENT_ID",
 			ClientSecret: "env:CLAWRISE_TEST_FEISHU_CLIENT_SECRET",
 		},
 	})
 	if err != nil {
-		t.Fatalf("ValidateGrant returned error: %v", err)
+		t.Fatalf("ValidateAccountAuthBridge returned error: %v", err)
 	}
 }
 

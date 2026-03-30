@@ -28,7 +28,7 @@ func ResolveSecret(raw string) (string, error) {
 		}
 		return value, nil
 	case strings.HasPrefix(raw, "secret:"):
-		connectionName, fieldName, err := parseSecretReference(raw)
+		accountName, fieldName, err := parseSecretReference(raw)
 		if err != nil {
 			return "", err
 		}
@@ -54,15 +54,15 @@ func ResolveSecret(raw string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		value, err := store.Get(connectionName, fieldName)
+		value, err := store.Get(accountName, fieldName)
 		if err != nil {
 			if err == secretstore.ErrSecretNotFound {
-				return "", fmt.Errorf("secret %s/%s is not set", connectionName, fieldName)
+				return "", fmt.Errorf("secret %s/%s is not set", accountName, fieldName)
 			}
 			return "", err
 		}
 		if strings.TrimSpace(value) == "" {
-			return "", fmt.Errorf("secret %s/%s is empty", connectionName, fieldName)
+			return "", fmt.Errorf("secret %s/%s is empty", accountName, fieldName)
 		}
 		return value, nil
 	default:
@@ -70,15 +70,15 @@ func ResolveSecret(raw string) (string, error) {
 	}
 }
 
-// ValidateGrant 校验执行所需的静态授权配置是否齐全。
+// ValidateAccountAuthBridge 校验执行所需的静态授权桥接配置是否齐全。
 // 对交互式 OAuth 连接，这里只校验 client_id/client_secret 这类静态材料，
 // 不把首次授权后才会产生的 refresh_token 当成前置阻塞项。
-func ValidateGrant(profile Profile) error {
-	if err := ValidateResolvedAuthShape(profile); err != nil {
+func ValidateAccountAuthBridge(account accountAuthBridge) error {
+	if err := ValidateAccountAuthBridgeShape(account); err != nil {
 		return err
 	}
 
-	requiredFields, err := requiredAuthFieldSpecs(profile)
+	requiredFields, err := requiredAuthFieldSpecs(account)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func ValidateGrant(profile Profile) error {
 		if !field.Secret {
 			continue
 		}
-		if _, err := ResolveSecret(field.Value(profile.Grant)); err != nil {
+		if _, err := ResolveSecret(field.Value(account.LegacyAuth)); err != nil {
 			return fmt.Errorf("missing %s: %w", field.Name, err)
 		}
 	}
@@ -126,10 +126,10 @@ func parseSecretReference(raw string) (string, string, error) {
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid secret reference: %s", raw)
 	}
-	connectionName := strings.TrimSpace(parts[0])
+	accountName := strings.TrimSpace(parts[0])
 	fieldName := strings.TrimSpace(parts[1])
-	if connectionName == "" || fieldName == "" {
+	if accountName == "" || fieldName == "" {
 		return "", "", fmt.Errorf("invalid secret reference: %s", raw)
 	}
-	return connectionName, fieldName, nil
+	return accountName, fieldName, nil
 }

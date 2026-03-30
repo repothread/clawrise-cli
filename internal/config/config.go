@@ -15,7 +15,7 @@ type Config struct {
 	Accounts map[string]Account `yaml:"accounts,omitempty"`
 }
 
-// Defaults stores the default platform and default execution connection.
+// Defaults stores the default platform and default execution account.
 type Defaults struct {
 	Platform         string            `yaml:"platform,omitempty"`
 	PlatformAccounts map[string]string `yaml:"platform_accounts,omitempty"`
@@ -47,16 +47,16 @@ type AuthFlowStoreConfig struct {
 	Backend string `yaml:"backend,omitempty"`
 }
 
-// Connection describes one executable identity instance.
-type Connection struct {
+// accountAuthBridge 描述从 account 配置派生出的内部授权桥接对象。
+type accountAuthBridge struct {
 	Title    string           `yaml:"title,omitempty"`
 	Platform string           `yaml:"platform"`
 	Subject  string           `yaml:"subject"`
 	Method   string           `yaml:"method,omitempty"`
-	Params   ConnectionParams `yaml:"params,omitempty"`
+	Params   legacyAuthParams `yaml:"params,omitempty"`
 
-	// This legacy grant stays only as an internal adapter bridge.
-	Grant Grant `yaml:"grant,omitempty"`
+	// 旧授权字段仅保留给执行期桥接与少量内部测试。
+	LegacyAuth legacyAuthConfig `yaml:"grant,omitempty"`
 }
 
 // Account is the persisted account configuration shape.
@@ -74,8 +74,8 @@ type AccountAuth struct {
 	SecretRefs map[string]string `yaml:"secret_refs,omitempty"`
 }
 
-// ConnectionParams describes non-secret fields for legacy adapter wiring.
-type ConnectionParams struct {
+// legacyAuthParams 描述桥接期仍需保留的非 secret 授权字段。
+type legacyAuthParams struct {
 	AppID         string   `yaml:"app_id,omitempty"`
 	ClientID      string   `yaml:"client_id,omitempty"`
 	NotionVersion string   `yaml:"notion_version,omitempty"`
@@ -83,8 +83,8 @@ type ConnectionParams struct {
 	Scopes        []string `yaml:"scopes,omitempty"`
 }
 
-// Grant describes the legacy internal auth shape.
-type Grant struct {
+// legacyAuthConfig 描述桥接期保留的旧授权字段集合。
+type legacyAuthConfig struct {
 	Type         string `yaml:"type"`
 	AppID        string `yaml:"app_id,omitempty"`
 	AppSecret    string `yaml:"app_secret,omitempty"`
@@ -114,9 +114,6 @@ type GovernanceConfig struct {
 	Backend string `yaml:"backend,omitempty"`
 }
 
-// Profile remains an internal alias for the resolved execution shape.
-type Profile = Connection
-
 // New returns an empty config.
 func New() *Config {
 	return &Config{
@@ -145,82 +142,8 @@ func (c *Config) Marshal() ([]byte, error) {
 	return yaml.Marshal(c)
 }
 
-func buildAccountFromConnection(connectionName string, connection Connection) Account {
-	connection = normalizeConnection(connectionName, connection)
-	account := Account{
-		Title:    connection.Title,
-		Platform: connection.Platform,
-		Subject:  connection.Subject,
-		Auth: AccountAuth{
-			Method:     strings.TrimSpace(connection.Method),
-			Public:     map[string]any{},
-			SecretRefs: map[string]string{},
-		},
-	}
-
-	setSecretRef := func(field string, value string) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return
-		}
-		account.Auth.SecretRefs[field] = value
-	}
-
-	switch strings.TrimSpace(connection.Method) {
-	case "feishu.app_credentials":
-		if value := strings.TrimSpace(connection.Params.AppID); value != "" {
-			account.Auth.Public["app_id"] = value
-		}
-		setSecretRef("app_secret", connection.Grant.AppSecret)
-	case "feishu.oauth_user":
-		if value := strings.TrimSpace(connection.Params.ClientID); value != "" {
-			account.Auth.Public["client_id"] = value
-		}
-		if value := strings.TrimSpace(connection.Params.RedirectMode); value != "" {
-			account.Auth.Public["redirect_mode"] = value
-		}
-		if len(connection.Params.Scopes) > 0 {
-			account.Auth.Public["scopes"] = append([]string(nil), connection.Params.Scopes...)
-		}
-		setSecretRef("client_secret", connection.Grant.ClientSecret)
-		setSecretRef("access_token", connection.Grant.AccessToken)
-		setSecretRef("refresh_token", connection.Grant.RefreshToken)
-	case "notion.internal_token":
-		if value := strings.TrimSpace(connection.Params.NotionVersion); value != "" {
-			account.Auth.Public["notion_version"] = value
-		}
-		setSecretRef("token", connection.Grant.Token)
-	case "notion.oauth_public":
-		if value := strings.TrimSpace(connection.Params.ClientID); value != "" {
-			account.Auth.Public["client_id"] = value
-		}
-		if value := strings.TrimSpace(connection.Params.NotionVersion); value != "" {
-			account.Auth.Public["notion_version"] = value
-		}
-		if value := strings.TrimSpace(connection.Params.RedirectMode); value != "" {
-			account.Auth.Public["redirect_mode"] = value
-		}
-		if len(connection.Params.Scopes) > 0 {
-			account.Auth.Public["scopes"] = append([]string(nil), connection.Params.Scopes...)
-		}
-		setSecretRef("client_secret", connection.Grant.ClientSecret)
-		setSecretRef("access_token", connection.Grant.AccessToken)
-		setSecretRef("refresh_token", connection.Grant.RefreshToken)
-	default:
-		account.Auth.Method = strings.TrimSpace(connection.Method)
-	}
-
-	if len(account.Auth.Public) == 0 {
-		account.Auth.Public = nil
-	}
-	if len(account.Auth.SecretRefs) == 0 {
-		account.Auth.SecretRefs = nil
-	}
-	return account
-}
-
-func buildConnectionFromAccount(accountName string, account Account) Connection {
-	connection := Connection{
+func buildAccountAuthBridgeFromAccount(accountName string, account Account) accountAuthBridge {
+	bridge := accountAuthBridge{
 		Title:    account.Title,
 		Platform: account.Platform,
 		Subject:  account.Subject,
@@ -277,50 +200,50 @@ func buildConnectionFromAccount(accountName string, account Account) Connection 
 		return strings.TrimSpace(account.Auth.SecretRefs[field])
 	}
 
-	switch connection.Method {
+	switch bridge.Method {
 	case "feishu.app_credentials":
-		connection.Params.AppID = publicString("app_id")
-		connection.Grant = Grant{
+		bridge.Params.AppID = publicString("app_id")
+		bridge.LegacyAuth = legacyAuthConfig{
 			Type:      "client_credentials",
-			AppID:     connection.Params.AppID,
+			AppID:     bridge.Params.AppID,
 			AppSecret: firstNonEmpty(secretRef("app_secret"), SecretRef(accountName, "app_secret")),
 		}
 	case "feishu.oauth_user":
-		connection.Params.ClientID = publicString("client_id")
-		connection.Params.RedirectMode = publicString("redirect_mode")
-		connection.Params.Scopes = publicStringSlice("scopes")
-		connection.Grant = Grant{
+		bridge.Params.ClientID = publicString("client_id")
+		bridge.Params.RedirectMode = publicString("redirect_mode")
+		bridge.Params.Scopes = publicStringSlice("scopes")
+		bridge.LegacyAuth = legacyAuthConfig{
 			Type:         "oauth_user",
-			ClientID:     connection.Params.ClientID,
+			ClientID:     bridge.Params.ClientID,
 			ClientSecret: firstNonEmpty(secretRef("client_secret"), SecretRef(accountName, "client_secret")),
 			AccessToken:  secretRef("access_token"),
 			RefreshToken: firstNonEmpty(secretRef("refresh_token"), SecretRef(accountName, "refresh_token")),
 		}
 	case "notion.internal_token":
-		connection.Params.NotionVersion = publicString("notion_version")
-		connection.Grant = Grant{
+		bridge.Params.NotionVersion = publicString("notion_version")
+		bridge.LegacyAuth = legacyAuthConfig{
 			Type:      "static_token",
 			Token:     firstNonEmpty(secretRef("token"), SecretRef(accountName, "token")),
-			NotionVer: connection.Params.NotionVersion,
+			NotionVer: bridge.Params.NotionVersion,
 		}
 	case "notion.oauth_public":
-		connection.Params.ClientID = publicString("client_id")
-		connection.Params.NotionVersion = publicString("notion_version")
-		connection.Params.RedirectMode = publicString("redirect_mode")
-		connection.Params.Scopes = publicStringSlice("scopes")
-		connection.Grant = Grant{
+		bridge.Params.ClientID = publicString("client_id")
+		bridge.Params.NotionVersion = publicString("notion_version")
+		bridge.Params.RedirectMode = publicString("redirect_mode")
+		bridge.Params.Scopes = publicStringSlice("scopes")
+		bridge.LegacyAuth = legacyAuthConfig{
 			Type:         "oauth_refreshable",
-			ClientID:     connection.Params.ClientID,
+			ClientID:     bridge.Params.ClientID,
 			ClientSecret: firstNonEmpty(secretRef("client_secret"), SecretRef(accountName, "client_secret")),
 			AccessToken:  secretRef("access_token"),
 			RefreshToken: firstNonEmpty(secretRef("refresh_token"), SecretRef(accountName, "refresh_token")),
-			NotionVer:    connection.Params.NotionVersion,
+			NotionVer:    bridge.Params.NotionVersion,
 		}
 	default:
-		connection.Grant = Grant{Type: legacyGrantTypeForMethod(connection.Method)}
+		bridge.LegacyAuth = legacyAuthConfig{Type: legacyAuthTypeForMethod(bridge.Method)}
 	}
 
-	return connection
+	return bridge
 }
 
 func firstNonEmpty(values ...string) string {
@@ -333,110 +256,110 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func normalizeConnection(name string, connection Connection) Connection {
-	hasExplicitMethod := strings.TrimSpace(connection.Method) != ""
+func normalizeAccountAuthBridge(name string, bridge accountAuthBridge) accountAuthBridge {
+	hasExplicitMethod := strings.TrimSpace(bridge.Method) != ""
 	if !hasExplicitMethod {
-		connection.Method = inferMethodFromLegacyGrant(connection.Platform, connection.Grant.Type)
+		bridge.Method = inferMethodFromLegacyAuthType(bridge.Platform, bridge.LegacyAuth.Type)
 	}
-	if strings.TrimSpace(connection.Method) != "" {
-		applyConnectionDefaults(&connection)
-		if hasPersistedLegacyGrant(connection.Grant) {
-			if strings.TrimSpace(connection.Grant.Type) == "" {
-				connection.Grant.Type = legacyGrantTypeForMethod(connection.Method)
+	if strings.TrimSpace(bridge.Method) != "" {
+		applyAccountAuthBridgeDefaults(&bridge)
+		if hasPersistedLegacyAuthConfig(bridge.LegacyAuth) {
+			if strings.TrimSpace(bridge.LegacyAuth.Type) == "" {
+				bridge.LegacyAuth.Type = legacyAuthTypeForMethod(bridge.Method)
 			}
-		} else if hasExplicitMethod || strings.TrimSpace(connection.Grant.Type) == "" {
-			connection.Grant = buildLegacyGrant(name, connection)
+		} else if hasExplicitMethod || strings.TrimSpace(bridge.LegacyAuth.Type) == "" {
+			bridge.LegacyAuth = buildLegacyAuthConfig(name, bridge)
 		}
 	}
-	return connection
+	return bridge
 }
 
-func applyConnectionDefaults(connection *Connection) {
-	if connection == nil {
+func applyAccountAuthBridgeDefaults(bridge *accountAuthBridge) {
+	if bridge == nil {
 		return
 	}
 
-	switch connection.Method {
+	switch bridge.Method {
 	case "feishu.app_credentials":
-		if connection.Params.AppID == "" {
-			connection.Params.AppID = connection.Grant.AppID
+		if bridge.Params.AppID == "" {
+			bridge.Params.AppID = bridge.LegacyAuth.AppID
 		}
 	case "feishu.oauth_user":
-		if connection.Params.ClientID == "" {
-			connection.Params.ClientID = connection.Grant.ClientID
+		if bridge.Params.ClientID == "" {
+			bridge.Params.ClientID = bridge.LegacyAuth.ClientID
 		}
 	case "notion.internal_token":
-		if connection.Params.NotionVersion == "" {
-			connection.Params.NotionVersion = connection.Grant.NotionVer
+		if bridge.Params.NotionVersion == "" {
+			bridge.Params.NotionVersion = bridge.LegacyAuth.NotionVer
 		}
 	case "notion.oauth_public":
-		if connection.Params.ClientID == "" {
-			connection.Params.ClientID = connection.Grant.ClientID
+		if bridge.Params.ClientID == "" {
+			bridge.Params.ClientID = bridge.LegacyAuth.ClientID
 		}
-		if connection.Params.NotionVersion == "" {
-			connection.Params.NotionVersion = connection.Grant.NotionVer
+		if bridge.Params.NotionVersion == "" {
+			bridge.Params.NotionVersion = bridge.LegacyAuth.NotionVer
 		}
 	}
 }
 
-func buildLegacyGrant(connectionName string, connection Connection) Grant {
-	grant := Grant{
-		Type: legacyGrantTypeForMethod(connection.Method),
+func buildLegacyAuthConfig(accountName string, bridge accountAuthBridge) legacyAuthConfig {
+	legacy := legacyAuthConfig{
+		Type: legacyAuthTypeForMethod(bridge.Method),
 	}
 
-	switch connection.Method {
+	switch bridge.Method {
 	case "feishu.app_credentials":
-		grant.AppID = strings.TrimSpace(connection.Params.AppID)
-		grant.AppSecret = SecretRef(connectionName, "app_secret")
+		legacy.AppID = strings.TrimSpace(bridge.Params.AppID)
+		legacy.AppSecret = SecretRef(accountName, "app_secret")
 	case "feishu.oauth_user":
-		grant.ClientID = strings.TrimSpace(connection.Params.ClientID)
-		grant.ClientSecret = SecretRef(connectionName, "client_secret")
-		grant.RefreshToken = SecretRef(connectionName, "refresh_token")
+		legacy.ClientID = strings.TrimSpace(bridge.Params.ClientID)
+		legacy.ClientSecret = SecretRef(accountName, "client_secret")
+		legacy.RefreshToken = SecretRef(accountName, "refresh_token")
 	case "notion.internal_token":
-		grant.Token = SecretRef(connectionName, "token")
-		grant.NotionVer = strings.TrimSpace(connection.Params.NotionVersion)
+		legacy.Token = SecretRef(accountName, "token")
+		legacy.NotionVer = strings.TrimSpace(bridge.Params.NotionVersion)
 	case "notion.oauth_public":
-		grant.ClientID = strings.TrimSpace(connection.Params.ClientID)
-		grant.ClientSecret = SecretRef(connectionName, "client_secret")
-		grant.RefreshToken = SecretRef(connectionName, "refresh_token")
-		grant.NotionVer = strings.TrimSpace(connection.Params.NotionVersion)
+		legacy.ClientID = strings.TrimSpace(bridge.Params.ClientID)
+		legacy.ClientSecret = SecretRef(accountName, "client_secret")
+		legacy.RefreshToken = SecretRef(accountName, "refresh_token")
+		legacy.NotionVer = strings.TrimSpace(bridge.Params.NotionVersion)
 	default:
-		grant = connection.Grant
+		legacy = bridge.LegacyAuth
 	}
 
-	// Tests may still build the legacy grant shape directly, so keep this fallback.
-	if grant.AppID == "" {
-		grant.AppID = connection.Grant.AppID
+	// 单元测试仍可能直接构造旧授权字段，因此这里保留字段级回填。
+	if legacy.AppID == "" {
+		legacy.AppID = bridge.LegacyAuth.AppID
 	}
-	if grant.AppSecret == "" {
-		grant.AppSecret = connection.Grant.AppSecret
+	if legacy.AppSecret == "" {
+		legacy.AppSecret = bridge.LegacyAuth.AppSecret
 	}
-	if grant.Token == "" {
-		grant.Token = connection.Grant.Token
+	if legacy.Token == "" {
+		legacy.Token = bridge.LegacyAuth.Token
 	}
-	if grant.ClientID == "" {
-		grant.ClientID = connection.Grant.ClientID
+	if legacy.ClientID == "" {
+		legacy.ClientID = bridge.LegacyAuth.ClientID
 	}
-	if grant.ClientSecret == "" {
-		grant.ClientSecret = connection.Grant.ClientSecret
+	if legacy.ClientSecret == "" {
+		legacy.ClientSecret = bridge.LegacyAuth.ClientSecret
 	}
-	if grant.AccessToken == "" {
-		grant.AccessToken = connection.Grant.AccessToken
+	if legacy.AccessToken == "" {
+		legacy.AccessToken = bridge.LegacyAuth.AccessToken
 	}
-	if grant.RefreshToken == "" {
-		grant.RefreshToken = connection.Grant.RefreshToken
+	if legacy.RefreshToken == "" {
+		legacy.RefreshToken = bridge.LegacyAuth.RefreshToken
 	}
-	if grant.NotionVer == "" {
-		grant.NotionVer = connection.Grant.NotionVer
+	if legacy.NotionVer == "" {
+		legacy.NotionVer = bridge.LegacyAuth.NotionVer
 	}
-	if grant.Type == "" {
-		grant.Type = connection.Grant.Type
+	if legacy.Type == "" {
+		legacy.Type = bridge.LegacyAuth.Type
 	}
-	return grant
+	return legacy
 }
 
-func inferMethodFromLegacyGrant(platform string, grantType string) string {
-	switch strings.TrimSpace(platform) + ":" + strings.TrimSpace(grantType) {
+func inferMethodFromLegacyAuthType(platform string, authType string) string {
+	switch strings.TrimSpace(platform) + ":" + strings.TrimSpace(authType) {
 	case "feishu:client_credentials":
 		return "feishu.app_credentials"
 	case "feishu:oauth_user":
@@ -450,7 +373,7 @@ func inferMethodFromLegacyGrant(platform string, grantType string) string {
 	}
 }
 
-func legacyGrantTypeForMethod(method string) string {
+func legacyAuthTypeForMethod(method string) string {
 	switch strings.TrimSpace(method) {
 	case "feishu.app_credentials":
 		return "client_credentials"
@@ -470,41 +393,20 @@ func SecretRef(connectionName string, field string) string {
 	return "secret:" + strings.TrimSpace(connectionName) + ":" + strings.TrimSpace(field)
 }
 
-func shouldOmitLegacyGrantOnMarshal(connection Connection) bool {
-	if strings.TrimSpace(connection.Method) == "" {
-		return false
-	}
-
-	secretFields := []string{
-		connection.Grant.AppSecret,
-		connection.Grant.Token,
-		connection.Grant.ClientSecret,
-		connection.Grant.AccessToken,
-		connection.Grant.RefreshToken,
-	}
-	for _, value := range secretFields {
-		value = strings.TrimSpace(value)
-		if value != "" && !strings.HasPrefix(value, "secret:") {
-			return false
-		}
-	}
-	return true
-}
-
-func hasPersistedLegacyGrant(grant Grant) bool {
-	if strings.TrimSpace(grant.Type) == "" {
+func hasPersistedLegacyAuthConfig(legacy legacyAuthConfig) bool {
+	if strings.TrimSpace(legacy.Type) == "" {
 		return false
 	}
 
 	values := []string{
-		grant.AppID,
-		grant.AppSecret,
-		grant.Token,
-		grant.ClientID,
-		grant.ClientSecret,
-		grant.AccessToken,
-		grant.RefreshToken,
-		grant.NotionVer,
+		legacy.AppID,
+		legacy.AppSecret,
+		legacy.Token,
+		legacy.ClientID,
+		legacy.ClientSecret,
+		legacy.AccessToken,
+		legacy.RefreshToken,
+		legacy.NotionVer,
 	}
 	for _, value := range values {
 		value = strings.TrimSpace(value)

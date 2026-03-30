@@ -43,16 +43,16 @@ type authFieldSpec struct {
 	Name       string
 	Secret     bool
 	Required   bool
-	Value      func(Grant) string
-	PlainValue func(Grant) string
+	Value      func(legacyAuthConfig) string
+	PlainValue func(legacyAuthConfig) string
 }
 
-// ValidateResolvedAuthShape 只校验归一化后的账号授权结构和主配置里的必填字段。
-func ValidateResolvedAuthShape(account Connection) error {
+// ValidateAccountAuthBridgeShape 只校验归一化后的账号授权桥接结构和主配置里的必填字段。
+func ValidateAccountAuthBridgeShape(account accountAuthBridge) error {
 	if account.Platform == "notion" && account.Subject != "integration" {
 		return fmt.Errorf("notion accounts must use subject integration")
 	}
-	if strings.TrimSpace(account.Method) == "" && strings.TrimSpace(account.Grant.Type) == "" {
+	if strings.TrimSpace(account.Method) == "" && strings.TrimSpace(account.LegacyAuth.Type) == "" {
 		return fmt.Errorf("missing auth method")
 	}
 
@@ -86,9 +86,9 @@ func ValidateResolvedAuthShape(account Connection) error {
 		return err
 	}
 	for _, field := range requiredFields {
-		raw := strings.TrimSpace(field.Value(account.Grant))
+		raw := strings.TrimSpace(field.Value(account.LegacyAuth))
 		if field.PlainValue != nil {
-			raw = strings.TrimSpace(field.PlainValue(account.Grant))
+			raw = strings.TrimSpace(field.PlainValue(account.LegacyAuth))
 		}
 		if raw == "" {
 			return fmt.Errorf("missing %s", field.Name)
@@ -99,12 +99,12 @@ func ValidateResolvedAuthShape(account Connection) error {
 
 // InspectAccount 生成一个适合诊断和测试复用的账号检查视图。
 func InspectAccount(name string, account Account) AccountInspection {
-	resolvedAccount := normalizeConnection(name, buildConnectionFromAccount(name, account))
+	resolvedAccount := normalizeAccountAuthBridge(name, buildAccountAuthBridgeFromAccount(name, account))
 	inspection := AccountInspection{
 		Name:     name,
 		Platform: resolvedAccount.Platform,
 		Subject:  resolvedAccount.Subject,
-		AuthType: resolvedAccount.Grant.Type,
+		AuthType: resolvedAccount.LegacyAuth.Type,
 	}
 
 	fieldSpecs := allAuthFieldSpecs(resolvedAccount)
@@ -119,9 +119,9 @@ func InspectAccount(name string, account Account) AccountInspection {
 
 		raw := ""
 		if field.PlainValue != nil {
-			raw = strings.TrimSpace(field.PlainValue(resolvedAccount.Grant))
+			raw = strings.TrimSpace(field.PlainValue(resolvedAccount.LegacyAuth))
 		} else {
-			raw = strings.TrimSpace(field.Value(resolvedAccount.Grant))
+			raw = strings.TrimSpace(field.Value(resolvedAccount.LegacyAuth))
 		}
 
 		if raw != "" {
@@ -152,13 +152,13 @@ func InspectAccount(name string, account Account) AccountInspection {
 		inspection.Fields = append(inspection.Fields, item)
 	}
 
-	if err := ValidateResolvedAuthShape(resolvedAccount); err != nil {
+	if err := ValidateAccountAuthBridgeShape(resolvedAccount); err != nil {
 		inspection.ShapeError = err.Error()
 	} else {
 		inspection.ShapeValid = true
 	}
 
-	if err := ValidateGrant(resolvedAccount); err != nil {
+	if err := ValidateAccountAuthBridge(resolvedAccount); err != nil {
 		inspection.ResolvedError = err.Error()
 	} else {
 		inspection.ResolvedValid = true
@@ -188,39 +188,39 @@ func SortedAccountInspections(cfg *Config) []AccountInspection {
 	return items
 }
 
-func requiredAuthFieldSpecs(account Connection) ([]authFieldSpec, error) {
-	switch account.Grant.Type {
+func requiredAuthFieldSpecs(account accountAuthBridge) ([]authFieldSpec, error) {
+	switch account.LegacyAuth.Type {
 	case "client_credentials":
 		if account.Platform == "notion" {
-			return nil, fmt.Errorf("notion does not support grant type: %s", account.Grant.Type)
+			return nil, fmt.Errorf("notion does not support grant type: %s", account.LegacyAuth.Type)
 		}
 		return []authFieldSpec{
-			{Name: "app_id", Secret: false, Required: true, Value: func(g Grant) string { return g.AppID }},
-			{Name: "app_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.AppSecret }},
+			{Name: "app_id", Secret: false, Required: true, Value: func(g legacyAuthConfig) string { return g.AppID }},
+			{Name: "app_secret", Secret: true, Required: true, Value: func(g legacyAuthConfig) string { return g.AppSecret }},
 		}, nil
 	case "static_token":
 		return []authFieldSpec{
-			{Name: "token", Secret: true, Required: true, Value: func(g Grant) string { return g.Token }},
+			{Name: "token", Secret: true, Required: true, Value: func(g legacyAuthConfig) string { return g.Token }},
 		}, nil
 	case "oauth_user":
 		if account.Platform == "notion" {
-			return nil, fmt.Errorf("notion does not support grant type: %s", account.Grant.Type)
+			return nil, fmt.Errorf("notion does not support grant type: %s", account.LegacyAuth.Type)
 		}
 		return []authFieldSpec{
-			{Name: "client_id", Secret: false, Required: true, Value: func(g Grant) string { return g.ClientID }},
-			{Name: "client_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientSecret }},
+			{Name: "client_id", Secret: false, Required: true, Value: func(g legacyAuthConfig) string { return g.ClientID }},
+			{Name: "client_secret", Secret: true, Required: true, Value: func(g legacyAuthConfig) string { return g.ClientSecret }},
 		}, nil
 	case "oauth_refreshable":
 		return []authFieldSpec{
-			{Name: "client_id", Secret: false, Required: true, Value: func(g Grant) string { return g.ClientID }},
-			{Name: "client_secret", Secret: true, Required: true, Value: func(g Grant) string { return g.ClientSecret }},
+			{Name: "client_id", Secret: false, Required: true, Value: func(g legacyAuthConfig) string { return g.ClientID }},
+			{Name: "client_secret", Secret: true, Required: true, Value: func(g legacyAuthConfig) string { return g.ClientSecret }},
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported grant type: %s", account.Grant.Type)
+		return nil, fmt.Errorf("unsupported grant type: %s", account.LegacyAuth.Type)
 	}
 }
 
-func allAuthFieldSpecs(account Connection) []authFieldSpec {
+func allAuthFieldSpecs(account accountAuthBridge) []authFieldSpec {
 	requiredMap := map[string]authFieldSpec{}
 	if required, err := requiredAuthFieldSpecs(account); err == nil {
 		for _, field := range required {
@@ -230,23 +230,23 @@ func allAuthFieldSpecs(account Connection) []authFieldSpec {
 
 	// 这里固定字段顺序，保证命令输出稳定且容易阅读。
 	ordered := []authFieldSpec{
-		{Name: "app_id", Secret: false, Value: func(g Grant) string { return g.AppID }},
-		{Name: "app_secret", Secret: true, Value: func(g Grant) string { return g.AppSecret }},
-		{Name: "token", Secret: true, Value: func(g Grant) string { return g.Token }},
-		{Name: "client_id", Secret: false, Value: func(g Grant) string { return g.ClientID }},
-		{Name: "client_secret", Secret: true, Value: func(g Grant) string { return g.ClientSecret }},
-		{Name: "access_token", Secret: true, Value: func(g Grant) string { return g.AccessToken }},
-		{Name: "refresh_token", Secret: true, Value: func(g Grant) string { return g.RefreshToken }},
-		{Name: "notion_version", Secret: false, PlainValue: func(g Grant) string { return g.NotionVer }},
+		{Name: "app_id", Secret: false, Value: func(g legacyAuthConfig) string { return g.AppID }},
+		{Name: "app_secret", Secret: true, Value: func(g legacyAuthConfig) string { return g.AppSecret }},
+		{Name: "token", Secret: true, Value: func(g legacyAuthConfig) string { return g.Token }},
+		{Name: "client_id", Secret: false, Value: func(g legacyAuthConfig) string { return g.ClientID }},
+		{Name: "client_secret", Secret: true, Value: func(g legacyAuthConfig) string { return g.ClientSecret }},
+		{Name: "access_token", Secret: true, Value: func(g legacyAuthConfig) string { return g.AccessToken }},
+		{Name: "refresh_token", Secret: true, Value: func(g legacyAuthConfig) string { return g.RefreshToken }},
+		{Name: "notion_version", Secret: false, PlainValue: func(g legacyAuthConfig) string { return g.NotionVer }},
 	}
 
 	items := make([]authFieldSpec, 0, len(ordered))
 	for _, field := range ordered {
 		raw := ""
 		if field.PlainValue != nil {
-			raw = strings.TrimSpace(field.PlainValue(account.Grant))
+			raw = strings.TrimSpace(field.PlainValue(account.LegacyAuth))
 		} else {
-			raw = strings.TrimSpace(field.Value(account.Grant))
+			raw = strings.TrimSpace(field.Value(account.LegacyAuth))
 		}
 
 		if required, ok := requiredMap[field.Name]; ok {
@@ -293,7 +293,7 @@ type accountAuthState struct {
 	Message string
 }
 
-func inspectAccountAuthState(name string, account Connection, configValid bool) accountAuthState {
+func inspectAccountAuthState(name string, account accountAuthBridge, configValid bool) accountAuthState {
 	if !configValid {
 		return accountAuthState{
 			Ready:  false,
@@ -301,7 +301,7 @@ func inspectAccountAuthState(name string, account Connection, configValid bool) 
 		}
 	}
 
-	switch account.Grant.Type {
+	switch account.LegacyAuth.Type {
 	case "oauth_user", "oauth_refreshable":
 		if session, ok := loadMatchingSession(name, account); ok {
 			now := time.Now().UTC()
@@ -319,13 +319,13 @@ func inspectAccountAuthState(name string, account Connection, configValid bool) 
 			}
 		}
 
-		if hasResolvedSecretValue(account.Grant.AccessToken) {
+		if hasResolvedSecretValue(account.LegacyAuth.AccessToken) {
 			return accountAuthState{
 				Ready:  true,
 				Status: "access_token_configured",
 			}
 		}
-		if hasResolvedSecretValue(account.Grant.RefreshToken) {
+		if hasResolvedSecretValue(account.LegacyAuth.RefreshToken) {
 			return accountAuthState{
 				Ready:  true,
 				Status: "refresh_token_configured",
@@ -344,7 +344,7 @@ func inspectAccountAuthState(name string, account Connection, configValid bool) 
 	}
 }
 
-func loadMatchingSession(name string, account Connection) (*authcache.Session, bool) {
+func loadMatchingSession(name string, account accountAuthBridge) (*authcache.Session, bool) {
 	configPath, err := DefaultPath()
 	if err != nil {
 		return nil, false
@@ -367,7 +367,10 @@ func loadMatchingSession(name string, account Connection) (*authcache.Session, b
 	if strings.TrimSpace(session.Subject) != strings.TrimSpace(account.Subject) {
 		return nil, false
 	}
-	if strings.TrimSpace(session.GrantType) != strings.TrimSpace(account.Grant.Type) {
+	sessionGrantType := strings.TrimSpace(session.GrantType)
+	if sessionGrantType != "" &&
+		sessionGrantType != strings.TrimSpace(account.Method) &&
+		sessionGrantType != strings.TrimSpace(account.LegacyAuth.Type) {
 		return nil, false
 	}
 	return session, true
