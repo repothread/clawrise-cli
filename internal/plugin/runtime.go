@@ -142,7 +142,7 @@ func NewManagerWithOptions(ctx context.Context, runtimes []Runtime, options Mana
 			definition.Handler = func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 				result, err := runtimeRef.Execute(ctx, ExecuteRequest{
 					Operation:      operation,
-					AccountName:    call.ProfileName,
+					AccountName:    call.AccountName,
 					Profile:        call.Profile,
 					AuthMethod:     strings.TrimSpace(call.Profile.Method),
 					ExecutionAuth:  buildResolvedAuthPayload(call.Profile),

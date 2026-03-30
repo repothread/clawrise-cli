@@ -20,7 +20,7 @@ const (
 	DefaultRefreshSkew = 2 * time.Minute
 )
 
-var sessionProfileNameSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+var sessionAccountNameSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
 // StoreFactory describes a session-store backend constructor.
 type StoreFactory func(configPath string) Store
@@ -31,10 +31,10 @@ var sessionStoreFactories = map[string]StoreFactory{
 	},
 }
 
-// Session describes reusable runtime auth state for one profile.
+// Session describes reusable runtime auth state for one account.
 type Session struct {
 	Version            int               `json:"version"`
-	ProfileName        string            `json:"profile_name"`
+	AccountName        string            `json:"account_name"`
 	Platform           string            `json:"platform"`
 	Subject            string            `json:"subject"`
 	GrantType          string            `json:"grant_type"`
@@ -79,10 +79,10 @@ func (s Session) UsableAt(now time.Time, skew time.Duration) bool {
 
 // Store defines the minimal session/token cache persistence interface.
 type Store interface {
-	Load(profileName string) (*Session, error)
+	Load(accountName string) (*Session, error)
 	Save(session Session) error
-	Delete(profileName string) error
-	Path(profileName string) string
+	Delete(accountName string) error
+	Path(accountName string) string
 }
 
 // FileStore implements a lightweight file-based session cache.
@@ -130,14 +130,14 @@ func ResolveSessionDir(configPath string) string {
 	return filepath.Join(stateDir, "auth", "sessions")
 }
 
-// Path returns the session file path for one profile.
-func (s *FileStore) Path(profileName string) string {
-	return filepath.Join(s.rootDir, sanitizeProfileName(profileName)+".json")
+// Path returns the session file path for one account.
+func (s *FileStore) Path(accountName string) string {
+	return filepath.Join(s.rootDir, sanitizeAccountName(accountName)+".json")
 }
 
-// Load reads the session for one profile.
-func (s *FileStore) Load(profileName string) (*Session, error) {
-	data, err := os.ReadFile(s.Path(profileName))
+// Load reads the session for one account.
+func (s *FileStore) Load(accountName string) (*Session, error) {
+	data, err := os.ReadFile(s.Path(accountName))
 	if err != nil {
 		return nil, err
 	}
@@ -151,9 +151,9 @@ func (s *FileStore) Load(profileName string) (*Session, error) {
 
 // Save writes one session atomically to avoid partial refresh writes.
 func (s *FileStore) Save(session Session) error {
-	profileName := strings.TrimSpace(session.ProfileName)
-	if profileName == "" {
-		return fmt.Errorf("session profile_name is required")
+	accountName := strings.TrimSpace(session.AccountName)
+	if accountName == "" {
+		return fmt.Errorf("session account_name is required")
 	}
 
 	now := s.now().UTC()
@@ -174,7 +174,7 @@ func (s *FileStore) Save(session Session) error {
 		return fmt.Errorf("failed to encode session file: %w", err)
 	}
 
-	targetPath := s.Path(profileName)
+	targetPath := s.Path(accountName)
 	tempPath := targetPath + ".tmp"
 	if err := os.WriteFile(tempPath, encoded, 0o600); err != nil {
 		return fmt.Errorf("failed to write session temp file: %w", err)
@@ -186,21 +186,21 @@ func (s *FileStore) Save(session Session) error {
 	return nil
 }
 
-// Delete removes the session cache for one profile.
-func (s *FileStore) Delete(profileName string) error {
-	err := os.Remove(s.Path(profileName))
+// Delete removes the session cache for one account.
+func (s *FileStore) Delete(accountName string) error {
+	err := os.Remove(s.Path(accountName))
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete session file: %w", err)
 	}
 	return nil
 }
 
-func sanitizeProfileName(profileName string) string {
-	profileName = strings.TrimSpace(profileName)
-	profileName = sessionProfileNameSanitizer.ReplaceAllString(profileName, "_")
-	profileName = strings.Trim(profileName, "_")
-	if profileName == "" {
+func sanitizeAccountName(accountName string) string {
+	accountName = strings.TrimSpace(accountName)
+	accountName = sessionAccountNameSanitizer.ReplaceAllString(accountName, "_")
+	accountName = strings.Trim(accountName, "_")
+	if accountName == "" {
 		return "default"
 	}
-	return profileName
+	return accountName
 }

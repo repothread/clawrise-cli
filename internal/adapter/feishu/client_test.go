@@ -224,7 +224,7 @@ func TestRequireUserAccessTokenUsesSessionCacheAndRotatedRefreshToken(t *testing
 		return now
 	}
 
-	ctx := adapter.WithProfileName(context.Background(), "feishu_user_alice")
+	ctx := adapter.WithAccountName(context.Background(), "feishu_user_alice")
 	profile := config.Profile{
 		Platform: "feishu",
 		Subject:  "user",
@@ -296,7 +296,7 @@ func TestRequireUserAccessTokenRequiresInteractiveAuthorization(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	ctx := adapter.WithProfileName(context.Background(), "feishu_user_alice")
+	ctx := adapter.WithAccountName(context.Background(), "feishu_user_alice")
 	_, appErr := client.requireUserAccessToken(ctx, config.Profile{
 		Platform: "feishu",
 		Subject:  "user",

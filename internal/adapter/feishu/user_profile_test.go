@@ -79,11 +79,11 @@ func TestRegisterOperationsAllowUserSubject(t *testing.T) {
 
 func TestUserProfileCanCallFormerBotOnlyOperations(t *testing.T) {
 	sessionStore := authcache.NewFileStore(filepath.Join(t.TempDir(), "config.yaml"))
-	profileName := "feishu_user_test"
+	accountName := "feishu_user_test"
 
 	if err := sessionStore.Save(authcache.Session{
 		Version:     authcache.SessionVersion,
-		ProfileName: profileName,
+		AccountName: accountName,
 		Platform:    "feishu",
 		Subject:     "user",
 		GrantType:   "oauth_user",
@@ -322,7 +322,7 @@ func TestUserProfileCanCallFormerBotOnlyOperations(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	ctx := adapter.WithProfileName(context.Background(), profileName)
+	ctx := adapter.WithAccountName(context.Background(), accountName)
 	profile := testUserProfile()
 
 	createdEvent, appErr := client.CreateCalendarEvent(ctx, profile, map[string]any{

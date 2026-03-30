@@ -138,8 +138,8 @@ func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Prof
 		tokenType = extractFirstNonEmptyString(response, "token_type")
 	}
 
-	profileName := adapter.ProfileNameFromContext(ctx)
-	session := buildOAuthSession(c.now(), profileName, profile, accessToken, nextRefreshToken, tokenType, extractFeishuExpiresInSeconds(response, payload))
+	accountName := adapter.AccountNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), accountName, profile, accessToken, nextRefreshToken, tokenType, extractFeishuExpiresInSeconds(response, payload))
 	return &session, nil
 }
 
@@ -215,8 +215,8 @@ func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.P
 		tokenType = extractFirstNonEmptyString(response, "token_type")
 	}
 
-	profileName := adapter.ProfileNameFromContext(ctx)
-	session := buildOAuthSession(c.now(), profileName, profile, accessToken, refreshToken, tokenType, extractFeishuExpiresInSeconds(response, payload))
+	accountName := adapter.AccountNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), accountName, profile, accessToken, refreshToken, tokenType, extractFeishuExpiresInSeconds(response, payload))
 	return &session, nil
 }
 
@@ -259,11 +259,11 @@ func extractFeishuExpiresInSeconds(response map[string]any, payload map[string]a
 }
 
 func buildFeishuAuthorizationRequiredError(ctx context.Context) *apperr.AppError {
-	profileName := strings.TrimSpace(adapter.ProfileNameFromContext(ctx))
-	if profileName == "" {
+	accountName := strings.TrimSpace(adapter.AccountNameFromContext(ctx))
+	if accountName == "" {
 		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth login <account>` first")
 	}
-	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for account %s; run `clawrise auth login %s` first", profileName, profileName))
+	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for account %s; run `clawrise auth login %s` first", accountName, accountName))
 }
 
 func shouldTreatOAuthSecretAsPending(raw string, err error) bool {

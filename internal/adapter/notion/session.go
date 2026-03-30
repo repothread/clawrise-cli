@@ -25,12 +25,12 @@ func newDefaultSessionStore() authcache.Store {
 }
 
 func (c *Client) loadCachedSession(ctx context.Context, profile config.Profile) (*authcache.Session, bool) {
-	profileName := adapter.ProfileNameFromContext(ctx)
-	if profileName == "" || c.sessionStore == nil {
+	accountName := adapter.AccountNameFromContext(ctx)
+	if accountName == "" || c.sessionStore == nil {
 		return nil, false
 	}
 
-	session, err := c.sessionStore.Load(profileName)
+	session, err := c.sessionStore.Load(accountName)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, false
@@ -44,12 +44,12 @@ func (c *Client) loadCachedSession(ctx context.Context, profile config.Profile) 
 }
 
 func (c *Client) saveCachedSession(ctx context.Context, profile config.Profile, session authcache.Session) {
-	profileName := adapter.ProfileNameFromContext(ctx)
-	if profileName == "" || c.sessionStore == nil {
+	accountName := adapter.AccountNameFromContext(ctx)
+	if accountName == "" || c.sessionStore == nil {
 		return
 	}
 
-	session.ProfileName = profileName
+	session.AccountName = accountName
 	session.Platform = profile.Platform
 	session.Subject = profile.Subject
 	session.GrantType = profile.Grant.Type
@@ -59,10 +59,10 @@ func (c *Client) saveCachedSession(ctx context.Context, profile config.Profile, 
 	_ = c.sessionStore.Save(session)
 }
 
-func buildOAuthSession(now time.Time, profileName string, profile config.Profile, accessToken string, refreshToken string, tokenType string, expiresInSeconds int) authcache.Session {
+func buildOAuthSession(now time.Time, accountName string, profile config.Profile, accessToken string, refreshToken string, tokenType string, expiresInSeconds int) authcache.Session {
 	session := authcache.Session{
 		Version:      authcache.SessionVersion,
-		ProfileName:  profileName,
+		AccountName:  accountName,
 		Platform:     profile.Platform,
 		Subject:      profile.Subject,
 		GrantType:    profile.Grant.Type,
@@ -120,7 +120,7 @@ func normalizeTokenType(tokenType string) string {
 }
 
 // RefreshSession 强制刷新指定 profile 的 OAuth session，并写回本地 cache。
-func (c *Client) RefreshSession(ctx context.Context, profileName string, profile config.Profile) (*authcache.Session, *apperr.AppError) {
+func (c *Client) RefreshSession(ctx context.Context, accountName string, profile config.Profile) (*authcache.Session, *apperr.AppError) {
 	if profile.Subject != "integration" {
 		return nil, apperr.New("SUBJECT_NOT_ALLOWED", "this Notion session refresh currently requires an integration profile")
 	}
@@ -128,7 +128,7 @@ func (c *Client) RefreshSession(ctx context.Context, profileName string, profile
 		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion session refresh currently supports only oauth_refreshable, got %s", profile.Grant.Type))
 	}
 
-	ctx = adapter.WithProfileName(ctx, profileName)
+	ctx = adapter.WithAccountName(ctx, accountName)
 	currentSession, _ := c.loadCachedSession(ctx, profile)
 
 	session, appErr := c.refreshAccessToken(ctx, profile, currentSession)
@@ -140,7 +140,7 @@ func (c *Client) RefreshSession(ctx context.Context, profileName string, profile
 }
 
 // ExchangeAuthorizationCode 使用授权码换取新的 OAuth session，并写回本地 cache。
-func (c *Client) ExchangeAuthorizationCode(ctx context.Context, profileName string, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+func (c *Client) ExchangeAuthorizationCode(ctx context.Context, accountName string, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
 	if profile.Subject != "integration" {
 		return nil, apperr.New("SUBJECT_NOT_ALLOWED", "this Notion auth code exchange currently requires an integration profile")
 	}
@@ -148,7 +148,7 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, profileName stri
 		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion auth code exchange currently supports only oauth_refreshable, got %s", profile.Grant.Type))
 	}
 
-	ctx = adapter.WithProfileName(ctx, profileName)
+	ctx = adapter.WithAccountName(ctx, accountName)
 	session, appErr := c.exchangeAuthorizationCode(ctx, profile, code, redirectURI)
 	if appErr != nil {
 		return nil, appErr

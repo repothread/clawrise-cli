@@ -12,7 +12,7 @@ import (
 
 // Call describes one adapter invocation context.
 type Call struct {
-	ProfileName    string
+	AccountName    string
 	Profile        config.Profile
 	Input          map[string]any
 	IdempotencyKey string
@@ -71,7 +71,7 @@ type Registry struct {
 
 type callContextKey string
 
-const profileNameContextKey callContextKey = "profile_name"
+const accountNameContextKey callContextKey = "account_name"
 
 // NewRegistry creates an empty registry.
 func NewRegistry() *Registry {
@@ -117,20 +117,21 @@ func (r *Registry) Definitions() []Definition {
 	return definitions
 }
 
-// WithProfileName 把当前执行的 profile 名附加到 context，供 provider auth 逻辑复用。
-func WithProfileName(ctx context.Context, profileName string) context.Context {
-	profileName = strings.TrimSpace(profileName)
-	if profileName == "" {
+// WithAccountName attaches the current account name to context so provider auth
+// flows can reuse it.
+func WithAccountName(ctx context.Context, accountName string) context.Context {
+	accountName = strings.TrimSpace(accountName)
+	if accountName == "" {
 		return ctx
 	}
-	return context.WithValue(ctx, profileNameContextKey, profileName)
+	return context.WithValue(ctx, accountNameContextKey, accountName)
 }
 
-// ProfileNameFromContext 读取当前执行上下文中的 profile 名。
-func ProfileNameFromContext(ctx context.Context) string {
+// AccountNameFromContext reads the current account name from execution context.
+func AccountNameFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	profileName, _ := ctx.Value(profileNameContextKey).(string)
-	return strings.TrimSpace(profileName)
+	accountName, _ := ctx.Value(accountNameContextKey).(string)
+	return strings.TrimSpace(accountName)
 }

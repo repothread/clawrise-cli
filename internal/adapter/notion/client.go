@@ -220,8 +220,8 @@ func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile,
 		nextRefreshToken = strings.TrimSpace(refreshToken)
 	}
 
-	profileName := adapter.ProfileNameFromContext(ctx)
-	session := buildOAuthSession(c.now(), profileName, profile, response.AccessToken, nextRefreshToken, response.TokenType, response.ExpiresIn)
+	accountName := adapter.AccountNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), accountName, profile, response.AccessToken, nextRefreshToken, response.TokenType, response.ExpiresIn)
 	return &session, nil
 }
 
@@ -275,8 +275,8 @@ func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.P
 		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "access_token is empty in Notion auth code response")
 	}
 
-	profileName := adapter.ProfileNameFromContext(ctx)
-	session := buildOAuthSession(c.now(), profileName, profile, response.AccessToken, response.RefreshToken, response.TokenType, response.ExpiresIn)
+	accountName := adapter.AccountNameFromContext(ctx)
+	session := buildOAuthSession(c.now(), accountName, profile, response.AccessToken, response.RefreshToken, response.TokenType, response.ExpiresIn)
 	if session.Metadata == nil {
 		session.Metadata = map[string]string{}
 	}
@@ -300,11 +300,11 @@ func resolveNotionVersion(profile config.Profile) string {
 }
 
 func buildNotionAuthorizationRequiredError(ctx context.Context) *apperr.AppError {
-	profileName := strings.TrimSpace(adapter.ProfileNameFromContext(ctx))
-	if profileName == "" {
+	accountName := strings.TrimSpace(adapter.AccountNameFromContext(ctx))
+	if accountName == "" {
 		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth login <account>` first")
 	}
-	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for account %s; run `clawrise auth login %s` first", profileName, profileName))
+	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for account %s; run `clawrise auth login %s` first", accountName, accountName))
 }
 
 func shouldTreatOAuthSecretAsPending(raw string, err error) bool {

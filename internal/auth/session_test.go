@@ -34,7 +34,7 @@ func TestFileStoreSaveAndLoad(t *testing.T) {
 
 	expiresAt := now.Add(30 * time.Minute)
 	session := Session{
-		ProfileName:  "feishu_user_alice",
+		AccountName:  "feishu_user_alice",
 		Platform:     "feishu",
 		Subject:      "user",
 		GrantType:    "oauth_user",
@@ -55,8 +55,8 @@ func TestFileStoreSaveAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if loaded.ProfileName != session.ProfileName {
-		t.Fatalf("unexpected profile name: %s", loaded.ProfileName)
+	if loaded.AccountName != session.AccountName {
+		t.Fatalf("unexpected account name: %s", loaded.AccountName)
 	}
 	if loaded.AccessToken != session.AccessToken {
 		t.Fatalf("unexpected access token: %s", loaded.AccessToken)
@@ -69,7 +69,7 @@ func TestFileStoreSaveAndLoad(t *testing.T) {
 	}
 }
 
-func TestFileStorePathSanitizesProfileName(t *testing.T) {
+func TestFileStorePathSanitizesAccountName(t *testing.T) {
 	store := NewFileStore(filepath.Join(t.TempDir(), "config.yaml"))
 	path := store.Path("team/docs bot")
 
@@ -90,7 +90,7 @@ func TestFileStoreSaveUsesPrivatePermissions(t *testing.T) {
 	store := NewFileStore(configPath)
 
 	session := Session{
-		ProfileName: "notion_team_docs",
+		AccountName: "notion_team_docs",
 		Platform:    "notion",
 		Subject:     "integration",
 		GrantType:   "oauth_refreshable",

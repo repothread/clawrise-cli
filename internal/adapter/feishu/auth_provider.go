@@ -219,7 +219,7 @@ func (p *authProvider) Complete(ctx context.Context, params pluginruntime.AuthCo
 	}
 
 	profile := buildFeishuProfile(account)
-	session, appErr := p.client.exchangeAuthorizationCode(adapter.WithProfileName(ctx, account.Name), profile, code, params.Flow.RedirectURI)
+	session, appErr := p.client.exchangeAuthorizationCode(adapter.WithAccountName(ctx, account.Name), profile, code, params.Flow.RedirectURI)
 	if appErr != nil {
 		return pluginruntime.AuthCompleteResult{}, fmt.Errorf("%s", appErr.Message)
 	}
@@ -267,7 +267,7 @@ func (p *authProvider) Resolve(ctx context.Context, params pluginruntime.AuthRes
 			}, nil
 		}
 
-		ctx = adapter.WithProfileName(ctx, account.Name)
+		ctx = adapter.WithAccountName(ctx, account.Name)
 		refreshedSession, appErr := p.client.refreshUserAccessToken(ctx, profile, session)
 		if appErr == nil {
 			result := pluginruntime.AuthResolveResult{
@@ -343,7 +343,7 @@ func authSessionFromAccount(account pluginruntime.AuthAccount) *authcache.Sessio
 		return nil
 	}
 	session := account.Session.ToSession()
-	session.ProfileName = account.Name
+	session.AccountName = account.Name
 	session.Platform = account.Platform
 	session.Subject = account.Subject
 	session.GrantType = account.AuthMethod

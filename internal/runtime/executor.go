@@ -186,7 +186,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	var data map[string]any
 	for {
 		data, appErr = definition.Handler(ctx, adapter.Call{
-			ProfileName:    connectionName,
+			AccountName:    connectionName,
 			Profile:        resolvedProfile,
 			Input:          input,
 			IdempotencyKey: idempotencyKey,
@@ -462,7 +462,7 @@ func persistAuthPatches(cfg *config.Config, configPath string, accountName strin
 			return err
 		}
 		session := sessionPatch.ToSession()
-		session.ProfileName = accountName
+		session.AccountName = accountName
 		session.Platform = account.Platform
 		session.Subject = account.Subject
 		session.GrantType = config.LegacyGrantTypeForMethod(account.Auth.Method)

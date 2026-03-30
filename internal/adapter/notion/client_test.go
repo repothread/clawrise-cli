@@ -254,7 +254,7 @@ func TestGetPageWithOAuthRefreshableProfileUsesSessionCache(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	ctx := adapter.WithProfileName(context.Background(), "notion_public_workspace_a")
+	ctx := adapter.WithAccountName(context.Background(), "notion_public_workspace_a")
 	profile := config.Profile{
 		Platform: "notion",
 		Subject:  "integration",
@@ -313,7 +313,7 @@ func TestRequireAccessTokenRequiresInteractiveAuthorization(t *testing.T) {
 	})
 	client.sessionStore = authcache.NewFileStore(filepath.Join(t.TempDir(), "config.yaml"))
 
-	ctx := adapter.WithProfileName(context.Background(), "notion_public_workspace_a")
+	ctx := adapter.WithAccountName(context.Background(), "notion_public_workspace_a")
 	_, _, appErr := client.requireAccessToken(ctx, config.Profile{
 		Platform: "notion",
 		Subject:  "integration",

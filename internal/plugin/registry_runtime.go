@@ -162,9 +162,9 @@ func (r *registryRuntime) Execute(ctx context.Context, req ExecuteRequest) (Exec
 		}, nil
 	}
 
-	ctx = adapter.WithProfileName(ctx, req.AccountName)
+	ctx = adapter.WithAccountName(ctx, req.AccountName)
 	data, appErr := definition.Handler(ctx, adapter.Call{
-		ProfileName:    req.AccountName,
+		AccountName:    req.AccountName,
 		Profile:        req.Profile,
 		Input:          req.Input,
 		IdempotencyKey: req.IdempotencyKey,

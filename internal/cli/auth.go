@@ -461,7 +461,7 @@ func persistAuthPatches(cfg *config.Config, store *config.Store, accountName str
 			return err
 		}
 		session := sessionPatch.ToSession()
-		session.ProfileName = accountName
+		session.AccountName = accountName
 		session.Platform = account.Platform
 		session.Subject = account.Subject
 		session.GrantType = config.LegacyGrantTypeForMethod(account.Auth.Method)
