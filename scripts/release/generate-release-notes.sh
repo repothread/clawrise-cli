@@ -23,9 +23,6 @@ fi
 install_package="$(
   node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.root_package.package_name);" "${metadata_path}"
 )"
-dist_tag="$(
-  node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.dist_tag);" "${metadata_path}"
-)"
 
 archives_dir="${repo_root}/dist/release/archives"
 mapfile -t archives < <(find "${archives_dir}" -maxdepth 1 -type f -name '*.tar.gz' -exec basename {} \; | sort)
@@ -34,30 +31,56 @@ if [[ "${#archives[@]}" -eq 0 ]]; then
   exit 1
 fi
 
-asset_list=""
+release_download_base="https://github.com/${repository}/releases/download/v${version}"
+asset_lines=()
 for archive_name in "${archives[@]}"; do
-  asset_list+="- \`${archive_name}\`"$'\n'
+  asset_lines+=("- [\`${archive_name}\`](${release_download_base}/${archive_name})")
 done
+asset_lines+=("- [\`SHA256SUMS\`](${release_download_base}/SHA256SUMS)")
+asset_list="$(printf '%s\n' "${asset_lines[@]}")"
 
-release_type="stable"
-release_type_note="- This release is published on the stable channel."
-if [[ "${version}" == *-* ]]; then
-  release_type="prerelease"
-  release_type_note="- This release is a prerelease build. Validate the dist-tag and installation path before promoting it."
-fi
+resolve_previous_tag() {
+  git -C "${repo_root}" describe --tags --abbrev=0 "${git_sha}^" 2>/dev/null || true
+}
+
+build_contributor_list() {
+  local previous_tag="$1"
+  local revision_range="${git_sha}"
+  local contributors
+
+  if [[ -n "${previous_tag}" ]]; then
+    revision_range="${previous_tag}..${git_sha}"
+  fi
+
+  contributors="$(
+    git -C "${repo_root}" shortlog -sn "${revision_range}" 2>/dev/null | awk '
+      NF {
+        count = $1
+        $1 = ""
+        sub(/^[ \t]+/, "", $0)
+        suffix = (count == 1 ? "commit" : "commits")
+        printf("- %s (%s %s)\n", $0, count, suffix)
+      }
+    '
+  )"
+
+  if [[ -n "${contributors}" ]]; then
+    printf '%s\n' "${contributors}"
+    return 0
+  fi
+
+  printf '%s\n' "- Contributors unavailable."
+}
+
+previous_tag="$(resolve_previous_tag || true)"
+contributor_list="$(build_contributor_list "${previous_tag}")"
 
 rendered="$(cat "${template_path}")"
 rendered="${rendered//\{\{VERSION\}\}/${version}}"
 rendered="${rendered//\{\{INSTALL_PACKAGE\}\}/${install_package}}"
-rendered="${rendered//\{\{DIST_TAG\}\}/${dist_tag}}"
-rendered="${rendered//\{\{RELEASE_TYPE\}\}/${release_type}}"
-rendered="${rendered//\{\{RELEASE_TYPE_NOTE\}\}/${release_type_note}}"
 rendered="${rendered//\{\{GIT_SHA\}\}/${git_sha}}"
+rendered="${rendered//\{\{CONTRIBUTOR_LIST\}\}/${contributor_list}}"
 rendered="${rendered//\{\{ASSET_LIST\}\}/${asset_list}}"
-rendered="${rendered//\{\{DOCS_EN_URL\}\}/https:\/\/github.com\/${repository}\/blob\/${git_sha}\/docs\/en\/npm-release-workflow.md}"
-rendered="${rendered//\{\{DOCS_ZH_URL\}\}/https:\/\/github.com\/${repository}\/blob\/${git_sha}\/docs\/zh\/npm-release-workflow.md}"
-rendered="${rendered//\{\{RUNBOOK_EN_URL\}\}/https:\/\/github.com\/${repository}\/blob\/${git_sha}\/docs\/en\/npm-release-runbook.md}"
-rendered="${rendered//\{\{RUNBOOK_ZH_URL\}\}/https:\/\/github.com\/${repository}\/blob\/${git_sha}\/docs\/zh\/npm-release-runbook.md}"
 
 mkdir -p "$(dirname "${output_path}")"
 printf '%s\n' "${rendered}" > "${output_path}"

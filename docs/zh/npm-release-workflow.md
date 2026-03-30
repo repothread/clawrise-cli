@@ -5,10 +5,10 @@
 ## 目标
 
 - 从 `main` 上选定发布提交并打版本 tag 后，自动构建各平台预编译二进制
-- 发布 `clawrise-cli` 根包，让用户可以直接执行：
+- 发布带 scope 的根包，让用户可以直接执行：
 
 ```bash
-npm install -g clawrise-cli
+npm install -g @scope/clawrise-cli
 ```
 
 - npm 根包自动解析当前平台对应的二进制
@@ -16,10 +16,10 @@ npm install -g clawrise-cli
 
 ## 正式发布规范
 
-- 默认对外发布包名使用无 scope 的最短形式：`clawrise-cli`
+- 官方发布必须设置 `CLAWRISE_NPM_SCOPE`，最终根包会以带 scope 的形式发布，例如 `@clawrise/clawrise-cli`
 - 平台包命名为：`clawrise-cli-<platform>-<arch>`
 - 如需 fork 或内部环境改名，可以通过 `CLAWRISE_NPM_PACKAGE_PREFIX` 覆盖默认前缀
-- 如果需要企业内网镜像、灰度空间或组织账号名义发布，可以通过 `CLAWRISE_NPM_SCOPE` 注入 scope，例如 `@clawrise`
+- `CLAWRISE_NPM_SCOPE` 应设置为实际发布使用的组织或用户 scope，例如 `@clawrise`
 - 默认 `dist-tag` 规则：
   - 稳定版本，如 `1.2.3`，发布到 `latest`
   - 预发布版本，如 `1.2.3-rc.1`、`1.2.3-beta.2`，发布到 `next`
@@ -30,21 +30,16 @@ npm install -g clawrise-cli
 
 发布链路包含两类 npm 包：
 
-- `clawrise-cli`
+- `@scope/clawrise-cli`
   - 根包
   - 暴露 `clawrise` 命令
   - 通过 `optionalDependencies` 依赖各平台包
   - 启动时自动把包内 `plugins/` 注入 `CLAWRISE_PLUGIN_PATHS`
-- `clawrise-cli-<platform>-<arch>`
+- `@scope/clawrise-cli-<platform>-<arch>`
   - 平台包
   - 例如 `clawrise-cli-linux-x64`
   - 包含当前平台的 `clawrise` 二进制
   - 包含第一方 provider plugin 目录和 `plugin.json`
-
-如果启用了 scope，则最终包名会变成：
-
-- `@scope/clawrise-cli`
-- `@scope/clawrise-cli-linux-x64`
 
 ## 标准发版来源
 

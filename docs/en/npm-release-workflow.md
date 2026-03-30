@@ -5,10 +5,10 @@ This document is for repository maintainers. It explains how Clawrise Go build o
 ## Goal
 
 - build precompiled binaries for each target platform after a release tag is created from `main`
-- publish a `clawrise-cli` root package so users can run:
+- publish a scoped root package so users can run:
 
 ```bash
-npm install -g clawrise-cli
+npm install -g @scope/clawrise-cli
 ```
 
 - let the npm root package resolve the correct platform binary automatically
@@ -16,10 +16,10 @@ npm install -g clawrise-cli
 
 ## Release Policy
 
-- the default public package name stays unscoped for the shortest install command: `clawrise-cli`
+- official releases must set `CLAWRISE_NPM_SCOPE` so the published root package is scoped, for example `@clawrise/clawrise-cli`
 - platform packages follow: `clawrise-cli-<platform>-<arch>`
 - if a fork or internal environment needs a different package family name, override it with `CLAWRISE_NPM_PACKAGE_PREFIX`
-- if you need an organization namespace or an internal mirror, inject a scope through `CLAWRISE_NPM_SCOPE`, for example `@clawrise`
+- set `CLAWRISE_NPM_SCOPE` to the publishing organization or user scope, for example `@clawrise`
 - default `dist-tag` policy:
   - stable releases such as `1.2.3` go to `latest`
   - prereleases such as `1.2.3-rc.1` or `1.2.3-beta.2` go to `next`
@@ -30,21 +30,16 @@ npm install -g clawrise-cli
 
 The release flow publishes two package types:
 
-- `clawrise-cli`
+- `@scope/clawrise-cli`
   - the root package
   - exposes the `clawrise` command
   - depends on platform packages through `optionalDependencies`
   - injects the bundled `plugins/` directory into `CLAWRISE_PLUGIN_PATHS`
-- `clawrise-cli-<platform>-<arch>`
+- `@scope/clawrise-cli-<platform>-<arch>`
   - platform package
   - for example `clawrise-cli-linux-x64`
   - contains the prebuilt `clawrise` binary for that platform
   - contains the bundled first-party provider plugin directories and manifests
-
-When a scope is enabled, package names become:
-
-- `@scope/clawrise-cli`
-- `@scope/clawrise-cli-linux-x64`
 
 ## Standard Release Source
 

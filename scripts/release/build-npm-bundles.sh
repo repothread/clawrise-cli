@@ -10,14 +10,14 @@ dist_root="${repo_root}/dist/release"
 bundles_root="${dist_root}/bundles"
 archives_root="${dist_root}/archives"
 
-# 平台映射同时兼顾 Go 交叉编译参数和 npm 的 os/cpu 命名。
+# 平台映射同时兼顾 Go 交叉编译参数、npm 的 os/cpu 命名，以及对外展示更直观的归档命名。
 targets=(
-  "darwin arm64 darwin arm64"
-  "darwin amd64 darwin x64"
-  "linux arm64 linux arm64"
-  "linux amd64 linux x64"
-  "windows arm64 win32 arm64"
-  "windows amd64 win32 x64"
+  "darwin arm64 darwin arm64 darwin arm64"
+  "darwin amd64 darwin x64 darwin amd64"
+  "linux arm64 linux arm64 linux arm64"
+  "linux amd64 linux x64 linux amd64"
+  "windows arm64 win32 arm64 windows arm64"
+  "windows amd64 win32 x64 windows amd64"
 )
 
 build_binary() {
@@ -90,9 +90,10 @@ rm -rf "${bundles_root}" "${archives_root}"
 mkdir -p "${bundles_root}" "${archives_root}"
 
 for target in "${targets[@]}"; do
-  read -r goos goarch npm_os npm_cpu <<<"${target}"
+  read -r goos goarch npm_os npm_cpu archive_os archive_arch <<<"${target}"
 
   bundle_id="${npm_os}-${npm_cpu}"
+  archive_id="${archive_os}-${archive_arch}"
   bundle_dir="${bundles_root}/${bundle_id}"
   core_bin_name="clawrise"
   feishu_bin_name="clawrise-plugin-feishu"
@@ -117,7 +118,7 @@ for target in "${targets[@]}"; do
   write_provider_manifest "${feishu_plugin_dir}/plugin.json" "feishu" "${feishu_bin_name}"
   write_provider_manifest "${notion_plugin_dir}/plugin.json" "notion" "${notion_bin_name}"
 
-  archive_bundle "${bundle_dir}" "${archives_root}/clawrise-cli_${version}_${bundle_id}.tar.gz"
+  archive_bundle "${bundle_dir}" "${archives_root}/clawrise-cli_${version}_${archive_id}.tar.gz"
 done
 
 write_checksums "${archives_root}"

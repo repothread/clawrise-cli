@@ -46,7 +46,7 @@ function prepareRootPackage() {
 
   copyFile(path.join(templateRoot, 'bin', 'clawrise.js'), path.join(targetDir, 'bin', 'clawrise.js'));
   copyFile(path.join(templateRoot, 'lib', 'platform.js'), path.join(targetDir, 'lib', 'platform.js'));
-  copyFile(path.join(templateRoot, 'README.md'), path.join(targetDir, 'README.md'));
+  writeFile(path.join(targetDir, 'README.md'), buildRootReadme());
 
   const optionalDependencies = {};
   for (const platform of platformPackages) {
@@ -78,6 +78,23 @@ function prepareRootPackage() {
   };
 
   writeJSON(path.join(targetDir, 'package.json'), rootPackageJSON);
+}
+
+function buildRootReadme() {
+  return [
+    `# ${rootPackageName}`,
+    '',
+    '通过 npm 分发的 Clawrise CLI 根包。',
+    '',
+    '用户安装方式：',
+    '',
+    '```bash',
+    `npm install -g ${rootPackageName}`,
+    '```',
+    '',
+    '安装后会自动选择当前平台对应的预编译二进制，并携带第一方 `feishu` / `notion` provider plugin。',
+    '',
+  ].join('\n');
 }
 
 function preparePlatformPackage(platform) {

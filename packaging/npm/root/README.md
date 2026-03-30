@@ -1,11 +1,5 @@
 # clawrise-cli
 
-通过 npm 分发的 Clawrise CLI 根包。
+这是 npm 根包 README 模板。
 
-用户安装方式：
-
-```bash
-npm install -g clawrise-cli
-```
-
-安装后会自动选择当前平台对应的预编译二进制，并携带第一方 `feishu` / `notion` provider plugin。
+正式发布时会根据实际根包名动态生成 README 与安装命令，避免 scope、版本号与最终发布内容不一致。
