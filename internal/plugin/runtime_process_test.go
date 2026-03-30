@@ -16,7 +16,17 @@ func TestLoadManifestAndProcessRuntimeHandshake(t *testing.T) {
 
 	manifestPath := filepath.Join(pluginDir, ManifestFileName)
 	pluginPath := filepath.Join(pluginDir, "demo-plugin.sh")
-	if err := os.WriteFile(pluginPath, []byte("#!/bin/sh\nprintf '{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"protocol_version\":1,\"name\":\"demo\",\"version\":\"0.1.0\",\"platforms\":[\"demo\"]}}\\n'\n"), 0o755); err != nil {
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"demo","version":"0.1.0","platforms":["demo"]}}'"\n"
+      exit 0
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("failed to write demo plugin: %v", err)
 	}
 	if err := os.WriteFile(manifestPath, []byte(`{
