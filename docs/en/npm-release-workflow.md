@@ -110,7 +110,7 @@ Output:
 
 ### 3. Publish to npm
 
-Configure:
+For manual local recovery only, configure a publish token first:
 
 ```bash
 export NODE_AUTH_TOKEN=your_npm_token
@@ -154,7 +154,7 @@ The workflow does:
 4. generate npm package directories
 5. upload archive artifacts and `SHA256SUMS`
 6. create or update the GitHub Release and upload archives
-7. publish npm packages when `NPM_TOKEN` is configured
+7. publish npm packages through npm Trusted Publishing
 
 Supported workflow inputs and environment variables:
 
@@ -164,6 +164,34 @@ Supported workflow inputs and environment variables:
 - `cicd` environment variable `CLAWRISE_NPM_SCOPE`
 - `cicd` environment variable `CLAWRISE_NPM_PACKAGE_PREFIX`
 - `cicd` environment variable `CLAWRISE_NPM_DIST_TAG`
+
+## npm Trusted Publishing
+
+Official npm publishing now uses Trusted Publishing instead of a long-lived `NPM_TOKEN`.
+
+Before the GitHub Actions release workflow can publish, configure a trusted publisher for each published npm package on npmjs.com:
+
+- `@clawrise/clawrise-cli`
+- `@clawrise/clawrise-cli-darwin-arm64`
+- `@clawrise/clawrise-cli-darwin-x64`
+- `@clawrise/clawrise-cli-linux-arm64`
+- `@clawrise/clawrise-cli-linux-x64`
+- `@clawrise/clawrise-cli-win32-arm64`
+- `@clawrise/clawrise-cli-win32-x64`
+
+Use these npm Trusted Publisher settings:
+
+- CI/CD provider: `GitHub Actions`
+- Organization or user: `repothread`
+- Repository: `clawrise-cli`
+- Workflow filename: `release-npm.yml`
+- Environment name: `cicd`
+
+Notes:
+
+- npm Trusted Publishing currently requires npm CLI `11.5.1+` and Node `22.14.0+`
+- the workflow uses Node `24` to satisfy that requirement
+- npm automatically generates provenance for public packages published through Trusted Publishing, so the workflow does not pass `--provenance` explicitly
 
 ## Local Preflight
 

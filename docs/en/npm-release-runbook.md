@@ -7,7 +7,7 @@ This document records provenance behavior, common npm release failure cases, and
 The current release workflow uses:
 
 - GitHub Actions OIDC permission: `id-token: write`
-- `npm publish --provenance`
+- npm Trusted Publishing from GitHub Actions
 
 to generate npm provenance for published packages.
 
@@ -54,6 +54,8 @@ If you also want to validate remote auth:
 ```bash
 CLAWRISE_RELEASE_CHECK_REMOTE=1 NODE_AUTH_TOKEN=... ./scripts/release/check-release-ready.sh 0.1.0
 ```
+
+Without a local npm token, the script skips npm auth verification because Trusted Publishing relies on GitHub Actions OIDC and cannot be fully validated from a local shell.
 
 ## Common Failure Cases
 
@@ -107,7 +109,7 @@ Recommended action:
 
 Check:
 
-- whether `NPM_TOKEN` is valid
+- whether the target npm packages already trust `release-npm.yml` as a Trusted Publisher
 - whether GitHub Actions has `id-token: write`
 - whether GitHub or npm registry permissions are restricted
 - whether the target version already exists on npm

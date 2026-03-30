@@ -51,7 +51,7 @@ publish_one() {
   fi
 
   echo "发布 npm 包: ${package_name}@${version} (tag=${dist_tag})"
-  npm_with_cache publish --access "${access_level}" --tag "${dist_tag}" --provenance "${package_dir}"
+  npm_with_cache publish --access "${access_level}" --tag "${dist_tag}" "${package_dir}"
 }
 
 for spec in "${package_specs[@]}"; do

@@ -7,7 +7,7 @@
 当前发布 workflow 通过：
 
 - GitHub Actions OIDC 权限：`id-token: write`
-- `npm publish --provenance`
+- GitHub Actions 上的 npm Trusted Publishing
 
 为 npm 包生成 provenance 证明。
 
@@ -54,6 +54,8 @@ CLAWRISE_RELEASE_ALLOW_DETACHED=1 ./scripts/release/check-release-ready.sh 0.1.0
 ```bash
 CLAWRISE_RELEASE_CHECK_REMOTE=1 NODE_AUTH_TOKEN=... ./scripts/release/check-release-ready.sh 0.1.0
 ```
+
+如果本地没有 npm token，脚本会跳过 npm 认证检查，因为 Trusted Publishing 依赖 GitHub Actions 的 OIDC，无法在本地 shell 中完整验证。
 
 ## 常见失败场景与处理
 
@@ -107,7 +109,7 @@ npm 版本是不可变的，不要依赖删除重发。
 
 优先检查：
 
-- `NPM_TOKEN` 是否可用
+- 目标 npm 包是否已经把 `release-npm.yml` 配置为 Trusted Publisher
 - GitHub Actions 是否拥有 `id-token: write`
 - `gh` / npm registry 权限是否受限
 - 版本是否已存在于 npm

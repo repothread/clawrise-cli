@@ -111,8 +111,8 @@ check_remote_auth() {
   fi
 
   if [[ -z "${NODE_AUTH_TOKEN:-${NPM_TOKEN:-}}" ]]; then
-    echo "未设置 NODE_AUTH_TOKEN 或 NPM_TOKEN，无法执行 npm 远端发布检查。" >&2
-    exit 1
+    echo "未设置 NODE_AUTH_TOKEN 或 NPM_TOKEN；Trusted Publishing 依赖 GitHub Actions OIDC，本地无法直接校验 npm 发布认证，跳过 npm 认证检查。"
+    return 0
   fi
 
   if ! npm_with_cache whoami >/dev/null 2>&1; then

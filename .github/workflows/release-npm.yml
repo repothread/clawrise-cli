@@ -38,7 +38,6 @@ jobs:
     environment: cicd
     timeout-minutes: 30
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
@@ -55,8 +54,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify trusted publishing toolchain
+        run: |
+          node --version
+          npm --version
 
       - name: Resolve release version
         id: version
@@ -137,7 +141,6 @@ jobs:
           gh release upload "${tag}" dist/release/archives/*.tar.gz dist/release/archives/SHA256SUMS --clobber
 
       - name: Publish npm packages
-        if: ${{ env.NODE_AUTH_TOKEN != '' }}
         env:
           CLAWRISE_NPM_DIST_TAG: ${{ steps.npm.outputs.dist_tag }}
         run: ./scripts/release/publish-npm.sh "${{ steps.version.outputs.version }}"

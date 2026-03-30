@@ -110,7 +110,7 @@ node ./scripts/release/prepare-npm-packages.mjs 0.1.0
 
 ### 3. 发布到 npm
 
-先配置：
+这一步仅用于本地手工补救，先配置发布 token：
 
 ```bash
 export NODE_AUTH_TOKEN=your_npm_token
@@ -154,7 +154,7 @@ export CLAWRISE_NPM_DIST_TAG=beta
 4. 生成 npm 包目录
 5. 上传归档产物与 `SHA256SUMS`
 6. 创建或更新 GitHub Release，并上传归档文件
-7. 如果配置了 `NPM_TOKEN`，自动发布 npm 包
+7. 通过 npm Trusted Publishing 自动发布 npm 包
 
 支持的工作流参数与环境变量：
 
@@ -164,6 +164,34 @@ export CLAWRISE_NPM_DIST_TAG=beta
 - `cicd` environment 变量 `CLAWRISE_NPM_SCOPE`
 - `cicd` environment 变量 `CLAWRISE_NPM_PACKAGE_PREFIX`
 - `cicd` environment 变量 `CLAWRISE_NPM_DIST_TAG`
+
+## npm Trusted Publishing
+
+官方 npm 发布链路现在使用 Trusted Publishing，而不是长期有效的 `NPM_TOKEN`。
+
+在 GitHub Actions 发布前，需要先在 npmjs.com 为每个发布包分别配置 Trusted Publisher：
+
+- `@clawrise/clawrise-cli`
+- `@clawrise/clawrise-cli-darwin-arm64`
+- `@clawrise/clawrise-cli-darwin-x64`
+- `@clawrise/clawrise-cli-linux-arm64`
+- `@clawrise/clawrise-cli-linux-x64`
+- `@clawrise/clawrise-cli-win32-arm64`
+- `@clawrise/clawrise-cli-win32-x64`
+
+npm Trusted Publisher 请填写：
+
+- CI/CD provider: `GitHub Actions`
+- Organization or user: `repothread`
+- Repository: `clawrise-cli`
+- Workflow filename: `release-npm.yml`
+- Environment name: `cicd`
+
+说明：
+
+- npm Trusted Publishing 当前要求 npm CLI `11.5.1+` 与 Node `22.14.0+`
+- 当前 workflow 已切换到 Node `24` 满足该要求
+- 对公开仓库里的公开包，Trusted Publishing 会自动生成 provenance，因此 workflow 不再显式传 `--provenance`
 
 ## 本地发版前检查
 
