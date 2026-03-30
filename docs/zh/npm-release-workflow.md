@@ -156,14 +156,14 @@ export CLAWRISE_NPM_DIST_TAG=beta
 6. 创建或更新 GitHub Release，并上传归档文件
 7. 如果配置了 `NPM_TOKEN`，自动发布 npm 包
 
-支持的工作流参数与仓库变量：
+支持的工作流参数与环境变量：
 
 - `npm_scope`
 - `npm_package_prefix`
 - `npm_dist_tag`
-- `vars.CLAWRISE_NPM_SCOPE`
-- `vars.CLAWRISE_NPM_PACKAGE_PREFIX`
-- `vars.CLAWRISE_NPM_DIST_TAG`
+- `cicd` environment 变量 `CLAWRISE_NPM_SCOPE`
+- `cicd` environment 变量 `CLAWRISE_NPM_PACKAGE_PREFIX`
+- `cicd` environment 变量 `CLAWRISE_NPM_DIST_TAG`
 
 ## 本地发版前检查
 

@@ -35,6 +35,7 @@ jobs:
   release:
     name: Build And Publish NPM
     runs-on: ubuntu-latest
+    environment: cicd
     timeout-minutes: 30
     env:
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -69,7 +70,7 @@ jobs:
         run: |
           npm_scope="${{ github.event.inputs.npm_scope || vars.CLAWRISE_NPM_SCOPE }}"
           if [[ -z "${npm_scope}" ]]; then
-            echo "官方发布必须配置 npm scope，请通过 workflow_dispatch 输入或 vars.CLAWRISE_NPM_SCOPE 提供。" >&2
+            echo "官方发布必须配置 npm scope，请通过 workflow_dispatch 输入或 cicd environment 变量 CLAWRISE_NPM_SCOPE 提供。" >&2
             exit 1
           fi
           npm_package_prefix="${{ github.event.inputs.npm_package_prefix || vars.CLAWRISE_NPM_PACKAGE_PREFIX }}"

@@ -156,14 +156,14 @@ The workflow does:
 6. create or update the GitHub Release and upload archives
 7. publish npm packages when `NPM_TOKEN` is configured
 
-Supported workflow inputs and repository variables:
+Supported workflow inputs and environment variables:
 
 - `npm_scope`
 - `npm_package_prefix`
 - `npm_dist_tag`
-- `vars.CLAWRISE_NPM_SCOPE`
-- `vars.CLAWRISE_NPM_PACKAGE_PREFIX`
-- `vars.CLAWRISE_NPM_DIST_TAG`
+- `cicd` environment variable `CLAWRISE_NPM_SCOPE`
+- `cicd` environment variable `CLAWRISE_NPM_PACKAGE_PREFIX`
+- `cicd` environment variable `CLAWRISE_NPM_DIST_TAG`
 
 ## Local Preflight
 
