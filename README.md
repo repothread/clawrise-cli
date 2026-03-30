@@ -72,7 +72,7 @@ go run ./cmd/clawrise doctor
 
 - CLI command model
 - provider plugin architecture
-- auth and profile model
+- auth and account model
 - idempotency and audit rules
 - operation contracts for Feishu and Notion
 
@@ -124,8 +124,13 @@ The current repository state includes:
 - minimal onboarding helpers:
   - `clawrise config init`
   - `clawrise auth list`
-  - `clawrise auth inspect <profile>`
-  - `clawrise auth check [profile]`
+  - `clawrise auth methods`
+  - `clawrise auth presets`
+  - `clawrise account add --platform <name> --preset <id>`
+  - `clawrise auth inspect <account>`
+  - `clawrise auth check [account]`
+  - `clawrise auth login <account>`
+  - `clawrise auth complete <flow_id>`
   - `clawrise doctor`
 - local searchable playbooks:
   - `docs/playbooks/index.yaml`

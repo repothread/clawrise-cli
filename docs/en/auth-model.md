@@ -1,4 +1,4 @@
-# Clawrise Auth and Profile Model
+# Clawrise Auth and Account Model
 
 See the Chinese version at [../zh/auth-model.md](../zh/auth-model.md).
 
@@ -10,7 +10,7 @@ The runtime must model:
 
 - where the request goes
 - who executes the request
-- how credentials are granted
+- how credentials are obtained
 - how runtime auth sessions are built, cached, and refreshed
 
 ## 2. Core Concepts
@@ -24,9 +24,9 @@ Examples:
 - `feishu`
 - `notion`
 
-### Profile
+### Account
 
-A concrete executable identity selected by the user or by defaults.
+An account is one concrete executable identity selected explicitly or by defaults.
 
 Examples:
 
@@ -36,55 +36,57 @@ Examples:
 
 ### Subject
 
-Normalized identity type at the platform level.
+Subject describes the identity category used at the provider side.
 
-Recommended subject types:
+Current common values:
 
 - `bot`
 - `user`
 - `integration`
 
-### Grant
+Future platforms may introduce new subject strings. The core should not hard-code the full set.
 
-Describes how credentials are obtained.
+### Auth Method
 
-Recommended grant types:
+Auth method describes how one account authenticates with the provider.
 
-- `client_credentials`
-- `oauth_user`
-- `static_token`
-- `oauth_refreshable`
+Current first-party methods:
+
+- `feishu.app_credentials`
+- `feishu.oauth_user`
+- `notion.internal_token`
+- `notion.oauth_public`
 
 ### Session
 
-Runtime-authenticated form used to execute requests.
+Session is the runtime-authenticated state actually used to execute requests.
 
 It typically contains:
 
 - access token
-- expiry time
-- normalized auth headers
-- subject
-- profile name
+- refresh token
+- expires_at
+- token_type
+- provider-native metadata
 
 ## 3. Runtime Resolution
 
-For every command, runtime should:
+For each command, the runtime resolves auth in the following order:
 
 1. resolve the operation
 2. resolve the platform
-3. resolve the profile
-4. load credentials
-5. build or refresh the auth session
-6. verify the subject against operation constraints
-7. inject auth headers and execute
+3. resolve the account
+4. load account public fields, secret refs, and session
+5. call provider plugin `auth.resolve`
+6. persist returned session / secret patches
+7. inject provider-ready auth and execute the operation
 
 Selection rules:
 
-- `--profile` has highest priority
-- otherwise use the default profile for the current platform
-- if no matching profile exists, fail explicitly
-- if multiple profiles could apply and none is selected, fail with ambiguity instead of guessing
+- `--account` has highest priority
+- otherwise use the default account for the current platform
+- if no matching account exists, fail explicitly
+- if multiple accounts could apply and none is selected, fail with ambiguity instead of guessing
 
 ## 4. CLI Conventions
 
@@ -105,107 +107,153 @@ clawrise subject unset
 clawrise subject list
 ```
 
-Profile management:
+Account management:
 
 ```bash
-clawrise profile use feishu_bot_ops
-clawrise profile current
-clawrise profile list
+clawrise account add --platform feishu --preset bot
+clawrise account use feishu_bot_ops
+clawrise account current
+clawrise account list
 ```
 
 Per-call override:
 
 ```bash
-clawrise feishu.calendar.event.create --profile feishu_bot_ops
-clawrise notion.page.create --profile notion_team_docs
+clawrise feishu.calendar.event.create --account feishu_bot_ops
+clawrise notion.page.create --account notion_team_docs
 ```
 
 Key rule:
 
 - `platform` decides where to call
 - `subject` selects the preferred actor category
-- `profile` decides who calls
+- `account` decides who calls
 
-## 5. Feishu Model
+## 5. Config Shape
 
-Architecture support:
+Recommended structure:
+
+```yaml
+defaults:
+  platform: feishu
+  account: feishu_bot_ops
+  platform_accounts:
+    feishu: feishu_bot_ops
+    notion: notion_team_docs
+
+accounts:
+  feishu_bot_ops:
+    platform: feishu
+    subject: bot
+    auth:
+      method: feishu.app_credentials
+      public:
+        app_id: cli_xxx
+      secret_refs:
+        app_secret: secret:feishu_bot_ops:app_secret
+
+  notion_team_docs:
+    platform: notion
+    subject: integration
+    auth:
+      method: notion.internal_token
+      public:
+        notion_version: "2026-03-11"
+      secret_refs:
+        token: secret:notion_team_docs:token
+```
+
+Key points:
+
+- `public` stores non-secret fields
+- `secret_refs` stores only secret references, not plaintext values
+- the meaning of `auth.method` is declared by the provider plugin
+
+## 6. Feishu Model
+
+Current architecture support:
 
 - `bot`
 - `user`
 
-Current runtime support:
-
-- `bot`
-- `user` for selected document operations through `oauth_user`
-
-Bot/app style profile:
+Bot / app style account:
 
 ```yaml
-profiles:
+accounts:
   feishu_bot_ops:
     platform: feishu
     subject: bot
-    grant:
-      type: client_credentials
-      app_id: env:FEISHU_BOT_OPS_APP_ID
-      app_secret: env:FEISHU_BOT_OPS_APP_SECRET
+    auth:
+      method: feishu.app_credentials
+      public:
+        app_id: cli_xxx
+      secret_refs:
+        app_secret: secret:feishu_bot_ops:app_secret
 ```
 
-User style profile:
+User style account:
 
 ```yaml
-profiles:
+accounts:
   feishu_user_alice:
     platform: feishu
     subject: user
-    grant:
-      type: oauth_user
-      client_id: env:FEISHU_CLIENT_ID
-      client_secret: env:FEISHU_CLIENT_SECRET
-      access_token: env:FEISHU_ALICE_ACCESS_TOKEN
-      refresh_token: env:FEISHU_ALICE_REFRESH_TOKEN
+    auth:
+      method: feishu.oauth_user
+      public:
+        client_id: cli_xxx
+        redirect_mode: loopback
+        scopes:
+          - offline_access
+      secret_refs:
+        client_secret: secret:feishu_user_alice:client_secret
+        refresh_token: secret:feishu_user_alice:refresh_token
 ```
 
-Multiple bots are represented as multiple profiles, not as a platform special case.
+Multiple bots are represented as multiple accounts, not as a platform special case.
 
-## 6. Notion Model
+## 7. Notion Model
 
-Recommended subject type:
+Current recommended subject type:
 
 - `integration`
 
-Internal integration is the MVP path:
+Internal integration:
 
 ```yaml
-profiles:
+accounts:
   notion_team_docs:
     platform: notion
     subject: integration
-    grant:
-      type: static_token
-      token: env:NOTION_TEAM_DOCS_TOKEN
-      notion_version: "2026-03-11"
+    auth:
+      method: notion.internal_token
+      public:
+        notion_version: "2026-03-11"
+      secret_refs:
+        token: secret:notion_team_docs:token
 ```
 
-Public integration remains a later extension path:
+Public integration:
 
 ```yaml
-profiles:
+accounts:
   notion_public_workspace_a:
     platform: notion
     subject: integration
-    grant:
-      type: oauth_refreshable
-      client_id: env:NOTION_CLIENT_ID
-      client_secret: env:NOTION_CLIENT_SECRET
-      access_token: env:NOTION_WS_A_ACCESS_TOKEN
-      refresh_token: env:NOTION_WS_A_REFRESH_TOKEN
-      notion_version: "2026-03-11"
+    auth:
+      method: notion.oauth_public
+      public:
+        client_id: cli_xxx
+        notion_version: "2026-03-11"
+        redirect_mode: loopback
+      secret_refs:
+        client_secret: secret:notion_public_workspace_a:client_secret
+        refresh_token: secret:notion_public_workspace_a:refresh_token
 ```
 
-## 7. Operation-Level Auth Constraints
+## 8. Operation-Level Auth Constraints
 
-Every operation must declare auth constraints.
+Each operation must declare auth constraints.
 
 Recommended shape:
 
@@ -220,30 +268,27 @@ type AuthConstraint struct {
 Runtime rules:
 
 - runtime must reject unsupported subject types explicitly
-- runtime must not silently switch from one profile to another
-- provider plugins may implement provider-native auth behavior, but profile resolution remains a core runtime concern
-
-- fail immediately if the selected profile subject is not allowed
-- do not silently switch profiles
+- runtime must not silently switch accounts
+- provider plugins may implement provider-native auth behavior, but account resolution remains a core runtime concern
+- fail immediately if the selected account subject is not allowed
 - do not silently downgrade `user` to `bot`
-- explicit failure is better than implicit fallback
 
-## 8. Attribution and Visibility
+## 9. Attribution and Visibility
 
-Attribution and resource visibility are two different dimensions and must not be merged.
+Attribution and resource visibility are separate concerns and should not be merged.
 
-### 8.1 Attribution
+### 9.1 Attribution
 
 Attribution answers:
 
-- who the platform records as the actor behind a change
+- who the provider records as the actor behind a change
 
-For platforms like Feishu, this is usually tied to the token type used for the call:
+For platforms like Feishu, this usually depends on the token type used for the call:
 
 - `tenant_access_token` is closer to bot/app attribution
 - `user_access_token` is closer to user attribution
 
-### 8.2 Resource Visibility
+### 9.2 Resource Visibility
 
 Resource visibility answers:
 
@@ -251,81 +296,11 @@ Resource visibility answers:
 
 This is usually determined by resource permissions, sharing relationships, and ownership location, not only by the calling identity.
 
-### 8.3 Recommended Strategy
+### 9.3 Recommended Strategy
 
 If the product requirement includes both:
 
 - the target user should always see the resource
 - bot changes should remain distinguishable from user changes
 
-then the recommended flow is:
-
-1. run `clawrise subject use user` and call `feishu.docs.document.create`
-2. run `clawrise subject use bot` and call `feishu.docs.document.edit`
-
-That means:
-
-- create the resource under user identity so it is naturally visible to the user
-- grant the bot access
-- let the bot continue editing under bot identity
-
-### 8.4 Strategy That Should Not Be the Default
-
-Using `clawrise subject use user` as the long-term default for automated edits should not be the default strategy.
-
-It simplifies visibility, but it risks attribution ambiguity:
-
-- bot-generated changes may look like direct user changes in the platform history
-
-## 9. MVP Subject Matrix
-
-Current MVP execution matrix:
-
-- `feishu.calendar.event.create` -> `bot`
-- `feishu.calendar.event.list` -> `bot`
-- `feishu.docs.document.create` -> `bot`
-- `feishu.docs.document.get` -> `bot`
-- `feishu.docs.document.list_blocks` -> `bot`
-- `feishu.docs.block.get` -> `bot`
-- `feishu.docs.block.list_children` -> `bot`
-- `feishu.docs.block.get_descendants` -> `bot`
-- `feishu.docs.block.update` -> `bot`
-- `feishu.docs.block.batch_delete` -> `bot`
-- `feishu.contact.user.get` -> `bot`
-- `notion.search.query` -> `integration`
-- `notion.data_source.query` -> `integration`
-- `notion.page.create` -> `integration`
-- `notion.page.get` -> `integration`
-- `notion.page.markdown.get` -> `integration`
-- `notion.page.markdown.update` -> `integration`
-- `notion.block.get` -> `integration`
-- `notion.block.list_children` -> `integration`
-- `notion.block.append` -> `integration`
-- `notion.block.update` -> `integration`
-- `notion.block.delete` -> `integration`
-- `notion.user.get` -> `integration`
-
-## 10. Security Rules
-
-- never store plain-text secrets in audit logs
-- keep config and token cache in separate files
-- never print raw access tokens in normal CLI output
-- redact secrets in logs and debug output
-
-## 11. MVP Scope
-
-MVP must implement:
-
-- multiple profiles
-- default platform selection
-- default profile selection
-- Feishu bot/app credential flow
-- Notion internal integration token flow
-- operation-level subject validation
-
-MVP may defer:
-
-- Feishu user browser login flow
-- Notion public OAuth flow
-- system keychain integration
-- interactive auth helpers
+then creation-time identity and follow-up editing identity should be modeled separately instead of trying to make one account cover both goals.

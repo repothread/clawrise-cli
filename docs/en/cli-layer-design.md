@@ -82,8 +82,8 @@ Examples:
 Reserved management commands:
 
 - `clawrise platform ...`
+- `clawrise account ...`
 - `clawrise subject ...`
-- `clawrise profile ...`
 - `clawrise plugin ...`
 - `clawrise auth ...`
 - `clawrise config ...`
@@ -122,7 +122,7 @@ Preferred input forms:
 
 Common runtime flags:
 
-- `--profile`
+- `--account`
 - `--json`
 - `--input`
 - `--timeout`
@@ -143,7 +143,7 @@ Success envelope:
   "context": {
     "platform": "notion",
     "subject": "integration",
-    "profile": "notion_team_docs"
+    "account": "notion_team_docs"
   },
   "data": {},
   "error": null,
@@ -208,7 +208,7 @@ Execution flow:
 ```text
 CLI input
   -> resolve operation and flags
-  -> load config / profile
+  -> load config / account
   -> resolve provider runtime and operation metadata
   -> read JSON input
   -> validate and normalize
@@ -255,10 +255,10 @@ See the full auth model at [auth-model.md](auth-model.md).
 The key rules are:
 
 - `platform` decides where the request goes
-- `profile` decides which identity executes the request
-- one platform must support multiple profiles
+- `account` decides which identity executes the request
+- one platform must support multiple accounts
 - operations must declare allowed subject types
-- runtime must not silently switch profiles or downgrade subjects
+- runtime must not silently switch accounts or downgrade subjects
 
 Recommended config shape:
 
@@ -266,23 +266,32 @@ Recommended config shape:
 defaults:
   platform: feishu
   subject: bot
-  profile: feishu_bot_ops
+  account: feishu_bot_ops
+  platform_accounts:
+    feishu: feishu_bot_ops
+    notion: notion_team_docs
 
-profiles:
+accounts:
   feishu_bot_ops:
     platform: feishu
     subject: bot
-    grant:
-      type: client_credentials
-      app_id: env:FEISHU_APP_ID
-      app_secret: env:FEISHU_APP_SECRET
+    auth:
+      method: feishu.app_credentials
+      public:
+        app_id: cli_xxx
+      secret_refs:
+        app_secret: secret:feishu_bot_ops:app_secret
 
   notion_team_docs:
     platform: notion
     subject: integration
-    grant:
-      type: static_token
-      token: env:NOTION_ACCESS_TOKEN
+    auth:
+      method: notion.internal_token
+      public:
+        notion_version: "2026-03-11"
+      secret_refs:
+        token: secret:notion_team_docs:token
+```
       notion_version: "2026-03-11"
 ```
 

@@ -117,8 +117,8 @@ operation 路径格式：
 保留管理命令：
 
 - `clawrise platform ...`
+- `clawrise account ...`
 - `clawrise subject ...`
-- `clawrise profile ...`
 - `clawrise plugin ...`
 - `clawrise auth ...`
 - `clawrise config ...`
@@ -157,7 +157,7 @@ operation 路径格式：
 
 通用运行时 flags：
 
-- `--profile`
+- `--account`
 - `--json`
 - `--input`
 - `--timeout`
@@ -178,7 +178,7 @@ operation 路径格式：
   "context": {
     "platform": "notion",
     "subject": "integration",
-    "profile": "notion_team_docs"
+    "account": "notion_team_docs"
   },
   "data": {},
   "error": null,
@@ -243,7 +243,7 @@ operation 路径格式：
 ```text
 CLI 输入
   -> 解析 operation 和 flags
-  -> 加载 config / profile
+  -> 加载 config / account
   -> 解析 provider runtime 和 operation 元信息
   -> 读取 JSON 输入
   -> 本地校验与标准化
@@ -290,10 +290,10 @@ operation 元信息建议覆盖：
 关键规则：
 
 - `platform` 决定请求发往哪里
-- `profile` 决定请求以哪个身份执行
-- 同一平台必须支持多个 profile
+- `account` 决定请求以哪个身份执行
+- 同一平台必须支持多个 account
 - operation 必须声明允许的主体类型
-- 运行时不能静默切换 profile 或降级主体类型
+- 运行时不能静默切换 account 或降级主体类型
 
 推荐配置结构：
 
@@ -301,24 +301,28 @@ operation 元信息建议覆盖：
 defaults:
   platform: feishu
   subject: bot
-  profile: feishu_bot_ops
+  account: feishu_bot_ops
 
-profiles:
+accounts:
   feishu_bot_ops:
     platform: feishu
     subject: bot
-    grant:
-      type: client_credentials
-      app_id: env:FEISHU_APP_ID
-      app_secret: env:FEISHU_APP_SECRET
+    auth:
+      method: feishu.app_credentials
+      public:
+        app_id: cli_xxx
+      secret_refs:
+        app_secret: secret:feishu_bot_ops:app_secret
 
   notion_team_docs:
     platform: notion
     subject: integration
-    grant:
-      type: static_token
-      token: env:NOTION_ACCESS_TOKEN
-      notion_version: "2026-03-11"
+    auth:
+      method: notion.internal_token
+      public:
+        notion_version: "2026-03-11"
+      secret_refs:
+        token: secret:notion_team_docs:token
 ```
 
 ## 9. OpenAPI 与生成策略

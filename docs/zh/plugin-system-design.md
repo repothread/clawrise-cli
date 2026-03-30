@@ -60,7 +60,7 @@ Clawrise 应采用：
 `clawrise-core` 负责：
 
 - CLI 入口与命令解析
-- 配置解析与 profile 选择
+- 配置解析与 account 选择
 - 认证材料解析与脱敏
 - 统一 runtime envelope
 - 幂等、重试、超时、审计
@@ -81,11 +81,11 @@ Clawrise 应采用：
 
 core 不应直接了解平台细节。
 
-plugin 不应直接读取 core 的主配置文件，也不应自己解释 `env:`、profile 选择规则、默认平台规则。
+plugin 不应直接读取 core 的主配置文件，也不应自己解释 `env:`、account 选择规则、默认平台规则。
 
 推荐边界：
 
-- core 解析配置与 profile
+- core 解析配置与 account
 - core 将“已解析好的认证材料”和执行请求发给 plugin
 - plugin 只消费执行请求，不关心配置文件来源
 

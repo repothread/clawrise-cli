@@ -62,7 +62,7 @@ Distribution and runtime must stay decoupled:
 `clawrise-core` should own:
 
 - CLI entrypoints and command parsing
-- config parsing and profile resolution
+- config parsing and account resolution
 - auth material resolution and redaction
 - the normalized runtime envelope
 - idempotency, retry, timeout, and audit policies
@@ -83,11 +83,11 @@ Distribution and runtime must stay decoupled:
 
 The core should not know provider-specific implementation details.
 
-Plugins should not read the main core config file directly, and they should not interpret `env:` references, profile defaults, or platform-default resolution rules.
+Plugins should not read the main core config file directly, and they should not interpret `env:` references, account defaults, or platform-default resolution rules.
 
 Recommended boundary:
 
-- the core resolves config and profile selection
+- the core resolves config and account selection
 - the core sends already-resolved auth material and execution inputs to the plugin
 - the plugin consumes execution requests without knowing where config came from
 

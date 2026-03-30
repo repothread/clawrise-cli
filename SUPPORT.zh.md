@@ -35,7 +35,7 @@
 
 - 只有截图，没有可复制的命令输出
 - 缺少复现步骤
-- 没写清楚 provider、profile 或 operation
+- 没写清楚 provider、account 或 operation
 - 日志里看不出失败命令
 - 提交了真实密钥，导致必须先做密钥轮换处理
 

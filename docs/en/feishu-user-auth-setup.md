@@ -13,18 +13,24 @@ The goal is to obtain:
 - `FEISHU_ALICE_ACCESS_TOKEN`
 - `FEISHU_ALICE_REFRESH_TOKEN`
 
-These values are used by a profile like:
+These values are used by an account like:
 
 ```yaml
-feishu_user_alice:
-  platform: feishu
-  subject: user
-  grant:
-    type: oauth_user
-    client_id: env:FEISHU_CLIENT_ID
-    client_secret: env:FEISHU_CLIENT_SECRET
-    access_token: env:FEISHU_ALICE_ACCESS_TOKEN
-    refresh_token: env:FEISHU_ALICE_REFRESH_TOKEN
+accounts:
+  feishu_user_alice:
+    platform: feishu
+    subject: user
+    auth:
+      method: feishu.oauth_user
+      public:
+        client_id: cli_xxx
+        redirect_mode: loopback
+        scopes:
+          - offline_access
+      secret_refs:
+        client_secret: env:FEISHU_CLIENT_SECRET
+        access_token: env:FEISHU_ALICE_ACCESS_TOKEN
+        refresh_token: env:FEISHU_ALICE_REFRESH_TOKEN
 ```
 
 ## 2. When to Use This

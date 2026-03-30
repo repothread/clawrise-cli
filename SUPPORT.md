@@ -35,7 +35,7 @@ Please include:
 
 - screenshots without copyable command output
 - missing reproduction steps
-- issues reported without the provider, profile, or operation involved
+- issues reported without the provider, account, or operation involved
 - logs that hide the failing command entirely
 - reports containing real secrets that then need to be rotated
 

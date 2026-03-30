@@ -13,18 +13,24 @@
 - `FEISHU_ALICE_ACCESS_TOKEN`
 - `FEISHU_ALICE_REFRESH_TOKEN`
 
-这些值用于配置类似下面的 profile：
+这些值用于配置类似下面的 account：
 
 ```yaml
-feishu_user_alice:
-  platform: feishu
-  subject: user
-  grant:
-    type: oauth_user
-    client_id: env:FEISHU_CLIENT_ID
-    client_secret: env:FEISHU_CLIENT_SECRET
-    access_token: env:FEISHU_ALICE_ACCESS_TOKEN
-    refresh_token: env:FEISHU_ALICE_REFRESH_TOKEN
+accounts:
+  feishu_user_alice:
+    platform: feishu
+    subject: user
+    auth:
+      method: feishu.oauth_user
+      public:
+        client_id: cli_xxx
+        redirect_mode: loopback
+        scopes:
+          - offline_access
+      secret_refs:
+        client_secret: env:FEISHU_CLIENT_SECRET
+        access_token: env:FEISHU_ALICE_ACCESS_TOKEN
+        refresh_token: env:FEISHU_ALICE_REFRESH_TOKEN
 ```
 
 ## 2. 适用场景
@@ -325,7 +331,7 @@ source ~/.zshrc
 
 当前仓库中：
 
-- `oauth_user` 这种 profile 结构已经接入运行时
+- `oauth_user` 这种 account 结构已经接入运行时
 - `wiki` 相关 operation 已按当前实现放开给 `user`
 - 调用时仍需以 operation 级主体约束为准，运行时不会自动把 `user` 降级为 `bot`
 

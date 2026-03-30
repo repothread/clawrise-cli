@@ -2,11 +2,11 @@
 
 ## 1. 目标
 
-Session cache 负责承接运行时短生命周期认证态，而不是替代 `profile` 配置。
+Session cache 负责承接运行时短生命周期认证态，而不是替代 `account` 配置。
 
 它要解决的问题：
 
-- 让 `profile` 继续只描述静态身份与授权方式
+- 让 `account` 继续只描述静态身份与授权方式
 - 让运行时可以缓存短期 `access_token`
 - 让 OAuth 刷新后返回的新 `refresh_token` 有安全落点
 - 避免每次调用都重新换 token
@@ -36,7 +36,7 @@ Session cache 负责承接运行时短生命周期认证态，而不是替代 `p
 
 规则：
 
-- `config.yaml` 只保留 `profile` 与 secret 引用
+- `config.yaml` 只保留 `account` 与 secret 引用
 - `runtime/auth/*.json` 只保留运行时 session
 - session 文件权限应为 `0600`
 - `runtime/auth/` 目录权限应为 `0700`
@@ -52,7 +52,7 @@ Session cache 负责承接运行时短生命周期认证态，而不是替代 `p
 ```json
 {
   "version": 1,
-  "profile_name": "feishu_user_alice",
+  "account_name": "feishu_user_alice",
   "platform": "feishu",
   "subject": "user",
   "grant_type": "oauth_user",
@@ -71,7 +71,7 @@ Session cache 负责承接运行时短生命周期认证态，而不是替代 `p
 
 说明：
 
-- `profile_name` 是 session 主键
+- `account_name` 是 session 主键
 - `profile_fingerprint` 用于配置变更后的 session 失效判断
 - `refresh_token` 只有在 provider 会轮换时才写入
 - `metadata` 预留给 provider-native 字段
@@ -80,7 +80,7 @@ Session cache 负责承接运行时短生命周期认证态，而不是替代 `p
 
 每次 CLI 调用按需执行：
 
-1. 根据 `profile` 找到对应 session 文件
+1. 根据 `account` 找到对应 session 文件
 2. 如果存在且 `access_token` 未过期，直接复用
 3. 如果不存在、已过期或即将过期，则执行 refresh / exchange
 4. 将最新 session 原子写回本地文件
@@ -111,8 +111,8 @@ Provider 差异：
 
 建议未来接入流程：
 
-1. `runtime` 解析出最终 `profile`
-2. 根据 `profile` 和主配置路径构造 `auth.FileStore`
+1. `runtime` 解析出最终 `account`
+2. 根据 `account` 和主配置路径构造 `auth.FileStore`
 3. adapter/provider 的 auth resolver 先尝试读取 session
 4. session 不可用时再走 provider-native refresh
 5. refresh 成功后写回 session store
@@ -130,7 +130,7 @@ Provider 差异：
 
 第一阶段可接受的最小实现：
 
-- 同一 profile 采用单文件原子写
+- 同一 account 采用单文件原子写
 - 通过 `write temp -> rename` 降低半写入风险
 
 第二阶段可以增加：
@@ -141,10 +141,11 @@ Provider 差异：
 
 ## 9. 未来命令
 
-后续可以在 CLI 增加：
+当前版本不再提供单独的 session CLI 子命令。
 
-- `clawrise auth session inspect <profile>`
-- `clawrise auth session clear <profile>`
-- `clawrise auth refresh <profile>`
+推荐通过下面的命令观察和驱动 session 生命周期：
 
-这些命令都不要求后台进程。
+- `clawrise auth inspect <account>`
+- `clawrise auth check <account>`
+- `clawrise auth login <account>`
+- `clawrise auth complete <flow_id>`
