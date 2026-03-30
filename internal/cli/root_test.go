@@ -962,6 +962,7 @@ func TestRunAuthInspectUsesStableOutputShape(t *testing.T) {
 
 func TestRunAuthBeginNotionPublic(t *testing.T) {
 	copyExampleConfig(t)
+	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
 
 	result := runAuthLoginForTest(t, []string{
 		"auth", "login", "notion_public_workspace_a",
@@ -980,6 +981,7 @@ func TestRunAuthBeginNotionPublic(t *testing.T) {
 
 func TestRunAuthLoginUsesLoopbackRedirectModeDefault(t *testing.T) {
 	copyExampleConfig(t)
+	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
 
 	result := runAuthLoginForTest(t, []string{
 		"auth", "login", "notion_public_workspace_a",
@@ -997,6 +999,7 @@ func TestRunAuthLoginUsesLoopbackRedirectModeDefault(t *testing.T) {
 
 func TestRunAuthLoginOpensAuthorizationURL(t *testing.T) {
 	copyExampleConfig(t)
+	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
 	launcher := &testAuthLauncherRuntime{
 		descriptor: pluginruntime.AuthLauncherDescriptor{
 			ID:          "test_launcher",
@@ -1670,6 +1673,8 @@ func copyExampleConfig(t *testing.T) string {
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
 
 	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
 	if err != nil {
@@ -1678,6 +1683,19 @@ func copyExampleConfig(t *testing.T) string {
 	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
+
+	// 单测统一改用临时文件型 secret store，避免误读开发机真实 keychain 等外部凭证。
+	store := config.NewStore(configPath)
+	cfg, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load test config for isolation setup: %v", err)
+	}
+	cfg.Auth.SecretStore.Backend = "encrypted_file"
+	cfg.Auth.SecretStore.FallbackBackend = "encrypted_file"
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("failed to persist isolated secret store config for tests: %v", err)
+	}
+
 	return configPath
 }
 
