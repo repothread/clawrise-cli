@@ -203,6 +203,7 @@ Then use:
 
 ## Documentation
 
+- [Documentation Index](docs/en/index.md)
 - [CLI Layer Design](docs/en/cli-layer-design.md)
 - [Plugin System Design](docs/en/plugin-system-design.md)
 - [Roadmap](docs/en/roadmap.md)
@@ -301,7 +302,19 @@ The current repository state includes:
 Still not implemented:
 
 - remote-source trust policy hardening beyond the current verify surface
-- official packaged first-party plugin release workflow
+- release hardening, upgrade policy, and stronger verification for npm-distributed packages
+
+## npm Install
+
+If you want the prebuilt CLI directly, install it with npm:
+
+```bash
+npm install -g clawrise-cli
+```
+
+The npm root package resolves the current platform binary and bundles the first-party `feishu` and `notion` provider plugins.
+
+If you need the developer-facing release flow, version-branch convention, or packaging scripts, see [docs/en/npm-release-workflow.md](docs/en/npm-release-workflow.md).
 
 ## License
 

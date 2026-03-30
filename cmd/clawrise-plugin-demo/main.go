@@ -7,6 +7,7 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
+	"github.com/clawrise/clawrise-cli/internal/buildinfo"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
@@ -37,7 +38,7 @@ func main() {
 
 	runtime := pluginruntime.NewRegistryRuntime(
 		"demo",
-		"0.1.0",
+		buildinfo.Version,
 		[]string{"demo"},
 		registry,
 		pluginruntime.CatalogFromRegistry(registry),

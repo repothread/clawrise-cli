@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/clawrise/clawrise-cli/internal/buildinfo"
 	"github.com/clawrise/clawrise-cli/internal/cli"
 )
 
 func main() {
 	err := cli.Run(os.Args[1:], cli.Dependencies{
-		Version: "0.1.0-dev",
+		Version: buildinfo.Version,
 		Stdout:  os.Stdout,
 		Stderr:  os.Stderr,
 	})

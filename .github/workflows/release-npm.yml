@@ -1,0 +1,132 @@
+name: Release NPM
+
+on:
+  push:
+    branches:
+      - 'release/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本，例如 0.1.0；留空时从分支名推导'
+        required: false
+        type: string
+      npm_scope:
+        description: 'npm scope，例如 @clawrise；留空表示无 scope'
+        required: false
+        type: string
+      npm_package_prefix:
+        description: 'npm 根包名前缀，默认 clawrise-cli'
+        required: false
+        type: string
+      npm_dist_tag:
+        description: 'npm dist-tag，例如 latest、next、beta；留空时自动推导'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Build And Publish NPM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Resolve release version
+        id: version
+        run: |
+          version="$(./scripts/release/resolve-version.sh "${{ github.event.inputs.version || '' }}")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "发布版本: ${version}"
+
+      - name: Resolve npm publish config
+        id: npm
+        run: |
+          npm_scope="${{ github.event.inputs.npm_scope || vars.CLAWRISE_NPM_SCOPE }}"
+          npm_package_prefix="${{ github.event.inputs.npm_package_prefix || vars.CLAWRISE_NPM_PACKAGE_PREFIX }}"
+          if [[ -z "${npm_package_prefix}" ]]; then
+            npm_package_prefix="clawrise-cli"
+          fi
+          npm_dist_tag="${{ github.event.inputs.npm_dist_tag || vars.CLAWRISE_NPM_DIST_TAG }}"
+          if [[ -z "${npm_dist_tag}" ]]; then
+            if [[ "${{ steps.version.outputs.version }}" == *-* ]]; then
+              npm_dist_tag="next"
+            else
+              npm_dist_tag="latest"
+            fi
+          fi
+          echo "scope=${npm_scope}" >> "$GITHUB_OUTPUT"
+          echo "package_prefix=${npm_package_prefix}" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=${npm_dist_tag}" >> "$GITHUB_OUTPUT"
+          echo "npm scope: ${npm_scope:-<none>}"
+          echo "npm package prefix: ${npm_package_prefix}"
+          echo "npm dist-tag: ${npm_dist_tag}"
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Build release bundles
+        run: ./scripts/release/build-npm-bundles.sh "${{ steps.version.outputs.version }}"
+
+      - name: Prepare npm packages
+        env:
+          CLAWRISE_NPM_SCOPE: ${{ steps.npm.outputs.scope }}
+          CLAWRISE_NPM_PACKAGE_PREFIX: ${{ steps.npm.outputs.package_prefix }}
+          CLAWRISE_NPM_DIST_TAG: ${{ steps.npm.outputs.dist_tag }}
+        run: node ./scripts/release/prepare-npm-packages.mjs "${{ steps.version.outputs.version }}"
+
+      - name: Upload release archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawrise-cli-release-${{ steps.version.outputs.version }}
+          path: |
+            dist/release/archives/*.tar.gz
+            dist/release/archives/SHA256SUMS
+
+      - name: Generate release notes
+        env:
+          CLAWRISE_GITHUB_REPOSITORY: ${{ github.repository }}
+          CLAWRISE_RELEASE_GIT_SHA: ${{ github.sha }}
+        run: ./scripts/release/generate-release-notes.sh "${{ steps.version.outputs.version }}"
+
+      - name: Publish GitHub release
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          title="Clawrise CLI v${{ steps.version.outputs.version }}"
+          notes_path="dist/release/release-notes.md"
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release edit "${tag}" --title "${title}" --notes-file "${notes_path}"
+          else
+            if [[ "${{ steps.version.outputs.version }}" == *-* ]]; then
+              gh release create "${tag}" --title "${title}" --notes-file "${notes_path}" --prerelease
+            else
+              gh release create "${tag}" --title "${title}" --notes-file "${notes_path}"
+            fi
+          fi
+          gh release upload "${tag}" dist/release/archives/*.tar.gz dist/release/archives/SHA256SUMS --clobber
+
+      - name: Publish npm packages
+        if: ${{ env.NODE_AUTH_TOKEN != '' }}
+        env:
+          CLAWRISE_NPM_DIST_TAG: ${{ steps.npm.outputs.dist_tag }}
+        run: ./scripts/release/publish-npm.sh "${{ steps.version.outputs.version }}"

@@ -6,6 +6,7 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
+	"github.com/clawrise/clawrise-cli/internal/buildinfo"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
@@ -21,7 +22,7 @@ func main() {
 
 	runtime := pluginruntime.NewRegistryRuntimeWithOptions(
 		"notion",
-		"0.1.0",
+		buildinfo.Version,
 		[]string{"notion"},
 		registry,
 		pluginruntime.CatalogFromRegistry(registry),
