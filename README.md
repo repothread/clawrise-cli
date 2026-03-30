@@ -48,14 +48,158 @@ Roadmap scope:
 - [docs/en/roadmap.md](docs/en/roadmap.md) tracks forward-looking OSS core work only
 - shipped capabilities are summarized in the `Status` section below
 
-## Quick Start
+## Prerequisites
+
+Before you try Feishu or Notion from a source checkout, prepare:
+
+- Go `1.22.5` or newer
+- one Feishu app or one Notion integration
+- one secret-storage choice:
+  - keep `auth.secret_store.backend: auto` if your system keychain works
+  - or use `encrypted_file` with `CLAWRISE_MASTER_KEY` for a portable local-dev setup
+
+## Quick Start From Source
+
+### 1. Build the Core and Local Provider Plugins
 
 ```bash
 go build ./...
-go test ./...
-go run ./cmd/clawrise version
+./scripts/dev-install-first-party-plugins.sh
+
 go run ./cmd/clawrise doctor
+go run ./cmd/clawrise auth methods --platform feishu
+go run ./cmd/clawrise auth methods --platform notion
 ```
+
+Notes:
+
+- `./scripts/dev-install-first-party-plugins.sh` rebuilds the first-party Feishu and Notion provider plugins into project-local `.clawrise/plugins/`
+- project-local plugins are discovered automatically and ignored by Git
+- `clawrise plugin list` currently reports globally installed packages under `~/.clawrise/plugins`; use `doctor` or `auth methods` to confirm project-local discovery
+
+### 2. Choose a Secret Store Strategy
+
+If your OS keychain works, you can keep the default:
+
+```yaml
+auth:
+  secret_store:
+    backend: auto
+    fallback_backend: encrypted_file
+```
+
+If you want a portable source-based setup, or if `auth secret set` fails on Keychain / Secret Service, use:
+
+```bash
+export CLAWRISE_MASTER_KEY='replace-this-with-a-long-random-string'
+```
+
+Then update the generated config to:
+
+```yaml
+auth:
+  secret_store:
+    backend: encrypted_file
+    fallback_backend: encrypted_file
+```
+
+### 3. Connect Feishu
+
+#### Recommended First Path: Feishu Bot App Credentials
+
+Create the account skeleton:
+
+```bash
+go run ./cmd/clawrise config init --platform feishu --preset bot --account feishu_bot_ops --force
+```
+
+`config init` creates the account skeleton, but it does not fill provider-specific public fields yet. Open the generated config file and set the Feishu `app_id`:
+
+```yaml
+accounts:
+  feishu_bot_ops:
+    auth:
+      public:
+        app_id: cli_your_feishu_app_id
+```
+
+Store the secret, inspect the account, and validate one dry-run call:
+
+```bash
+export FEISHU_APP_SECRET='your_feishu_app_secret'
+go run ./cmd/clawrise auth secret set feishu_bot_ops app_secret --from-env FEISHU_APP_SECRET
+go run ./cmd/clawrise auth inspect feishu_bot_ops
+go run ./cmd/clawrise feishu.calendar.event.create --dry-run --json '{"calendar_id":"cal_demo","summary":"Demo Event","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}'
+```
+
+If `auth inspect` still reports `missing_public_fields=["app_id"]`, the config file still needs the real Feishu App ID.
+
+#### Need User Identity Instead of Bot Identity?
+
+Use the interactive preset:
+
+```bash
+go run ./cmd/clawrise config init --platform feishu --preset user --account feishu_user_default --force
+```
+
+Then:
+
+- fill `accounts.<name>.auth.public.client_id` in the config file
+- store `client_secret` with `auth secret set`
+- run `go run ./cmd/clawrise auth login <account>`
+- finish with `go run ./cmd/clawrise auth complete <flow_id>`
+
+For the full manual OAuth walkthrough, see [docs/en/feishu-user-auth-setup.md](docs/en/feishu-user-auth-setup.md).
+
+### 4. Connect Notion
+
+#### Recommended First Path: Notion Internal Integration Token
+
+Create the account skeleton:
+
+```bash
+go run ./cmd/clawrise config init --platform notion --preset internal_token --account notion_team_docs --force
+```
+
+The default `notion_version` is already filled. Store the token, inspect the account, and validate one dry-run call:
+
+```bash
+export NOTION_TOKEN='secret_xxx'
+go run ./cmd/clawrise auth secret set notion_team_docs token --from-env NOTION_TOKEN
+go run ./cmd/clawrise auth inspect notion_team_docs
+go run ./cmd/clawrise notion.page.create --dry-run --json '{"parent":{"page_id":"page_demo"},"properties":{"title":[{"text":{"content":"Demo Page"}}]}}'
+```
+
+#### Need Public OAuth Instead of an Internal Token?
+
+Use the interactive preset:
+
+```bash
+go run ./cmd/clawrise config init --platform notion --preset public_oauth --account notion_public_default --force
+```
+
+Then:
+
+- fill `accounts.<name>.auth.public.client_id` in the config file
+- store `client_secret` with `auth secret set`
+- run `go run ./cmd/clawrise auth login <account>`
+- finish with `go run ./cmd/clawrise auth complete <flow_id>`
+
+### 5. Recommended First-Run Workflow
+
+For both platforms, the safest first-run sequence is:
+
+```bash
+go run ./cmd/clawrise auth inspect <account>
+go run ./cmd/clawrise auth check <account>
+go run ./cmd/clawrise <operation> --dry-run --json '<payload>'
+```
+
+Then use:
+
+- `go run ./cmd/clawrise spec get <operation>` to inspect the operation contract
+- `docs/playbooks/en/*.md` for task-oriented examples
+- [examples/config.example.yaml](examples/config.example.yaml) for a multi-account config template
 
 ## Documentation
 

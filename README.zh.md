@@ -48,14 +48,158 @@ Clawrise 是一个面向智能体的第三方服务接口命令行执行层。
 - [docs/zh/roadmap.md](docs/zh/roadmap.md) 只跟踪未来一段时间的 OSS core 工作
 - 已经落地的能力统一放在下方 `当前状态` 中
 
-## 快速开始
+## 前置准备
+
+如果你是从源码仓库直接接入 Feishu 或 Notion，建议先准备：
+
+- Go `1.22.5` 或更高版本
+- 一个飞书应用或一个 Notion integration
+- 一种 secret 存储策略：
+  - 如果系统钥匙串可用，保留 `auth.secret_store.backend: auto`
+  - 如果你想要可移植的本地开发环境，使用 `encrypted_file + CLAWRISE_MASTER_KEY`
+
+## 从源码快速开始
+
+### 1. 构建 Core 与本地 Provider Plugin
 
 ```bash
 go build ./...
-go test ./...
-go run ./cmd/clawrise version
+./scripts/dev-install-first-party-plugins.sh
+
 go run ./cmd/clawrise doctor
+go run ./cmd/clawrise auth methods --platform feishu
+go run ./cmd/clawrise auth methods --platform notion
 ```
+
+说明：
+
+- `./scripts/dev-install-first-party-plugins.sh` 会把第一方 Feishu / Notion provider plugin 重新构建到项目级 `.clawrise/plugins/`
+- 项目级 plugin 会被 CLI 自动发现，并且 `.gitignore` 已忽略这些本地产物
+- `clawrise plugin list` 当前只展示 `~/.clawrise/plugins` 下的全局安装包；要确认项目级 plugin 是否可用，请优先看 `doctor` 或 `auth methods`
+
+### 2. 选择 Secret Store 策略
+
+如果系统钥匙串工作正常，可以保留默认配置：
+
+```yaml
+auth:
+  secret_store:
+    backend: auto
+    fallback_backend: encrypted_file
+```
+
+如果你在源码开发、容器、CI 或无图形环境下使用，或者 `auth secret set` 在 Keychain / Secret Service 上失败，建议改成：
+
+```bash
+export CLAWRISE_MASTER_KEY='换成一段足够长的随机字符串'
+```
+
+然后把配置文件里的 secret store 改成：
+
+```yaml
+auth:
+  secret_store:
+    backend: encrypted_file
+    fallback_backend: encrypted_file
+```
+
+### 3. 接入飞书
+
+#### 推荐的第一条路径：飞书 Bot 应用凭证
+
+先生成账号骨架：
+
+```bash
+go run ./cmd/clawrise config init --platform feishu --preset bot --account feishu_bot_ops --force
+```
+
+`config init` 目前只会生成账号骨架，不会替你补 provider 的公开字段。你需要打开生成后的配置文件，把飞书 `app_id` 填进去：
+
+```yaml
+accounts:
+  feishu_bot_ops:
+    auth:
+      public:
+        app_id: cli_your_feishu_app_id
+```
+
+然后写入 secret、检查账号状态，并先跑一条 dry-run：
+
+```bash
+export FEISHU_APP_SECRET='你的飞书应用密钥'
+go run ./cmd/clawrise auth secret set feishu_bot_ops app_secret --from-env FEISHU_APP_SECRET
+go run ./cmd/clawrise auth inspect feishu_bot_ops
+go run ./cmd/clawrise feishu.calendar.event.create --dry-run --json '{"calendar_id":"cal_demo","summary":"Demo Event","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}'
+```
+
+如果 `auth inspect` 仍然提示 `missing_public_fields=["app_id"]`，说明配置文件里的真实 App ID 还没填好。
+
+#### 如果你需要用户身份而不是 Bot 身份
+
+使用交互式 preset：
+
+```bash
+go run ./cmd/clawrise config init --platform feishu --preset user --account feishu_user_default --force
+```
+
+然后：
+
+- 在配置文件里补 `accounts.<name>.auth.public.client_id`
+- 用 `auth secret set` 写入 `client_secret`
+- 运行 `go run ./cmd/clawrise auth login <account>`
+- 最后运行 `go run ./cmd/clawrise auth complete <flow_id>`
+
+完整的手动 OAuth 凭证准备说明见 [docs/zh/feishu-user-auth-setup.md](docs/zh/feishu-user-auth-setup.md)。
+
+### 4. 接入 Notion
+
+#### 推荐的第一条路径：Notion Internal Integration Token
+
+先生成账号骨架：
+
+```bash
+go run ./cmd/clawrise config init --platform notion --preset internal_token --account notion_team_docs --force
+```
+
+默认的 `notion_version` 已经自动填入。接着写入 token、检查账号状态，并先跑一条 dry-run：
+
+```bash
+export NOTION_TOKEN='secret_xxx'
+go run ./cmd/clawrise auth secret set notion_team_docs token --from-env NOTION_TOKEN
+go run ./cmd/clawrise auth inspect notion_team_docs
+go run ./cmd/clawrise notion.page.create --dry-run --json '{"parent":{"page_id":"page_demo"},"properties":{"title":[{"text":{"content":"Demo Page"}}]}}'
+```
+
+#### 如果你需要 Public OAuth 而不是 Internal Token
+
+使用交互式 preset：
+
+```bash
+go run ./cmd/clawrise config init --platform notion --preset public_oauth --account notion_public_default --force
+```
+
+然后：
+
+- 在配置文件里补 `accounts.<name>.auth.public.client_id`
+- 用 `auth secret set` 写入 `client_secret`
+- 运行 `go run ./cmd/clawrise auth login <account>`
+- 最后运行 `go run ./cmd/clawrise auth complete <flow_id>`
+
+### 5. 推荐的新手首跑顺序
+
+无论是 Feishu 还是 Notion，建议先按这个顺序走：
+
+```bash
+go run ./cmd/clawrise auth inspect <account>
+go run ./cmd/clawrise auth check <account>
+go run ./cmd/clawrise <operation> --dry-run --json '<payload>'
+```
+
+之后可以继续使用：
+
+- `go run ./cmd/clawrise spec get <operation>` 查看操作契约
+- `docs/playbooks/zh/*.md` 查看任务导向示例
+- [examples/config.example.yaml](examples/config.example.yaml) 作为多账号配置模板
 
 ## 文档入口
 
