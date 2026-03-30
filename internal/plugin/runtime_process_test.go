@@ -212,3 +212,111 @@ done
 		t.Fatalf("unexpected launch result: %+v", result)
 	}
 }
+
+func TestProcessSecretStoreDescribeStatusAndCRUD(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "secret-store")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "secret-store-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"secret-demo","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.backend.describe"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"backend":{"target":"secret_store","backend":"plugin.demo_secret","display_name":"Demo Secret Store"}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.secret.status"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"status":{"backend":"plugin.demo_secret","supported":true,"readable":true,"writable":true,"secure":true}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.secret.get"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"found":true,"value":"demo-secret"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.secret.set"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.secret.delete"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write storage backend plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 1,
+  "name": "secret-demo",
+  "version": "0.1.0",
+  "kind": "storage_backend",
+  "protocol_version": 1,
+  "storage_backend": {
+    "target": "secret_store",
+    "backend": "plugin.demo_secret",
+    "display_name": "Demo Secret Store"
+  },
+  "entry": {
+    "type": "binary",
+    "command": ["./secret-store-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write storage backend manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	store := NewProcessSecretStore(manifest)
+	defer func() {
+		_ = store.Close()
+	}()
+
+	descriptor, err := store.DescribeStorageBackend(context.Background())
+	if err != nil {
+		t.Fatalf("DescribeStorageBackend returned error: %v", err)
+	}
+	if descriptor.Target != "secret_store" || descriptor.Backend != "plugin.demo_secret" {
+		t.Fatalf("unexpected storage backend descriptor: %+v", descriptor)
+	}
+
+	status, err := store.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !status.Supported || status.Backend != "plugin.demo_secret" {
+		t.Fatalf("unexpected storage status: %+v", status)
+	}
+
+	getResult, err := store.Get(context.Background(), SecretStoreGetParams{
+		AccountName: "demo_account",
+		Field:       "token",
+	})
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if !getResult.Found || getResult.Value != "demo-secret" {
+		t.Fatalf("unexpected get result: %+v", getResult)
+	}
+
+	if err := store.Set(context.Background(), SecretStoreSetParams{
+		AccountName: "demo_account",
+		Field:       "token",
+		Value:       "demo-secret",
+	}); err != nil {
+		t.Fatalf("Set returned error: %v", err)
+	}
+
+	if err := store.Delete(context.Background(), SecretStoreDeleteParams{
+		AccountName: "demo_account",
+		Field:       "token",
+	}); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+}

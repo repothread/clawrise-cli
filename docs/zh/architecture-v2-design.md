@@ -24,27 +24,26 @@
 - `config init` 已改为基于 plugin metadata 选择 preset / auth method
 - doctor 与 `auth inspect` 的账号诊断输出已收敛到稳定扁平字段
 - `internal/spec/catalog` 的内置平台清单已删除
-- `PathsConfig` 已开始通过 `locator` 模块参与状态路径解析
+- 路径解析已经统一收敛到 `locator`
 - playbook 索引校验已接入统一 metadata，并在 `doctor` 中暴露结果
 - `auth login` 已开始基于 auth method descriptor 自动按 `device_code -> local_browser -> manual_code -> manual_url` 选择默认交互模式
 - `secret/session/authflow/governance` 四类状态存储都已具备 backend 注册点
 - `locator` 已补齐路径解析来源输出，`doctor` 会直接暴露 config/state/runtime 的实际生效路径与来源
 - Feishu / Notion 当前已按各自公开 OAuth 能力接入交互式授权，第一方 provider 暂不把 `device_code` 作为近期交付项
+- `storage_backend` plugin kind 与外部 `secret_store` plugin 的 manifest / 安装 / 发现 / 调用链路已落地
 
 部分完成：
 
 - 文档和内部遗留命名仍在继续清理
 - `subject` 的外部硬编码限制已移除，但内部仍保留少量 config inspection / legacy shim 类型名
 - `device_code` 的 core 协议、flow 持久化与 CLI 主流程已落地，但第一方 provider 是否接入该模式将按未来 provider 公开能力与真实需求再决定
-- secret/session/authflow/governance 已具备可切换与注册扩展的 backend 接口，但外部可分发 backend/plugin 形态仍可继续扩展
+- secret/session/authflow/governance 已具备可切换与注册扩展的 backend 接口，其中 `secret_store` 已打通外部 plugin 形态，其他 backend 类型仍可继续扩展
 - docs 自动生成已经可以复用统一 metadata 导出 Markdown，但独立的 docs 生成流水线仍可继续收敛
 - `profile` / `connection` / `account` 的内部收敛已经不再阻塞 core execute 路径，但 `config` 包里仍保留少量 legacy inspection shim
-- `PathsConfig` 已进入定案后的兼容收敛阶段：`config_dir` 视为废弃，`state_dir` 仅作兼容别名保留，推荐统一改用 `locator + env`
 
 尚未完成：
 
-- storage backend 的外部分发 / 安装 / 协议化形态还没有像 provider plugin 一样完全独立
-- `PathsConfig` 的兼容收敛还未完全结束，后续仍需决定 `state_dir` 的最终移除窗口
+- `session_store` / `authflow_store` / `governance` 的外部 plugin 形态还没有像 `secret_store` 一样落地
 
 ### 0.1 按 Phase 粗略进度
 
@@ -70,11 +69,11 @@
 
 当前实现已经具备不错的 provider runtime 抽象，但仍有几类结构性边界还没有完全收好：
 
-- storage backend 已经具备可切换与注册扩展的接口，但外部分发与独立协议仍未完全落地
+- storage backend 已经具备可切换与注册扩展的接口，并且 `secret_store` 已落地外部 plugin 通路，但其余 backend 类型仍未完全外部分发
 - `profile` / `connection` / `account` 的内部遗留命名仍在继续清理，但已不再阻塞 core execute 边界
 - `subject` 的外部限制已经移除，但 config inspection 里仍保留少量 legacy bridge 结构
 - playbook 校验已经接到统一 metadata，但 docs 自动生成流水线仍可继续收敛
-- `PathsConfig` 已定为兼容态收敛：`config_dir` 不再作为有效入口，`state_dir` 仅保留兼容语义，但最终下线节奏仍需明确
+- 路径入口已经定案为 `locator + env`，不再通过配置文件内的 `paths` 字段覆盖
 
 这些问题不是单点 bug，而是边界没有完全收好。
 
@@ -529,8 +528,7 @@ core 不再手写 Feishu / Notion operation 清单。
 当前这部分已经定案：
 
 - 路径解析统一收敛到 `locator` 模块，并以环境变量和系统默认目录作为主入口
-- `config.paths.config_dir` 视为废弃字段，不再参与配置文件发现
-- `config.paths.state_dir` 仅作为兼容别名保留，推荐改用 `CLAWRISE_STATE_DIR` / `CLAWRISE_STATE_HOME`
+- `config.paths.*` 已从运行时配置模型中移除，不再参与路径解析
 
 这样可以避免继续保留“模型里有，运行时不一致”或“发现 config 还要先读取 config 自己的位置配置”这类自相矛盾的状态。
 

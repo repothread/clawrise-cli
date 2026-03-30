@@ -16,26 +16,37 @@ const (
 	ManifestKindProvider = "provider"
 	// ManifestKindAuthLauncher marks an auth-launcher plugin.
 	ManifestKindAuthLauncher = "auth_launcher"
+	// ManifestKindStorageBackend marks a storage-backend plugin.
+	ManifestKindStorageBackend = "storage_backend"
 )
 
 // Manifest describes one installed plugin package.
 type Manifest struct {
-	SchemaVersion   int           `json:"schema_version"`
-	Name            string        `json:"name"`
-	Version         string        `json:"version"`
-	Kind            string        `json:"kind"`
-	ProtocolVersion int           `json:"protocol_version"`
-	Platforms       []string      `json:"platforms"`
-	Entry           ManifestEntry `json:"entry"`
-	CatalogPath     string        `json:"catalog_path,omitempty"`
-	MinCoreVersion  string        `json:"min_core_version,omitempty"`
-	RootDir         string        `json:"-"`
+	SchemaVersion   int                     `json:"schema_version"`
+	Name            string                  `json:"name"`
+	Version         string                  `json:"version"`
+	Kind            string                  `json:"kind"`
+	ProtocolVersion int                     `json:"protocol_version"`
+	Platforms       []string                `json:"platforms"`
+	Entry           ManifestEntry           `json:"entry"`
+	CatalogPath     string                  `json:"catalog_path,omitempty"`
+	StorageBackend  *StorageBackendManifest `json:"storage_backend,omitempty"`
+	MinCoreVersion  string                  `json:"min_core_version,omitempty"`
+	RootDir         string                  `json:"-"`
 }
 
 // ManifestEntry describes how to start one plugin executable.
 type ManifestEntry struct {
 	Type    string   `json:"type"`
 	Command []string `json:"command"`
+}
+
+// StorageBackendManifest describes one external storage backend plugin.
+type StorageBackendManifest struct {
+	Target      string `json:"target"`
+	Backend     string `json:"backend"`
+	DisplayName string `json:"display_name,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // LoadManifest reads and validates one plugin manifest from disk.
@@ -75,8 +86,15 @@ func (m Manifest) Validate() error {
 		}
 	case ManifestKindAuthLauncher:
 		// Launcher plugins may remain platform-agnostic and declare only supported action types.
+	case ManifestKindStorageBackend:
+		if m.StorageBackend == nil {
+			return fmt.Errorf("storage backend plugin manifest storage_backend must not be empty")
+		}
+		if err := m.StorageBackend.Validate(); err != nil {
+			return err
+		}
 	default:
-		return fmt.Errorf("plugin manifest kind must be %s or %s", ManifestKindProvider, ManifestKindAuthLauncher)
+		return fmt.Errorf("plugin manifest kind must be %s, %s, or %s", ManifestKindProvider, ManifestKindAuthLauncher, ManifestKindStorageBackend)
 	}
 	if m.ProtocolVersion <= 0 {
 		return fmt.Errorf("plugin manifest protocol_version must be positive")
@@ -86,6 +104,20 @@ func (m Manifest) Validate() error {
 	}
 	if len(m.Entry.Command) == 0 {
 		return fmt.Errorf("plugin manifest entry.command must not be empty")
+	}
+	return nil
+}
+
+// Validate validates one storage backend descriptor.
+func (m StorageBackendManifest) Validate() error {
+	target := strings.TrimSpace(m.Target)
+	switch target {
+	case "secret_store", "session_store", "authflow_store", "governance":
+	default:
+		return fmt.Errorf("storage backend target must be one of secret_store, session_store, authflow_store, governance")
+	}
+	if strings.TrimSpace(m.Backend) == "" {
+		return fmt.Errorf("storage backend plugin manifest storage_backend.backend is required")
 	}
 	return nil
 }

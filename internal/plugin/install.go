@@ -24,11 +24,13 @@ var npmRegistryBaseURL = "https://registry.npmjs.org"
 
 // InstalledPlugin describes one installed plugin package.
 type InstalledPlugin struct {
-	Name      string           `json:"name"`
-	Version   string           `json:"version"`
-	Platforms []string         `json:"platforms"`
-	RootDir   string           `json:"root_dir"`
-	Install   *InstallMetadata `json:"install,omitempty"`
+	Name           string                  `json:"name"`
+	Version        string                  `json:"version"`
+	Kind           string                  `json:"kind"`
+	Platforms      []string                `json:"platforms"`
+	StorageBackend *StorageBackendManifest `json:"storage_backend,omitempty"`
+	RootDir        string                  `json:"root_dir"`
+	Install        *InstallMetadata        `json:"install,omitempty"`
 }
 
 // InstallResult describes one plugin installation result.
@@ -146,11 +148,13 @@ func ListInstalled() ([]InstalledPlugin, error) {
 			return nil, err
 		}
 		items = append(items, InstalledPlugin{
-			Name:      manifest.Name,
-			Version:   manifest.Version,
-			Platforms: append([]string(nil), manifest.Platforms...),
-			RootDir:   manifest.RootDir,
-			Install:   metadata,
+			Name:           manifest.Name,
+			Version:        manifest.Version,
+			Kind:           manifest.Kind,
+			Platforms:      append([]string(nil), manifest.Platforms...),
+			StorageBackend: cloneStorageBackendManifest(manifest.StorageBackend),
+			RootDir:        manifest.RootDir,
+			Install:        metadata,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -260,6 +264,14 @@ func materializeSource(source, tempDir string) (string, string, error) {
 	default:
 		return materializeFileSource(source, tempDir)
 	}
+}
+
+func cloneStorageBackendManifest(manifest *StorageBackendManifest) *StorageBackendManifest {
+	if manifest == nil {
+		return nil
+	}
+	cloned := *manifest
+	return &cloned
 }
 
 func materializeFileSource(source, tempDir string) (string, string, error) {

@@ -1,6 +1,7 @@
 package secretstore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/paths"
+	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
 // ErrSecretNotFound 表示目标密钥不存在。
@@ -137,10 +139,17 @@ func openExplicitStore(configPath string, stateDir string, backend string) (Stor
 
 func openNamedStore(configPath string, stateDir string, backend string) (Store, error) {
 	factory, ok := storeFactories[backend]
-	if !ok {
+	if ok {
+		return factory(configPath, stateDir)
+	}
+	manifest, found, err := discoverSecretStorePlugin(backend)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
 		return nil, fmt.Errorf("unsupported secret store backend: %s", backend)
 	}
-	return factory(configPath, stateDir)
+	return newPluginSecretStore(manifest), nil
 }
 
 func normalizeBackendName(value string) string {
@@ -155,6 +164,111 @@ func normalizeBackendName(value string) string {
 	default:
 		return value
 	}
+}
+
+func discoverSecretStorePlugin(backend string) (pluginruntime.Manifest, bool, error) {
+	roots, err := pluginruntime.DefaultDiscoveryRoots()
+	if err != nil {
+		return pluginruntime.Manifest{}, false, err
+	}
+	manifests, err := pluginruntime.DiscoverManifests(roots)
+	if err != nil {
+		return pluginruntime.Manifest{}, false, err
+	}
+	for _, manifest := range manifests {
+		if strings.TrimSpace(manifest.Kind) != pluginruntime.ManifestKindStorageBackend {
+			continue
+		}
+		if manifest.StorageBackend == nil {
+			continue
+		}
+		if strings.TrimSpace(manifest.StorageBackend.Target) != "secret_store" {
+			continue
+		}
+		if strings.TrimSpace(manifest.StorageBackend.Backend) != backend {
+			continue
+		}
+		return manifest, true, nil
+	}
+	return pluginruntime.Manifest{}, false, nil
+}
+
+type pluginSecretStore struct {
+	client *pluginruntime.ProcessSecretStore
+}
+
+func newPluginSecretStore(manifest pluginruntime.Manifest) Store {
+	return &pluginSecretStore{
+		client: pluginruntime.NewProcessSecretStore(manifest),
+	}
+}
+
+func (s *pluginSecretStore) Backend() string {
+	if s == nil || s.client == nil {
+		return ""
+	}
+	descriptor, err := s.client.DescribeStorageBackend(context.Background())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(descriptor.Backend)
+}
+
+func (s *pluginSecretStore) Status() Status {
+	if s == nil || s.client == nil {
+		return Status{
+			Supported: false,
+			Detail:    "storage backend plugin client is not initialized",
+		}
+	}
+	status, err := s.client.Status(context.Background())
+	if err != nil {
+		return Status{
+			Backend:   s.Backend(),
+			Supported: false,
+			Readable:  false,
+			Writable:  false,
+			Secure:    true,
+			Detail:    err.Error(),
+		}
+	}
+	return Status{
+		Backend:   status.Backend,
+		Supported: status.Supported,
+		Readable:  status.Readable,
+		Writable:  status.Writable,
+		Secure:    status.Secure,
+		Detail:    status.Detail,
+	}
+}
+
+func (s *pluginSecretStore) Get(connectionName string, field string) (string, error) {
+	result, err := s.client.Get(context.Background(), pluginruntime.SecretStoreGetParams{
+		AccountName: connectionName,
+		Field:       field,
+	})
+	if err != nil {
+		return "", err
+	}
+	if !result.Found {
+		return "", ErrSecretNotFound
+	}
+	return result.Value, nil
+}
+
+func (s *pluginSecretStore) Set(connectionName string, field string, value string) error {
+	return s.client.Set(context.Background(), pluginruntime.SecretStoreSetParams{
+		AccountName: connectionName,
+		Field:       field,
+		Value:       value,
+	})
+}
+
+func (s *pluginSecretStore) Delete(connectionName string, field string) error {
+	return s.client.Delete(context.Background(), pluginruntime.SecretStoreDeleteParams{
+		AccountName: connectionName,
+		Field:       field,
+	})
 }
 
 type encryptedFileStore struct {

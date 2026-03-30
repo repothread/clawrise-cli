@@ -350,3 +350,56 @@ type AuthLaunchResult struct {
 	LauncherID string         `json:"launcher_id,omitempty"`
 	Metadata   map[string]any `json:"metadata,omitempty"`
 }
+
+// StorageBackendDescriptor 描述一个外部存储 backend plugin 的能力。
+type StorageBackendDescriptor struct {
+	Target      string `json:"target"`
+	Backend     string `json:"backend"`
+	DisplayName string `json:"display_name,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// StorageBackendDescribeResult 描述存储 backend 元数据响应。
+type StorageBackendDescribeResult struct {
+	Backend StorageBackendDescriptor `json:"backend"`
+}
+
+// StorageStatus 描述一个存储 backend 的可用状态。
+type StorageStatus struct {
+	Backend   string `json:"backend"`
+	Supported bool   `json:"supported"`
+	Readable  bool   `json:"readable"`
+	Writable  bool   `json:"writable"`
+	Secure    bool   `json:"secure"`
+	Detail    string `json:"detail,omitempty"`
+}
+
+// SecretStoreStatusResult 描述 secret store 状态响应。
+type SecretStoreStatusResult struct {
+	Status StorageStatus `json:"status"`
+}
+
+// SecretStoreGetParams 描述 secret store 读请求。
+type SecretStoreGetParams struct {
+	AccountName string `json:"account_name"`
+	Field       string `json:"field"`
+}
+
+// SecretStoreGetResult 描述 secret store 读响应。
+type SecretStoreGetResult struct {
+	Found bool   `json:"found"`
+	Value string `json:"value,omitempty"`
+}
+
+// SecretStoreSetParams 描述 secret store 写请求。
+type SecretStoreSetParams struct {
+	AccountName string `json:"account_name"`
+	Field       string `json:"field"`
+	Value       string `json:"value"`
+}
+
+// SecretStoreDeleteParams 描述 secret store 删除请求。
+type SecretStoreDeleteParams struct {
+	AccountName string `json:"account_name"`
+	Field       string `json:"field"`
+}

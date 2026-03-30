@@ -131,6 +131,59 @@ func TestInstallHTTPSupport(t *testing.T) {
 	}
 }
 
+func TestInstallStorageBackendPlugin(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDir := filepath.Join(t.TempDir(), "storage-plugin-src")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "secret-demo",
+  "version": "0.1.0",
+  "kind": "storage_backend",
+  "protocol_version": 1,
+  "storage_backend": {
+    "target": "secret_store",
+    "backend": "plugin.demo_secret",
+    "display_name": "Demo Secret Store"
+  },
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/secret-demo"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "bin", "secret-demo"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to write plugin binary: %v", err)
+	}
+
+	result, err := InstallLocal(sourceDir)
+	if err != nil {
+		t.Fatalf("InstallLocal returned error: %v", err)
+	}
+	if result.Manifest.Kind != ManifestKindStorageBackend {
+		t.Fatalf("unexpected storage backend install result: %+v", result.Manifest)
+	}
+	if result.Manifest.StorageBackend == nil || result.Manifest.StorageBackend.Backend != "plugin.demo_secret" {
+		t.Fatalf("unexpected storage backend descriptor: %+v", result.Manifest.StorageBackend)
+	}
+
+	items, err := ListInstalled()
+	if err != nil {
+		t.Fatalf("ListInstalled returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].Kind != ManifestKindStorageBackend {
+		t.Fatalf("unexpected installed storage backend plugins: %+v", items)
+	}
+	if items[0].StorageBackend == nil || items[0].StorageBackend.Target != "secret_store" {
+		t.Fatalf("unexpected installed storage backend metadata: %+v", items[0])
+	}
+}
+
 func TestInstallNPMSupport(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)

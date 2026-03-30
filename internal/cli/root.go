@@ -449,22 +449,6 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 		})
 		nextSteps = append(nextSteps, "run `clawrise auth login <account>` to finish interactive authorization")
 	}
-	if strings.TrimSpace(cfg.Paths.ConfigDir) != "" {
-		checks = append(checks, map[string]any{
-			"code":    "PATHS_CONFIG_DIR_DEPRECATED",
-			"status":  "warn",
-			"message": "config.paths.config_dir is deprecated and is no longer used for config discovery",
-		})
-		nextSteps = append(nextSteps, "remove `config.paths.config_dir`; use `CLAWRISE_CONFIG` or `CLAWRISE_CONFIG_DIR` when you need to override config discovery")
-	}
-	if strings.TrimSpace(cfg.Paths.StateDir) != "" {
-		checks = append(checks, map[string]any{
-			"code":    "PATHS_STATE_DIR_COMPAT_ONLY",
-			"status":  "warn",
-			"message": "config.paths.state_dir is kept only as a compatibility alias; prefer locator environment overrides for new setups",
-		})
-		nextSteps = append(nextSteps, "prefer `CLAWRISE_STATE_DIR` or `CLAWRISE_STATE_HOME` over `config.paths.state_dir` in new setups")
-	}
 
 	configResolution, configResolutionErr := locator.ResolveConfigPathResolution()
 	stateResolution, stateResolutionErr := locator.ResolveStateDirResolution(store.Path())

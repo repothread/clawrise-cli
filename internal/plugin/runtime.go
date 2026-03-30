@@ -392,7 +392,7 @@ func NewDiscoveredManager(ctx context.Context) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	providerManifests, launcherManifests := SplitManifestsByKind(manifests)
+	providerManifests, launcherManifests, _ := SplitManifestsByKind(manifests)
 	launchers := append([]AuthLauncherRuntime{
 		NewSystemAuthLauncherRuntime(),
 	}, NewProcessAuthLaunchers(launcherManifests)...)

@@ -6,18 +6,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 const appDirName = "Clawrise"
-
-type configPaths struct {
-	Paths struct {
-		ConfigDir string `yaml:"config_dir"`
-		StateDir  string `yaml:"state_dir"`
-	} `yaml:"paths"`
-}
 
 // PathResolution 描述一个路径的最终值和解析来源。
 type PathResolution struct {
@@ -103,13 +94,6 @@ func ResolveStateDirResolution(configPath string) (PathResolution, error) {
 		}, nil
 	}
 
-	if configured := readConfiguredStateDir(configPath); configured != "" {
-		return PathResolution{
-			Path:   configured,
-			Source: "config.paths.state_dir",
-		}, nil
-	}
-
 	// When a config file path is explicitly selected, prefer a sibling state
 	// directory so the setup remains portable.
 	if customConfig := strings.TrimSpace(os.Getenv("CLAWRISE_CONFIG")); customConfig != "" {
@@ -148,12 +132,6 @@ func ResolveRuntimeDirResolution(configPath string) (PathResolution, error) {
 			Source: "env.CLAWRISE_STATE_DIR",
 		}, nil
 	}
-	if configured := readConfiguredStateDir(configPath); configured != "" {
-		return PathResolution{
-			Path:   filepath.Join(configured, "runtime"),
-			Source: "config.paths.state_dir",
-		}, nil
-	}
 	if customConfig := strings.TrimSpace(os.Getenv("CLAWRISE_CONFIG")); customConfig != "" {
 		return PathResolution{
 			Path:   filepath.Join(filepath.Dir(customConfig), "runtime"),
@@ -184,30 +162,6 @@ func ResolveRuntimeDirResolution(configPath string) (PathResolution, error) {
 		Path:   filepath.Join(stateResolution.Path, "runtime"),
 		Source: stateResolution.Source,
 	}, nil
-}
-
-func readConfiguredStateDir(configPath string) string {
-	configPath = strings.TrimSpace(configPath)
-	if configPath == "" {
-		return ""
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil || len(data) == 0 {
-		return ""
-	}
-
-	var parsed configPaths
-	if err := yaml.Unmarshal(data, &parsed); err != nil {
-		return ""
-	}
-	if configured := strings.TrimSpace(parsed.Paths.StateDir); configured != "" {
-		if filepath.IsAbs(configured) {
-			return configured
-		}
-		return filepath.Join(filepath.Dir(configPath), configured)
-	}
-	return ""
 }
 
 func defaultStateDir() (string, error) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // DiscoveryRootInspection 描述一个 discovery root 的状态。
@@ -18,22 +19,24 @@ type DiscoveryRootInspection struct {
 
 // DiscoveredPluginInspection 描述一个被发现 plugin 的详细状态。
 type DiscoveredPluginInspection struct {
-	RootPath        string           `json:"root_path"`
-	ManifestPath    string           `json:"manifest_path"`
-	Name            string           `json:"name,omitempty"`
-	Version         string           `json:"version,omitempty"`
-	Platforms       []string         `json:"platforms,omitempty"`
-	Path            string           `json:"path,omitempty"`
-	Command         []string         `json:"command,omitempty"`
-	CommandPath     string           `json:"command_path,omitempty"`
-	CommandExists   bool             `json:"command_exists"`
-	Install         *InstallMetadata `json:"install,omitempty"`
-	Handshake       *HandshakeResult `json:"handshake,omitempty"`
-	OperationCount  int              `json:"operation_count"`
-	CatalogCount    int              `json:"catalog_count"`
-	Health          *HealthResult    `json:"health,omitempty"`
-	Healthy         bool             `json:"healthy"`
-	InspectionError string           `json:"inspection_error,omitempty"`
+	RootPath        string                  `json:"root_path"`
+	ManifestPath    string                  `json:"manifest_path"`
+	Name            string                  `json:"name,omitempty"`
+	Version         string                  `json:"version,omitempty"`
+	Kind            string                  `json:"kind,omitempty"`
+	Platforms       []string                `json:"platforms,omitempty"`
+	StorageBackend  *StorageBackendManifest `json:"storage_backend,omitempty"`
+	Path            string                  `json:"path,omitempty"`
+	Command         []string                `json:"command,omitempty"`
+	CommandPath     string                  `json:"command_path,omitempty"`
+	CommandExists   bool                    `json:"command_exists"`
+	Install         *InstallMetadata        `json:"install,omitempty"`
+	Handshake       *HandshakeResult        `json:"handshake,omitempty"`
+	OperationCount  int                     `json:"operation_count"`
+	CatalogCount    int                     `json:"catalog_count"`
+	Health          *HealthResult           `json:"health,omitempty"`
+	Healthy         bool                    `json:"healthy"`
+	InspectionError string                  `json:"inspection_error,omitempty"`
 }
 
 // DiscoveryInspection 汇总当前环境下可发现 plugin 的状态。
@@ -127,7 +130,9 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 
 	item.Name = manifest.Name
 	item.Version = manifest.Version
+	item.Kind = manifest.Kind
 	item.Platforms = append([]string(nil), manifest.Platforms...)
+	item.StorageBackend = cloneStorageBackendManifest(manifest.StorageBackend)
 	item.Command = append([]string(nil), manifest.Entry.Command...)
 	item.CommandPath = manifest.ResolveCommand()[0]
 	if _, err := os.Stat(item.CommandPath); err == nil {
@@ -146,9 +151,7 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	}
 
 	runtime := NewProcessRuntime(manifest)
-	defer func() {
-		_ = runtime.Close()
-	}()
+	defer func() { _ = runtime.Close() }()
 
 	handshake, err := runtime.Handshake(ctx)
 	if err != nil {
@@ -157,26 +160,57 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	}
 	item.Handshake = &handshake
 
-	operations, err := runtime.ListOperations(ctx)
-	if err != nil {
-		item.InspectionError = err.Error()
-		return item
-	}
-	item.OperationCount = len(operations)
+	switch manifest.Kind {
+	case ManifestKindProvider:
+		operations, err := runtime.ListOperations(ctx)
+		if err != nil {
+			item.InspectionError = err.Error()
+			return item
+		}
+		item.OperationCount = len(operations)
 
-	entries, err := runtime.GetCatalog(ctx)
-	if err != nil {
-		item.InspectionError = err.Error()
-		return item
-	}
-	item.CatalogCount = len(entries)
+		entries, err := runtime.GetCatalog(ctx)
+		if err != nil {
+			item.InspectionError = err.Error()
+			return item
+		}
+		item.CatalogCount = len(entries)
 
-	health, err := runtime.Health(ctx)
-	if err != nil {
-		item.InspectionError = err.Error()
-		return item
+		health, err := runtime.Health(ctx)
+		if err != nil {
+			item.InspectionError = err.Error()
+			return item
+		}
+		item.Health = &health
+		item.Healthy = health.OK
+	case ManifestKindAuthLauncher:
+		descriptor, err := runtime.DescribeAuthLauncher(ctx)
+		if err != nil {
+			item.InspectionError = err.Error()
+			return item
+		}
+		item.Healthy = strings.TrimSpace(descriptor.ID) != ""
+	case ManifestKindStorageBackend:
+		store := NewProcessSecretStore(manifest)
+		defer func() { _ = store.Close() }()
+
+		descriptor, err := store.DescribeStorageBackend(ctx)
+		if err != nil {
+			item.InspectionError = err.Error()
+			return item
+		}
+		item.StorageBackend = &StorageBackendManifest{
+			Target:      descriptor.Target,
+			Backend:     descriptor.Backend,
+			DisplayName: descriptor.DisplayName,
+			Description: descriptor.Description,
+		}
+		status, err := store.Status(ctx)
+		if err != nil {
+			item.InspectionError = err.Error()
+			return item
+		}
+		item.Healthy = status.Supported
 	}
-	item.Health = &health
-	item.Healthy = health.OK
 	return item
 }
