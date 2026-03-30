@@ -157,36 +157,46 @@ func TestDataSourceWriteOperationsSuccess(t *testing.T) {
 	client := newTestClient(t, &roundTripFunc{
 		handler: func(request *http.Request) (*http.Response, error) {
 			switch request.URL.Path {
-			case "/v1/data_sources":
+			case "/v1/databases":
 				if request.Method != http.MethodPost {
 					t.Fatalf("unexpected method: %s", request.Method)
 				}
 				var payload map[string]any
 				if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
-					t.Fatalf("failed to decode create data source payload: %v", err)
+					t.Fatalf("failed to decode create database payload: %v", err)
 				}
-				if _, ok := payload["parent"].(map[string]any); !ok {
-					t.Fatalf("unexpected create payload: %+v", payload)
+				if _, ok := payload["initial_data_source"].(map[string]any); !ok {
+					t.Fatalf("expected initial_data_source in create payload: %+v", payload)
 				}
 				return jsonResponse(t, http.StatusOK, map[string]any{
-					"id":  "ds_123",
-					"url": "https://www.notion.so/ds_123",
-					"title": []map[string]any{
+					"id": "db_123",
+					"data_sources": []map[string]any{
 						{
-							"type":       "text",
-							"plain_text": "Project Tasks",
-							"text": map[string]any{
-								"content": "Project Tasks",
-							},
-						},
-					},
-					"properties": map[string]any{
-						"Name": map[string]any{
-							"type": "title",
+							"id": "ds_123",
 						},
 					},
 				}), nil
 			case "/v1/data_sources/ds_123":
+				if request.Method == http.MethodGet {
+					return jsonResponse(t, http.StatusOK, map[string]any{
+						"id":  "ds_123",
+						"url": "https://www.notion.so/ds_123",
+						"title": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "Project Tasks",
+								"text": map[string]any{
+									"content": "Project Tasks",
+								},
+							},
+						},
+						"properties": map[string]any{
+							"Name": map[string]any{
+								"type": "title",
+							},
+						},
+					}), nil
+				}
 				if request.Method != http.MethodPatch {
 					t.Fatalf("unexpected method: %s", request.Method)
 				}

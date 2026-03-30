@@ -89,6 +89,127 @@ func TestQueryDataSourceSuccess(t *testing.T) {
 	}
 }
 
+func TestCreateDataSourceViaDatabaseSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/v1/databases":
+				if request.Method != http.MethodPost {
+					t.Fatalf("unexpected method for create database: %s", request.Method)
+				}
+
+				var payload map[string]any
+				if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+					t.Fatalf("failed to decode create database request: %v", err)
+				}
+				parent := payload["parent"].(map[string]any)
+				if parent["type"] != "page_id" || parent["page_id"] != "page_demo" {
+					t.Fatalf("unexpected parent payload: %+v", parent)
+				}
+				initialDataSource := payload["initial_data_source"].(map[string]any)
+				properties := initialDataSource["properties"].(map[string]any)
+				if _, ok := properties["Name"]; !ok {
+					t.Fatalf("expected Name property in initial_data_source: %+v", initialDataSource)
+				}
+
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id": "db_123",
+					"data_sources": []map[string]any{
+						{
+							"id": "ds_123",
+						},
+					},
+				}), nil
+			case "/v1/data_sources/ds_123":
+				if request.Method != http.MethodGet {
+					t.Fatalf("unexpected method for get data source: %s", request.Method)
+				}
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"object": "data_source",
+					"id":     "ds_123",
+					"url":    "https://www.notion.so/ds_123",
+					"title": []map[string]any{
+						{
+							"type":       "text",
+							"plain_text": "Project Tasks",
+							"text": map[string]any{
+								"content": "Project Tasks",
+							},
+						},
+					},
+					"properties": map[string]any{
+						"Name": map[string]any{
+							"type": "title",
+						},
+					},
+					"parent": map[string]any{
+						"type":    "database_id",
+						"page_id": "page_demo",
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.CreateDataSource(context.Background(), testStaticProfile(), map[string]any{
+		"body": map[string]any{
+			"parent": map[string]any{
+				"page_id": "page_demo",
+			},
+			"title": []any{
+				map[string]any{
+					"type": "text",
+					"text": map[string]any{
+						"content": "Project Tasks",
+					},
+				},
+			},
+			"properties": map[string]any{
+				"Name": map[string]any{
+					"title": map[string]any{},
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("CreateDataSource returned error: %+v", appErr)
+	}
+	if data["data_source_id"] != "ds_123" {
+		t.Fatalf("unexpected data_source_id: %+v", data["data_source_id"])
+	}
+	if data["title"] != "Project Tasks" {
+		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
+func TestBuildCreateDatabasePayloadRejectsInvalidParent(t *testing.T) {
+	_, appErr := buildCreateDatabasePayload(map[string]any{
+		"parent": map[string]any{
+			"block_id": "blk_demo",
+		},
+		"title": []any{
+			map[string]any{
+				"type": "text",
+				"text": map[string]any{
+					"content": "Project Tasks",
+				},
+			},
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected buildCreateDatabasePayload to reject invalid parent")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
 func TestBuildQueryDataSourcePayloadRejectsInvalidSorts(t *testing.T) {
 	_, appErr := buildQueryDataSourcePayload(map[string]any{
 		"sorts": "created_time",

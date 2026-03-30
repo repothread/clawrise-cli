@@ -1,0 +1,52 @@
+name: Notion Live
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/notion-live.yml
+      - scripts/ci/run-notion-live.sh
+      - cmd/clawrise/**
+      - cmd/clawrise-plugin-notion/**
+      - internal/adapter/notion/**
+      - internal/cli/**
+      - internal/config/**
+      - internal/plugin/**
+      - internal/runtime/**
+      - go.mod
+      - go.sum
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notion-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    name: Live Notion CRUD
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: cicd
+    if: ${{ (secrets.NOTION_TOKEN != '' || vars.NOTION_TOKEN != '') && vars.NOTION_PARENT_PAGE_ID != '' }}
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN != '' && secrets.NOTION_TOKEN || vars.NOTION_TOKEN }}
+      NOTION_PARENT_PAGE_ID: ${{ vars.NOTION_PARENT_PAGE_ID }}
+      NOTION_VERSION: 2026-03-11
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Notion live workflow
+        run: ./scripts/ci/run-notion-live.sh

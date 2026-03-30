@@ -330,6 +330,83 @@ func TestRequireAccessTokenRequiresInteractiveAuthorization(t *testing.T) {
 	}
 }
 
+func TestCreatePageUnderDataSourceSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/pages" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			if request.Method != http.MethodPost {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode create page request: %v", err)
+			}
+			parent := payload["parent"].(map[string]any)
+			if parent["data_source_id"] != "ds_demo" {
+				t.Fatalf("unexpected parent payload: %+v", parent)
+			}
+			properties := payload["properties"].(map[string]any)
+			if _, ok := properties["Name"]; !ok {
+				t.Fatalf("expected Name title property: %+v", properties)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":       "page_ds_123",
+				"url":      "https://www.notion.so/page_ds_123",
+				"in_trash": false,
+				"parent": map[string]any{
+					"type":           "data_source_id",
+					"data_source_id": "ds_demo",
+				},
+				"properties": map[string]any{
+					"Name": map[string]any{
+						"title": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "数据源记录",
+								"text": map[string]any{
+									"content": "数据源记录",
+								},
+							},
+						},
+					},
+				},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.CreatePage(context.Background(), testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "data_source_id",
+			"id":   "ds_demo",
+		},
+		"title":          "数据源记录",
+		"title_property": "Name",
+		"properties": map[string]any{
+			"状态": map[string]any{
+				"select": map[string]any{
+					"name": "进行中",
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("CreatePage returned error: %+v", appErr)
+	}
+	if data["page_id"] != "page_ds_123" {
+		t.Fatalf("unexpected page_id: %+v", data["page_id"])
+	}
+	if data["title"] != "数据源记录" {
+		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
 func TestCreatePageDataSourceRequiresTitleProperty(t *testing.T) {
 	client := newTestClient(t, nil)
 

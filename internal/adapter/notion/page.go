@@ -340,9 +340,6 @@ func buildPageParent(profile ExecutionProfile, raw any) (map[string]any, string,
 			}
 		}
 		requestKey := parentType
-		if parentType == "data_source_id" {
-			requestKey = "data_source"
-		}
 		return map[string]any{
 			requestKey: strings.TrimSpace(parentID),
 		}, parentType, nil
