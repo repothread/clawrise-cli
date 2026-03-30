@@ -1341,6 +1341,49 @@ func TestRunDoctorUsesLocatorResolvedPaths(t *testing.T) {
 	}
 }
 
+func TestRunDoctorWarnsDeprecatedPathsConfig(t *testing.T) {
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "config.yaml")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	configYAML := `paths:
+  config_dir: legacy-config
+  state_dir: legacy-state
+`
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o600); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"PATHS_CONFIG_DIR_DEPRECATED"`)) {
+		t.Fatalf("expected doctor output to warn about deprecated config_dir, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"PATHS_STATE_DIR_COMPAT_ONLY"`)) {
+		t.Fatalf("expected doctor output to warn about compatibility-only state_dir, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("CLAWRISE_CONFIG_DIR")) {
+		t.Fatalf("expected doctor output to suggest locator-based config override, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("CLAWRISE_STATE_DIR")) {
+		t.Fatalf("expected doctor output to suggest locator-based state override, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 	t.Helper()
 

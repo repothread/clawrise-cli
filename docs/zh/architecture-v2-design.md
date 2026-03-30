@@ -39,12 +39,12 @@
 - secret/session/authflow/governance 已具备可切换与注册扩展的 backend 接口，但外部可分发 backend/plugin 形态仍可继续扩展
 - docs 自动生成已经可以复用统一 metadata 导出 Markdown，但独立的 docs 生成流水线仍可继续收敛
 - `profile` / `connection` / `account` 的内部收敛已经不再阻塞 core execute 路径，但 `config` 包里仍保留少量 legacy inspection shim
-- `PathsConfig` 的解析优先级已经统一收敛到 `locator`，但它是否长期作为用户可见配置保留仍未最终定案
+- `PathsConfig` 已进入定案后的兼容收敛阶段：`config_dir` 视为废弃，`state_dir` 仅作兼容别名保留，推荐统一改用 `locator + env`
 
 尚未完成：
 
 - storage backend 的外部分发 / 安装 / 协议化形态还没有像 provider plugin 一样完全独立
-- `PathsConfig` 是否长期保留仍未最终定案
+- `PathsConfig` 的兼容收敛还未完全结束，后续仍需决定 `state_dir` 的最终移除窗口
 
 ### 0.1 按 Phase 粗略进度
 
@@ -74,7 +74,7 @@
 - `profile` / `connection` / `account` 的内部遗留命名仍在继续清理，但已不再阻塞 core execute 边界
 - `subject` 的外部限制已经移除，但 config inspection 里仍保留少量 legacy bridge 结构
 - playbook 校验已经接到统一 metadata，但 docs 自动生成流水线仍可继续收敛
-- `PathsConfig` 的解析优先级已经统一收敛到 `locator`，但长期是否继续作为用户可见配置仍未最终定案
+- `PathsConfig` 已定为兼容态收敛：`config_dir` 不再作为有效入口，`state_dir` 仅保留兼容语义，但最终下线节奏仍需明确
 
 这些问题不是单点 bug，而是边界没有完全收好。
 
@@ -526,14 +526,13 @@ core 不再手写 Feishu / Notion operation 清单。
 
 ### 11.4 配置路径与状态路径
 
-当前 `PathsConfig` 已开始通过 `locator` 参与路径解析，但是否保留为长期公开配置项仍需要明确。
+当前这部分已经定案：
 
-V2 建议二选一：
+- 路径解析统一收敛到 `locator` 模块，并以环境变量和系统默认目录作为主入口
+- `config.paths.config_dir` 视为废弃字段，不再参与配置文件发现
+- `config.paths.state_dir` 仅作为兼容别名保留，推荐改用 `CLAWRISE_STATE_DIR` / `CLAWRISE_STATE_HOME`
 
-- 要么彻底删除配置文件里的 `paths`
-- 要么把路径解析统一收敛到一个 `locator` 模块，明确优先级
-
-不应继续保留“模型里有，运行时没真正用”的状态。
+这样可以避免继续保留“模型里有，运行时不一致”或“发现 config 还要先读取 config 自己的位置配置”这类自相矛盾的状态。
 
 ### 11.5 `profile` / `connection` / `account` 术语收敛
 

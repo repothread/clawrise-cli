@@ -33,10 +33,13 @@ type Defaults struct {
 	Profile string `yaml:"-"`
 }
 
-// PathsConfig describes config and state path overrides.
+// PathsConfig 描述兼容保留的路径覆盖项。
+// 新配置应优先使用 locator 约定与环境变量，而不是继续新增 paths 配置。
 type PathsConfig struct {
+	// ConfigDir 已废弃，当前不再参与配置文件路径解析。
 	ConfigDir string `yaml:"config_dir,omitempty"`
-	StateDir  string `yaml:"state_dir,omitempty"`
+	// StateDir 仍作为兼容入口参与状态目录解析，但推荐改用环境变量。
+	StateDir string `yaml:"state_dir,omitempty"`
 }
 
 // AuthConfig describes low-level auth storage settings.
