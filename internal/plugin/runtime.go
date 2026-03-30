@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
@@ -16,8 +17,24 @@ type Runtime interface {
 	Handshake(ctx context.Context) (HandshakeResult, error)
 	ListOperations(ctx context.Context) ([]adapter.Definition, error)
 	GetCatalog(ctx context.Context) ([]speccatalog.Entry, error)
+	ListAuthMethods(ctx context.Context) ([]AuthMethodDescriptor, error)
+	ListAuthPresets(ctx context.Context) ([]AuthPresetDescriptor, error)
+	InspectAuth(ctx context.Context, params AuthInspectParams) (AuthInspectResult, error)
+	BeginAuth(ctx context.Context, params AuthBeginParams) (AuthBeginResult, error)
+	CompleteAuth(ctx context.Context, params AuthCompleteParams) (AuthCompleteResult, error)
+	ResolveAuth(ctx context.Context, params AuthResolveParams) (AuthResolveResult, error)
 	Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error)
 	Health(ctx context.Context) (HealthResult, error)
+}
+
+// AuthProvider describes the auth capability surface exposed by a provider plugin.
+type AuthProvider interface {
+	ListMethods(ctx context.Context) ([]AuthMethodDescriptor, error)
+	ListPresets(ctx context.Context) ([]AuthPresetDescriptor, error)
+	Inspect(ctx context.Context, params AuthInspectParams) (AuthInspectResult, error)
+	Begin(ctx context.Context, params AuthBeginParams) (AuthBeginResult, error)
+	Complete(ctx context.Context, params AuthCompleteParams) (AuthCompleteResult, error)
+	Resolve(ctx context.Context, params AuthResolveParams) (AuthResolveResult, error)
 }
 
 // HandshakeResult describes one provider runtime handshake result.
@@ -31,8 +48,9 @@ type HandshakeResult struct {
 // ExecuteRequest describes one normalized provider execution request.
 type ExecuteRequest struct {
 	Operation      string
-	ProfileName    string
+	AccountName    string
 	Profile        config.Profile
+	IdentityAuth   map[string]any
 	Input          map[string]any
 	IdempotencyKey string
 }
@@ -54,12 +72,14 @@ type Manager struct {
 	registry          *adapter.Registry
 	catalogEntries    []speccatalog.Entry
 	operationRuntimes map[string]Runtime
+	platformRuntimes  map[string]Runtime
 }
 
 // NewManager creates one aggregated provider runtime manager.
 func NewManager(ctx context.Context, runtimes []Runtime) (*Manager, error) {
 	registry := adapter.NewRegistry()
 	operationRuntimes := make(map[string]Runtime)
+	platformRuntimes := make(map[string]Runtime)
 	catalogEntries := make([]speccatalog.Entry, 0)
 
 	for _, runtime := range runtimes {
@@ -69,6 +89,16 @@ func NewManager(ctx context.Context, runtimes []Runtime) (*Manager, error) {
 		}
 		if handshake.Name == "" {
 			return nil, fmt.Errorf("provider runtime %s returned an empty handshake name", runtime.Name())
+		}
+		for _, platform := range handshake.Platforms {
+			platform = strings.TrimSpace(platform)
+			if platform == "" {
+				continue
+			}
+			if _, exists := platformRuntimes[platform]; exists {
+				return nil, fmt.Errorf("duplicate provider runtime registered for platform: %s", platform)
+			}
+			platformRuntimes[platform] = runtime
 		}
 
 		definitions, err := runtime.ListOperations(ctx)
@@ -85,7 +115,7 @@ func NewManager(ctx context.Context, runtimes []Runtime) (*Manager, error) {
 			definition.Handler = func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 				result, err := runtimeRef.Execute(ctx, ExecuteRequest{
 					Operation:      operation,
-					ProfileName:    call.ProfileName,
+					AccountName:    call.ProfileName,
 					Profile:        call.Profile,
 					Input:          call.Input,
 					IdempotencyKey: call.IdempotencyKey,
@@ -111,6 +141,7 @@ func NewManager(ctx context.Context, runtimes []Runtime) (*Manager, error) {
 		registry:          registry,
 		catalogEntries:    catalogEntries,
 		operationRuntimes: operationRuntimes,
+		platformRuntimes:  platformRuntimes,
 	}, nil
 }
 
@@ -122,6 +153,93 @@ func (m *Manager) Registry() *adapter.Registry {
 // CatalogEntries returns the aggregated structured catalog view.
 func (m *Manager) CatalogEntries() []speccatalog.Entry {
 	return append([]speccatalog.Entry(nil), m.catalogEntries...)
+}
+
+// RuntimeForPlatform returns the provider runtime registered for one platform.
+func (m *Manager) RuntimeForPlatform(platform string) (Runtime, bool) {
+	if m == nil {
+		return nil, false
+	}
+	runtime, ok := m.platformRuntimes[strings.TrimSpace(platform)]
+	return runtime, ok
+}
+
+// ListAuthMethods returns the auth method descriptors exposed by provider runtimes.
+func (m *Manager) ListAuthMethods(ctx context.Context, platform string) ([]AuthMethodDescriptor, error) {
+	if strings.TrimSpace(platform) != "" {
+		runtime, ok := m.RuntimeForPlatform(platform)
+		if !ok {
+			return nil, fmt.Errorf("no provider runtime is registered for platform %s", platform)
+		}
+		return runtime.ListAuthMethods(ctx)
+	}
+
+	items := make([]AuthMethodDescriptor, 0)
+	for _, runtime := range m.platformRuntimes {
+		methods, err := runtime.ListAuthMethods(ctx)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, methods...)
+	}
+	return items, nil
+}
+
+// ListAuthPresets returns the account preset descriptors exposed by provider runtimes.
+func (m *Manager) ListAuthPresets(ctx context.Context, platform string) ([]AuthPresetDescriptor, error) {
+	if strings.TrimSpace(platform) != "" {
+		runtime, ok := m.RuntimeForPlatform(platform)
+		if !ok {
+			return nil, fmt.Errorf("no provider runtime is registered for platform %s", platform)
+		}
+		return runtime.ListAuthPresets(ctx)
+	}
+
+	items := make([]AuthPresetDescriptor, 0)
+	for _, runtime := range m.platformRuntimes {
+		presets, err := runtime.ListAuthPresets(ctx)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, presets...)
+	}
+	return items, nil
+}
+
+// InspectAuth runs provider auth inspection for one platform account.
+func (m *Manager) InspectAuth(ctx context.Context, platform string, params AuthInspectParams) (AuthInspectResult, error) {
+	runtime, ok := m.RuntimeForPlatform(platform)
+	if !ok {
+		return AuthInspectResult{}, fmt.Errorf("no provider runtime is registered for platform %s", platform)
+	}
+	return runtime.InspectAuth(ctx, params)
+}
+
+// BeginAuth starts an auth flow for one platform account.
+func (m *Manager) BeginAuth(ctx context.Context, platform string, params AuthBeginParams) (AuthBeginResult, error) {
+	runtime, ok := m.RuntimeForPlatform(platform)
+	if !ok {
+		return AuthBeginResult{}, fmt.Errorf("no provider runtime is registered for platform %s", platform)
+	}
+	return runtime.BeginAuth(ctx, params)
+}
+
+// CompleteAuth completes an auth flow for one platform account.
+func (m *Manager) CompleteAuth(ctx context.Context, platform string, params AuthCompleteParams) (AuthCompleteResult, error) {
+	runtime, ok := m.RuntimeForPlatform(platform)
+	if !ok {
+		return AuthCompleteResult{}, fmt.Errorf("no provider runtime is registered for platform %s", platform)
+	}
+	return runtime.CompleteAuth(ctx, params)
+}
+
+// ResolveAuth resolves provider auth before one execution.
+func (m *Manager) ResolveAuth(ctx context.Context, platform string, params AuthResolveParams) (AuthResolveResult, error) {
+	runtime, ok := m.RuntimeForPlatform(platform)
+	if !ok {
+		return AuthResolveResult{}, fmt.Errorf("no provider runtime is registered for platform %s", platform)
+	}
+	return runtime.ResolveAuth(ctx, params)
 }
 
 // NewDiscoveredManager creates a manager backed only by discovered external plugins.

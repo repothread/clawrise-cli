@@ -7,7 +7,6 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
-	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
 func main() {
@@ -20,12 +19,15 @@ func main() {
 	registry := adapter.NewRegistry()
 	feishuadapter.RegisterOperations(registry, client)
 
-	runtime := pluginruntime.NewRegistryRuntime(
+	runtime := pluginruntime.NewRegistryRuntimeWithOptions(
 		"feishu",
 		"0.1.0",
 		[]string{"feishu"},
 		registry,
-		pluginruntime.FilterCatalogByPrefix(speccatalog.All(), "feishu."),
+		pluginruntime.CatalogFromRegistry(registry),
+		pluginruntime.RegistryRuntimeOptions{
+			AuthProvider: feishuadapter.NewAuthProvider(client),
+		},
 	)
 	if err := pluginruntime.ServeRuntime(runtime); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

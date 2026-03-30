@@ -12,7 +12,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/secretstore"
 )
 
-// runAuthSecret 管理长期敏感信息。
+// runAuthSecret manages long-lived secret values.
 func runAuthSecret(args []string, cfg *config.Config, store *config.Store, stdout io.Writer) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
 		printAuthSecretHelp(stdout)
@@ -33,7 +33,7 @@ func runAuthSecret(args []string, cfg *config.Config, store *config.Store, stdou
 	}
 
 	switch args[0] {
-	case "set":
+	case "set", "put":
 		return runAuthSecretSet(args[1:], cfg, stdout, secretStore)
 	case "delete":
 		return runAuthSecretDelete(args[1:], cfg, stdout, secretStore)
@@ -49,8 +49,8 @@ func runAuthSecretSet(args []string, cfg *config.Config, stdout io.Writer, secre
 	var value string
 	var fromStdin bool
 
-	flags.StringVar(&value, "value", "", "要写入 secret store 的敏感值")
-	flags.BoolVar(&fromStdin, "stdin", false, "从标准输入读取敏感值")
+	flags.StringVar(&value, "value", "", "write the secret value directly")
+	flags.BoolVar(&fromStdin, "stdin", false, "read the secret value from stdin")
 
 	if err := flags.Parse(args); err != nil {
 		if err == pflag.ErrHelp {
@@ -59,13 +59,13 @@ func runAuthSecretSet(args []string, cfg *config.Config, stdout io.Writer, secre
 		return err
 	}
 	if len(flags.Args()) != 2 {
-		return fmt.Errorf("usage: clawrise auth secret set <connection> <field> [--value <text> | --stdin]")
+		return fmt.Errorf("usage: clawrise auth secret set <account> <field> [--value <text> | --stdin]")
 	}
 
 	connectionName := strings.TrimSpace(flags.Args()[0])
 	fieldName := strings.TrimSpace(flags.Args()[1])
-	if _, ok := cfg.Connections[connectionName]; !ok {
-		return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
+	if _, ok := cfg.Accounts[connectionName]; !ok {
+		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
 	}
 
 	if fromStdin {
@@ -89,22 +89,22 @@ func runAuthSecretSet(args []string, cfg *config.Config, stdout io.Writer, secre
 	return output.WriteJSON(stdout, map[string]any{
 		"ok": true,
 		"data": map[string]any{
-			"connection": connectionName,
-			"field":      fieldName,
-			"backend":    secretStore.Backend(),
+			"account": connectionName,
+			"field":   fieldName,
+			"backend": secretStore.Backend(),
 		},
 	})
 }
 
 func runAuthSecretDelete(args []string, cfg *config.Config, stdout io.Writer, secretStore secretstore.Store) error {
 	if len(args) != 2 {
-		return fmt.Errorf("usage: clawrise auth secret delete <connection> <field>")
+		return fmt.Errorf("usage: clawrise auth secret delete <account> <field>")
 	}
 
 	connectionName := strings.TrimSpace(args[0])
 	fieldName := strings.TrimSpace(args[1])
-	if _, ok := cfg.Connections[connectionName]; !ok {
-		return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
+	if _, ok := cfg.Accounts[connectionName]; !ok {
+		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
 	}
 
 	if err := secretStore.Delete(connectionName, fieldName); err != nil {
@@ -113,14 +113,14 @@ func runAuthSecretDelete(args []string, cfg *config.Config, stdout io.Writer, se
 	return output.WriteJSON(stdout, map[string]any{
 		"ok": true,
 		"data": map[string]any{
-			"connection": connectionName,
-			"field":      fieldName,
-			"backend":    secretStore.Backend(),
-			"deleted":    true,
+			"account": connectionName,
+			"field":   fieldName,
+			"backend": secretStore.Backend(),
+			"deleted": true,
 		},
 	})
 }
 
 func printAuthSecretHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth secret [set|delete] <connection> <field>")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth secret [set|put|delete] <account> <field>")
 }

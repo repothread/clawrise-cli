@@ -5,8 +5,7 @@ import "time"
 // ExecuteOptions describes one operation execution request.
 type ExecuteOptions struct {
 	OperationInput string
-	ConnectionName string
-	ProfileName    string
+	AccountName    string
 	SubjectName    string
 	InputJSON      string
 	InputFile      string
@@ -32,10 +31,9 @@ type Envelope struct {
 
 // Context describes the resolved execution context for the current command.
 type Context struct {
-	Platform   string `json:"platform,omitempty"`
-	Subject    string `json:"subject,omitempty"`
-	Connection string `json:"connection,omitempty"`
-	Profile    string `json:"profile,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	Subject  string `json:"subject,omitempty"`
+	Account  string `json:"account,omitempty"`
 }
 
 // ErrorBody is the normalized error payload.
@@ -65,9 +63,9 @@ type IdempotencyState struct {
 
 // ExecutionProfile is the resolved execution identity at runtime.
 type ExecutionProfile struct {
-	Name       string         `json:"name"`
-	Connection string         `json:"connection"`
-	Platform   string         `json:"platform"`
-	Subject    string         `json:"subject"`
-	Grant      map[string]any `json:"grant"`
+	Name     string         `json:"name"`
+	Account  string         `json:"account"`
+	Platform string         `json:"platform"`
+	Subject  string         `json:"subject"`
+	Grant    map[string]any `json:"grant"`
 }

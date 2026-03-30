@@ -11,7 +11,7 @@ import (
 var (
 	rootCompletionCommands = []string{
 		"platform",
-		"connection",
+		"account",
 		"subject",
 		"auth",
 		"config",
@@ -22,20 +22,18 @@ var (
 		"version",
 		"batch",
 	}
-	platformCompletionCommands    = []string{"use", "current", "unset"}
-	connectionCompletionCommands  = []string{"use", "current", "list"}
-	subjectCompletionCommands     = []string{"use", "current", "unset", "list"}
-	profileCompletionCommands     = connectionCompletionCommands
-	authCompletionCommands        = []string{"list", "inspect", "check", "begin", "connect", "status", "continue", "session", "secret"}
-	authSessionCompletionCommands = []string{"inspect", "clear", "refresh"}
-	authSecretCompletionCommands  = []string{"set", "delete"}
-	configCompletionCommands      = []string{"init"}
-	pluginCompletionCommands      = []string{"list", "install", "info", "remove", "verify"}
-	specCompletionCommands        = []string{"list", "get", "status", "export"}
-	completionShells              = []string{"bash", "zsh", "fish"}
-	operationCompletionFlags      = []string{"--connection", "--profile", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
-	specExportCompletionFlags     = []string{"--format", "--help", "-h"}
-	configInitCompletionFlags     = []string{"--platform", "--subject", "--connection", "--method", "--scope", "--force", "--help", "-h"}
+	platformCompletionCommands   = []string{"use", "current", "unset"}
+	accountCompletionCommands    = []string{"use", "current", "list", "inspect", "add", "remove"}
+	subjectCompletionCommands    = []string{"use", "current", "unset", "list"}
+	authCompletionCommands       = []string{"list", "methods", "presets", "inspect", "check", "login", "complete", "logout", "secret"}
+	authSecretCompletionCommands = []string{"set", "put", "delete"}
+	configCompletionCommands     = []string{"init"}
+	pluginCompletionCommands     = []string{"list", "install", "info", "remove", "verify"}
+	specCompletionCommands       = []string{"list", "get", "status", "export"}
+	completionShells             = []string{"bash", "zsh", "fish"}
+	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	specExportCompletionFlags    = []string{"--format", "--help", "-h"}
+	configInitCompletionFlags    = []string{"--platform", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
 // runCompletion 输出 shell completion 脚本。
@@ -110,7 +108,7 @@ _clawrise_completion() {
       COMPREPLY=( $(compgen -W '%s' -- "$cur") )
       return 0
       ;;
-    profile)
+    account)
       COMPREPLY=( $(compgen -W '%s' -- "$cur") )
       return 0
       ;;
@@ -119,7 +117,7 @@ _clawrise_completion() {
         COMPREPLY=( $(compgen -W '%s' -- "$cur") )
         return 0
       fi
-      if [[ "$second" == "session" ]]; then
+      if [[ "$second" == "secret" ]]; then
         COMPREPLY=( $(compgen -W '%s' -- "$cur") )
         return 0
       fi
@@ -173,10 +171,10 @@ complete -F _clawrise_completion clawrise
 `,
 		rootWords,
 		shellWords(platformCompletionCommands),
+		shellWords(accountCompletionCommands),
 		shellWords(subjectCompletionCommands),
-		shellWords(profileCompletionCommands),
 		shellWords(authCompletionCommands),
-		shellWords(authSessionCompletionCommands),
+		shellWords(authSecretCompletionCommands),
 		shellWords(configCompletionCommands),
 		shellWords(configInitCompletionFlags),
 		shellWords(pluginCompletionCommands),
@@ -194,9 +192,9 @@ func buildZshCompletionScript(data spec.CompletionData) string {
 local -a root_commands
 local -a platform_commands
 local -a subject_commands
-local -a profile_commands
+local -a account_commands
 local -a auth_commands
-local -a auth_session_commands
+local -a auth_secret_commands
 local -a config_commands
 local -a plugin_commands
 local -a spec_commands
@@ -209,10 +207,10 @@ local -a spec_export_flags
 
 root_commands=(%s)
 platform_commands=(%s)
+account_commands=(%s)
 subject_commands=(%s)
-profile_commands=(%s)
 auth_commands=(%s)
-auth_session_commands=(%s)
+auth_secret_commands=(%s)
 config_commands=(%s)
 plugin_commands=(%s)
 spec_commands=(%s)
@@ -232,19 +230,19 @@ case "$words[2]" in
   platform)
     compadd -- $platform_commands
     ;;
+  account)
+    compadd -- $account_commands
+    ;;
   subject)
     compadd -- $subject_commands
-    ;;
-  profile)
-    compadd -- $profile_commands
     ;;
   auth)
     if (( CURRENT == 3 )); then
       compadd -- $auth_commands
     else
       case "$words[3]" in
-        session)
-          compadd -- $auth_session_commands
+        secret)
+          compadd -- $auth_secret_commands
           ;;
       esac
     fi
@@ -281,10 +279,10 @@ case "$words[2]" in
 esac
 `, zshWords(append(append([]string{}, rootCompletionCommands...), data.Operations...)),
 		zshWords(platformCompletionCommands),
+		zshWords(accountCompletionCommands),
 		zshWords(subjectCompletionCommands),
-		zshWords(profileCompletionCommands),
 		zshWords(authCompletionCommands),
-		zshWords(authSessionCompletionCommands),
+		zshWords(authSecretCompletionCommands),
 		zshWords(configCompletionCommands),
 		zshWords(pluginCompletionCommands),
 		zshWords(specCompletionCommands),
@@ -311,11 +309,11 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 	}
 
 	lines = append(lines, fishCommandCompletions("platform", platformCompletionCommands)...)
+	lines = append(lines, fishCommandCompletions("account", accountCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("subject", subjectCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("profile", profileCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("auth", authCompletionCommands)...)
-	for _, value := range authSessionCompletionCommands {
-		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from auth; and __fish_seen_subcommand_from session' -a '%s'", value))
+	for _, value := range authSecretCompletionCommands {
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from auth; and __fish_seen_subcommand_from secret' -a '%s'", value))
 	}
 	lines = append(lines, fishCommandCompletions("config", configCompletionCommands)...)
 	lines = append(lines, fishCommandCompletions("plugin", pluginCompletionCommands)...)

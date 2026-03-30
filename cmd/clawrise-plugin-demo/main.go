@@ -8,7 +8,6 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
-	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
 func main() {
@@ -41,7 +40,7 @@ func main() {
 		"0.1.0",
 		[]string{"demo"},
 		registry,
-		[]speccatalog.Entry{{Operation: "demo.page.echo"}},
+		pluginruntime.CatalogFromRegistry(registry),
 	)
 	if err := pluginruntime.ServeRuntime(runtime); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

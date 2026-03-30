@@ -65,8 +65,8 @@ func TestExecutorDryRunSuccess(t *testing.T) {
 	if envelope.Context.Subject != "bot" {
 		t.Fatalf("unexpected context subject: %s", envelope.Context.Subject)
 	}
-	if envelope.Context.Profile != "feishu_bot_ops" {
-		t.Fatalf("unexpected context profile: %s", envelope.Context.Profile)
+	if envelope.Context.Account != "feishu_bot_ops" {
+		t.Fatalf("unexpected context account: %s", envelope.Context.Account)
 	}
 	if envelope.Idempotency == nil || envelope.Idempotency.Status != "dry_run" {
 		t.Fatalf("unexpected idempotency state: %+v", envelope.Idempotency)
@@ -79,7 +79,7 @@ func TestExecutorReadOperationOmitsIdempotency(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
 		Profiles: map[string]config.Profile{
 			"notion_team_docs": {
@@ -116,7 +116,7 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
 		Profiles: map[string]config.Profile{
 			"notion_team_docs": {
@@ -133,7 +133,7 @@ func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
 	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
 		OperationInput: "feishu.calendar.event.list",
-		ProfileName:    "notion_team_docs",
+		AccountName:    "notion_team_docs",
 		DryRun:         true,
 	})
 	if err != nil {
@@ -152,9 +152,6 @@ func TestExecutorUsesDefaultSubjectToSelectMatchingConnection(t *testing.T) {
 		Defaults: config.Defaults{
 			Platform: "feishu",
 			Subject:  "user",
-			Connections: map[string]string{
-				"feishu": "feishu_bot_ops",
-			},
 		},
 		Profiles: map[string]config.Profile{
 			"feishu_bot_ops": {
@@ -191,8 +188,8 @@ func TestExecutorUsesDefaultSubjectToSelectMatchingConnection(t *testing.T) {
 	if envelope.Context == nil {
 		t.Fatal("expected execution context to be present")
 	}
-	if envelope.Context.Profile != "feishu_user_alice" {
-		t.Fatalf("unexpected selected profile: %+v", envelope.Context)
+	if envelope.Context.Account != "feishu_user_alice" {
+		t.Fatalf("unexpected selected account: %+v", envelope.Context)
 	}
 	if envelope.Context.Subject != "user" {
 		t.Fatalf("unexpected selected subject: %+v", envelope.Context)
@@ -203,9 +200,6 @@ func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
-			Connections: map[string]string{
-				"feishu": "feishu_bot_ops",
-			},
 		},
 		Profiles: map[string]config.Profile{
 			"feishu_bot_ops": {
@@ -243,22 +237,19 @@ func TestExecutorExplicitSubjectSkipsMismatchedDefaultConnection(t *testing.T) {
 	if envelope.Context == nil {
 		t.Fatal("expected execution context to be present")
 	}
-	if envelope.Context.Profile != "feishu_user_alice" {
-		t.Fatalf("unexpected selected profile: %+v", envelope.Context)
+	if envelope.Context.Account != "feishu_user_alice" {
+		t.Fatalf("unexpected selected account: %+v", envelope.Context)
 	}
 	if envelope.Context.Subject != "user" {
 		t.Fatalf("unexpected selected subject: %+v", envelope.Context)
 	}
 }
 
-func TestExecutorExplicitConnectionOverridesDefaultSubject(t *testing.T) {
+func TestExecutorExplicitAccountOverridesDefaultSubject(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "feishu",
 			Subject:  "bot",
-			Connections: map[string]string{
-				"feishu": "feishu_bot_ops",
-			},
 		},
 		Profiles: map[string]config.Profile{
 			"feishu_bot_ops": {
@@ -283,7 +274,7 @@ func TestExecutorExplicitConnectionOverridesDefaultSubject(t *testing.T) {
 	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
 	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
 		OperationInput: "docs.document.create",
-		ConnectionName: "feishu_user_alice",
+		AccountName:    "feishu_user_alice",
 		DryRun:         true,
 		InputJSON:      `{}`,
 	})
@@ -291,12 +282,12 @@ func TestExecutorExplicitConnectionOverridesDefaultSubject(t *testing.T) {
 		t.Fatalf("ExecuteContext returned error: %v", err)
 	}
 	if !envelope.OK {
-		t.Fatalf("expected explicit connection to override default subject, got: %+v", envelope.Error)
+		t.Fatalf("expected explicit account to override default subject, got: %+v", envelope.Error)
 	}
 	if envelope.Context == nil {
 		t.Fatal("expected execution context to be present")
 	}
-	if envelope.Context.Profile != "feishu_user_alice" || envelope.Context.Subject != "user" {
+	if envelope.Context.Account != "feishu_user_alice" || envelope.Context.Subject != "user" {
 		t.Fatalf("unexpected context: %+v", envelope.Context)
 	}
 }
@@ -307,7 +298,7 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	store := newTestStore(t, &config.Config{
 		Defaults: config.Defaults{
 			Platform: "notion",
-			Profile:  "notion_team_docs",
+			Account:  "notion_team_docs",
 		},
 		Profiles: map[string]config.Profile{
 			"notion_team_docs": {

@@ -12,7 +12,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/output"
 )
 
-// runConfig 处理配置初始化相关命令。
+// runConfig handles config bootstrap commands.
 func runConfig(args []string, store *config.Store, stdout io.Writer) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
 		printConfigHelp(stdout)
@@ -33,20 +33,18 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 
 	var platform string
 	var subject string
-	var connection string
-	var profileAlias string
+	var account string
 	var method string
 	var grantTypeAlias string
 	var scopes []string
 	var force bool
 
-	flags.StringVar(&platform, "platform", "", "设置默认连接所属的平台")
-	flags.StringVar(&subject, "subject", "", "设置默认连接使用的主体类型")
-	flags.StringVar(&connection, "connection", "", "设置默认连接名")
-	flags.StringVar(&profileAlias, "profile", "", "兼容旧参数，等同于 --connection")
-	flags.StringVar(&method, "method", "", "覆盖连接使用的授权接入方式")
-	flags.StringVar(&grantTypeAlias, "grant-type", "", "兼容旧参数，会自动映射到 method")
-	flags.StringSliceVar(&scopes, "scope", nil, "为交互式 OAuth 连接追加授权 scope，可重复传入")
+	flags.StringVar(&platform, "platform", "", "set the platform for the default account")
+	flags.StringVar(&subject, "subject", "", "set the subject for the default account")
+	flags.StringVar(&account, "account", "", "set the account name")
+	flags.StringVar(&method, "method", "", "override the auth method")
+	flags.StringVar(&grantTypeAlias, "grant-type", "", "map a legacy grant type to an auth method")
+	flags.StringSliceVar(&scopes, "scope", nil, "append auth scopes for interactive OAuth")
 	flags.BoolVar(&force, "force", false, "overwrite the existing config file")
 
 	if err := flags.Parse(args); err != nil {
@@ -56,10 +54,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 		return err
 	}
 	if len(flags.Args()) != 0 {
-		return fmt.Errorf("usage: clawrise config init [--platform <name>] [--subject <name>] [--connection <name>] [--method <name>] [--scope <name>] [--force]")
-	}
-	if strings.TrimSpace(connection) == "" {
-		connection = strings.TrimSpace(profileAlias)
+		return fmt.Errorf("usage: clawrise config init [--platform <name>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
 	}
 	if strings.TrimSpace(method) == "" {
 		method = legacyGrantTypeToMethod(grantTypeAlias)
@@ -72,11 +67,11 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 	}
 
 	result, err := config.BuildInitConfig(config.InitOptions{
-		Platform:   platform,
-		Subject:    subject,
-		Connection: connection,
-		Method:     method,
-		Scopes:     scopes,
+		Platform: platform,
+		Subject:  subject,
+		Account:  account,
+		Method:   method,
+		Scopes:   scopes,
 	})
 	if err != nil {
 		return err
@@ -89,13 +84,12 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 		"ok": true,
 		"data": map[string]any{
 			"config_path":      store.Path(),
-			"connection_name":  result.ConnectionName,
-			"profile_name":     result.ConnectionName,
+			"account":          result.AccountName,
 			"platform":         result.Platform,
 			"subject":          result.Subject,
 			"method":           result.Method,
 			"grant_type":       config.LegacyGrantTypeForMethod(result.Method),
-			"scopes":           result.Config.Connections[result.ConnectionName].Params.Scopes,
+			"scopes":           result.Config.ResolvedAccount(result.AccountName).Params.Scopes,
 			"secret_backend":   result.SecretBackend,
 			"session_backend":  result.SessionBackend,
 			"required_secrets": result.SecretFields,
@@ -104,7 +98,7 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer) error {
 }
 
 func printConfigHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init [--platform <name>] [--subject <name>] [--connection <name>] [--method <name>] [--scope <name>] [--force]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init [--platform <name>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
 }
 
 func legacyGrantTypeToMethod(grantType string) string {

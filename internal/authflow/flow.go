@@ -108,12 +108,12 @@ func BuildActions(flow Flow) []Action {
 	actions = append(actions, Action{
 		Type:        "submit_callback_url",
 		Field:       "callback_url",
-		Description: "授权完成后，可把最终回调 URL 传给 `clawrise auth continue`",
+		Description: "After authorization, pass the final callback URL to `clawrise auth complete`.",
 	})
 	actions = append(actions, Action{
 		Type:        "submit_code",
 		Field:       "code",
-		Description: "如果无法提供完整回调 URL，也可以直接把 code 传给 `clawrise auth continue`",
+		Description: "If a full callback URL is not available, pass the code directly to `clawrise auth complete`.",
 	})
 	return actions
 }

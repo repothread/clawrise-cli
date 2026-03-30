@@ -1,6 +1,7 @@
 defaults:
   platform: feishu
-  connections:
+  account: feishu_bot_ops
+  platform_accounts:
     feishu: feishu_bot_ops
     notion: notion_team_docs
 
@@ -17,40 +18,54 @@ runtime:
     base_delay_ms: 200
     max_delay_ms: 1000
 
-connections:
+accounts:
   feishu_bot_ops:
     title: 飞书运营 Bot
     platform: feishu
     subject: bot
-    method: feishu.app_credentials
-    params:
-      app_id: cli_xxx
+    auth:
+      method: feishu.app_credentials
+      public:
+        app_id: cli_xxx
+      secret_refs:
+        app_secret: secret:feishu_bot_ops:app_secret
 
   feishu_user_alice:
     title: 飞书 Alice 用户态
     platform: feishu
     subject: user
-    method: feishu.oauth_user
-    params:
-      client_id: cli_xxx
-      redirect_mode: loopback
-      scopes:
-        - offline_access
+    auth:
+      method: feishu.oauth_user
+      public:
+        client_id: cli_xxx
+        redirect_mode: loopback
+        scopes:
+          - offline_access
+      secret_refs:
+        client_secret: secret:feishu_user_alice:client_secret
+        refresh_token: secret:feishu_user_alice:refresh_token
 
   notion_team_docs:
     title: Notion 团队文档
     platform: notion
     subject: integration
-    method: notion.internal_token
-    params:
-      notion_version: "2026-03-11"
+    auth:
+      method: notion.internal_token
+      public:
+        notion_version: "2026-03-11"
+      secret_refs:
+        token: secret:notion_team_docs:token
 
   notion_public_workspace_a:
     title: Notion 公共 OAuth 工作区 A
     platform: notion
     subject: integration
-    method: notion.oauth_public
-    params:
-      client_id: cli_xxx
-      notion_version: "2026-03-11"
-      redirect_mode: loopback
+    auth:
+      method: notion.oauth_public
+      public:
+        client_id: cli_xxx
+        notion_version: "2026-03-11"
+        redirect_mode: loopback
+      secret_refs:
+        client_secret: secret:notion_public_workspace_a:client_secret
+        refresh_token: secret:notion_public_workspace_a:refresh_token

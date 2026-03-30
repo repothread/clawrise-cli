@@ -3,14 +3,13 @@ package cli
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/config"
 	"github.com/clawrise/clawrise-cli/internal/output"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
-// runAuth 处理最小可用的授权检查命令。
+// runAuth handles auth-related commands.
 func runAuth(args []string, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
 		printAuthHelp(stdout)
@@ -23,72 +22,40 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 	}
 
 	switch args[0] {
-	case "begin", "connect", "status", "continue":
-		return runAuthFlow(args, cfg, store, stdout)
+	case "methods":
+		return runAuthMethods(args[1:], stdout, manager)
+	case "presets":
+		return runAuthPresets(args[1:], stdout, manager)
+	case "login":
+		return runAuthLogin(args[1:], cfg, store, stdout, manager)
+	case "complete":
+		return runAuthCompleteV2(args[1:], cfg, store, stdout, manager)
+	case "logout":
+		return runAuthLogout(args[1:], cfg, store, stdout)
 	case "list":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: clawrise auth list")
 		}
+		cfg.Ensure()
+		items := make([]map[string]any, 0, len(cfg.Accounts))
+		for name, account := range cfg.Accounts {
+			items = append(items, map[string]any{
+				"name":        name,
+				"platform":    account.Platform,
+				"subject":     account.Subject,
+				"auth_method": account.Auth.Method,
+			})
+		}
 		return output.WriteJSON(stdout, map[string]any{
 			"ok": true,
 			"data": map[string]any{
-				"connections": config.SortedProfileInspections(cfg),
+				"accounts": items,
 			},
 		})
 	case "inspect":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: clawrise auth inspect <connection>")
-		}
-		name, profile, ok := lookupConnection(cfg, args[1])
-		if !ok {
-			return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
-		}
-		return output.WriteJSON(stdout, map[string]any{
-			"ok":   true,
-			"data": config.InspectProfile(name, profile),
-		})
+		return runAuthInspectV2(args[1:], cfg, store, stdout, manager)
 	case "check":
-		if len(args) > 2 {
-			return fmt.Errorf("usage: clawrise auth check [connection]")
-		}
-
-		name := ""
-		if len(args) == 2 {
-			name = strings.TrimSpace(args[1])
-		} else if platform := strings.TrimSpace(cfg.Defaults.Platform); platform != "" {
-			name = strings.TrimSpace(cfg.Defaults.Connections[platform])
-			if name == "" {
-				name = strings.TrimSpace(cfg.Defaults.Profile)
-			}
-		}
-		if strings.TrimSpace(name) == "" {
-			return writeCLIError(stdout, "CONNECTION_REQUIRED", "no connection was provided and no default connection is configured")
-		}
-
-		resolvedName, profile, ok := lookupConnection(cfg, name)
-		if !ok {
-			return writeCLIError(stdout, "CONNECTION_NOT_FOUND", "the selected connection does not exist")
-		}
-
-		inspection := config.InspectProfile(resolvedName, profile)
-		summary := buildAuthOperationSummary(profile, manager)
-		valid := inspection.ShapeValid && inspection.ResolvedValid && inspection.Ready
-
-		if err := output.WriteJSON(stdout, map[string]any{
-			"ok": valid,
-			"data": map[string]any{
-				"profile":    inspection,
-				"operations": summary,
-			},
-		}); err != nil {
-			return err
-		}
-		if !valid {
-			return ExitError{Code: 1}
-		}
-		return nil
-	case "session":
-		return runAuthSession(args[1:], cfg, store, stdout)
+		return runAuthCheckV2(args[1:], cfg, store, stdout, manager)
 	case "secret":
 		return runAuthSecret(args[1:], cfg, store, stdout)
 	default:
@@ -122,12 +89,6 @@ func buildAuthOperationSummary(profile config.Profile, manager *pluginruntime.Ma
 	return summary
 }
 
-func lookupConnection(cfg *config.Config, name string) (string, config.Profile, bool) {
-	cfg.Ensure()
-	profile, ok := cfg.Connections[strings.TrimSpace(name)]
-	return strings.TrimSpace(name), profile, ok
-}
-
 func stringSliceContains(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
@@ -151,11 +112,13 @@ func writeCLIError(stdout io.Writer, code string, message string) error {
 }
 
 func printAuthHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|inspect|check|begin|connect|status|continue|session|secret]")
-	_, _ = fmt.Fprintln(stdout, "       clawrise auth begin [connection] [--mode <name>] [--redirect-uri <uri>]")
-	_, _ = fmt.Fprintln(stdout, "       clawrise auth connect [connection] [--mode <name>] [--redirect-uri <uri>] [--open-browser=true|false]")
-	_, _ = fmt.Fprintln(stdout, "       clawrise auth status <flow_id>")
-	_, _ = fmt.Fprintln(stdout, "       clawrise auth continue <flow_id> [--callback-url <url> | --code <text>]")
-	_, _ = fmt.Fprintln(stdout, "       clawrise auth session [inspect|clear|refresh] [connection]")
-	_, _ = fmt.Fprintln(stdout, "       clawrise auth secret [set|delete] <connection> <field>")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth methods [--platform <name>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth presets [--platform <name>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth inspect [account]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth check [account]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth login [account] [--mode <name>] [--redirect-uri <uri>] [--open-browser=true|false]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth complete <flow_id> [--callback-url <url> | --code <text>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth logout [account]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth secret [set|put|delete] <account> <field>")
 }

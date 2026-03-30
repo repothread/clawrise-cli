@@ -21,28 +21,28 @@ const (
 	defaultRetryMaxDelay  = 2 * time.Second
 )
 
-// runtimeGovernance 负责幂等、审计和重试能力。
+// runtimeGovernance manages idempotency, audit, and retry behavior.
 type runtimeGovernance struct {
 	paths runtimePaths
 	retry retryPolicy
 	now   func() time.Time
 }
 
-// runtimePaths 描述运行时治理数据的本地目录。
+// runtimePaths describes local directories used by runtime governance data.
 type runtimePaths struct {
 	rootDir        string
 	idempotencyDir string
 	auditDir       string
 }
 
-// retryPolicy 描述自动重试配置。
+// retryPolicy describes automatic retry settings.
 type retryPolicy struct {
 	maxAttempts int
 	baseDelay   time.Duration
 	maxDelay    time.Duration
 }
 
-// persistedIdempotencyRecord 是本地持久化的幂等记录。
+// persistedIdempotencyRecord is the on-disk idempotency record.
 type persistedIdempotencyRecord struct {
 	Key        string     `json:"key"`
 	Operation  string     `json:"operation"`
@@ -57,7 +57,7 @@ type persistedIdempotencyRecord struct {
 	Meta       Meta       `json:"meta"`
 }
 
-// auditRecord 描述一次执行的审计摘要。
+// auditRecord describes one execution audit summary.
 type auditRecord struct {
 	Time          string            `json:"time"`
 	RequestID     string            `json:"request_id"`
@@ -209,7 +209,7 @@ func (g *runtimeGovernance) buildReplayEnvelope(startAt time.Time, requestID str
 		envelope.Context = &Context{
 			Platform: profile.Platform,
 			Subject:  profile.Subject,
-			Profile:  profile.Name,
+			Account:  profile.Account,
 		}
 	}
 	return envelope

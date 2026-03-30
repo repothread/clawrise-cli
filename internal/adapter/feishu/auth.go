@@ -17,6 +17,9 @@ import (
 var errFeishuAuthorizationRequired = errors.New("feishu interactive authorization is required")
 
 func (c *Client) requireFeishuAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
+	if profile.Grant.Type == "resolved_access_token" && strings.TrimSpace(profile.Grant.AccessToken) != "" {
+		return strings.TrimSpace(profile.Grant.AccessToken), nil
+	}
 	switch profile.Subject {
 	case "bot":
 		return c.requireBotAccessToken(ctx, profile)
@@ -258,9 +261,9 @@ func extractFeishuExpiresInSeconds(response map[string]any, payload map[string]a
 func buildFeishuAuthorizationRequiredError(ctx context.Context) *apperr.AppError {
 	profileName := strings.TrimSpace(adapter.ProfileNameFromContext(ctx))
 	if profileName == "" {
-		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth connect <connection>` first")
+		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth login <account>` first")
 	}
-	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for connection %s; run `clawrise auth connect %s` first", profileName, profileName))
+	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for account %s; run `clawrise auth login %s` first", profileName, profileName))
 }
 
 func shouldTreatOAuthSecretAsPending(raw string, err error) bool {

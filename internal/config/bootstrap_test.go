@@ -4,16 +4,16 @@ import "testing"
 
 func TestBuildInitConfigForFeishuBot(t *testing.T) {
 	result, err := BuildInitConfig(InitOptions{
-		Platform:   "feishu",
-		Subject:    "bot",
-		Connection: "feishu_bot_ops",
+		Platform: "feishu",
+		Subject:  "bot",
+		Account:  "feishu_bot_ops",
 	})
 	if err != nil {
 		t.Fatalf("BuildInitConfig returned error: %v", err)
 	}
 
-	if result.ConnectionName != "feishu_bot_ops" {
-		t.Fatalf("unexpected connection name: %s", result.ConnectionName)
+	if result.AccountName != "feishu_bot_ops" {
+		t.Fatalf("unexpected account name: %s", result.AccountName)
 	}
 	connection := result.Config.Connections["feishu_bot_ops"]
 	if connection.Method != "feishu.app_credentials" {
@@ -35,9 +35,9 @@ func TestBuildInitConfigForFeishuBot(t *testing.T) {
 
 func TestBuildInitConfigForNotionIntegration(t *testing.T) {
 	result, err := BuildInitConfig(InitOptions{
-		Platform:   "notion",
-		Subject:    "integration",
-		Connection: "notion_team_docs",
+		Platform: "notion",
+		Subject:  "integration",
+		Account:  "notion_team_docs",
 	})
 	if err != nil {
 		t.Fatalf("BuildInitConfig returned error: %v", err)
@@ -57,10 +57,10 @@ func TestBuildInitConfigForNotionIntegration(t *testing.T) {
 
 func TestBuildInitConfigForFeishuUserScopesAndSecrets(t *testing.T) {
 	result, err := BuildInitConfig(InitOptions{
-		Platform:   "feishu",
-		Subject:    "user",
-		Connection: "feishu_user_alice",
-		Scopes:     []string{"offline_access", "docx:document", "offline_access"},
+		Platform: "feishu",
+		Subject:  "user",
+		Account:  "feishu_user_alice",
+		Scopes:   []string{"offline_access", "docx:document", "offline_access"},
 	})
 	if err != nil {
 		t.Fatalf("BuildInitConfig returned error: %v", err)

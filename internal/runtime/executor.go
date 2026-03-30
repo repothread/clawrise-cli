@@ -12,13 +12,17 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
+	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
+	"github.com/clawrise/clawrise-cli/internal/secretstore"
 )
 
 // Executor runs the normalized operation execution flow.
 type Executor struct {
 	store    *config.Store
 	registry *adapter.Registry
+	manager  *pluginruntime.Manager
 	now      func() time.Time
 }
 
@@ -27,6 +31,19 @@ func NewExecutor(store *config.Store, registry *adapter.Registry) *Executor {
 	return &Executor{
 		store:    store,
 		registry: registry,
+		now:      time.Now,
+	}
+}
+
+// NewExecutorWithManager creates an executor backed by a provider manager.
+func NewExecutorWithManager(store *config.Store, manager *pluginruntime.Manager) *Executor {
+	if manager == nil {
+		return NewExecutor(store, nil)
+	}
+	return &Executor{
+		store:    store,
+		registry: manager.Registry(),
+		manager:  manager,
 		now:      time.Now,
 	}
 }
@@ -45,7 +62,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	}
 	governance = newRuntimeGovernance(e.store.Path(), cfg.Runtime, e.now)
 
-	operation, err := ParseOperation(opts.OperationInput, strings.TrimSpace(cfg.Defaults.Platform))
+	operation, err := ParseOperationWithPlatforms(opts.OperationInput, strings.TrimSpace(cfg.Defaults.Platform), knownPlatforms(e.registry))
 	if err != nil {
 		return e.auditEnvelope(governance, e.buildFatalEnvelope(requestID, opts.DryRun, "", opts.OperationInput, apperr.New("INVALID_OPERATION", err.Error())), input), nil
 	}
@@ -56,17 +73,31 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	}
 	canonicalOperation := definition.Operation
 
-	connectionName, profile, appErr := resolveConnection(cfg, operation.Platform, opts.ConnectionName, opts.ProfileName, opts.SubjectName)
+	connectionName, profile, appErr := resolveConnection(cfg, operation.Platform, opts.AccountName, opts.SubjectName)
 	if appErr != nil {
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, appErr, ExecutionProfile{}), input), nil
 	}
 
-	validateConnection := config.ValidateGrant
-	if opts.DryRun {
-		validateConnection = config.ValidateConnectionShape
-	}
-	if err := validateConnection(profile); err != nil {
+	if err := config.ValidateConnectionShape(profile); err != nil {
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("INVALID_AUTH_CONFIG", err.Error()), ExecutionProfile{}), input), nil
+	}
+	if !opts.DryRun && e.manager == nil {
+		if err := config.ValidateGrant(profile); err != nil {
+			return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("INVALID_AUTH_CONFIG", err.Error()), ExecutionProfile{}), input), nil
+		}
+	}
+
+	resolvedProfile := profile
+	if !opts.DryRun && e.manager != nil {
+		account, ok := cfg.Accounts[connectionName]
+		if !ok {
+			return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, nil, 0, apperr.New("ACCOUNT_NOT_FOUND", fmt.Sprintf("account %s does not exist", connectionName)), ExecutionProfile{}), input), nil
+		}
+		nextProfile, appErr := e.resolveExecutionProfile(context.Background(), cfg, connectionName, account, profile)
+		if appErr != nil {
+			return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, nil, 0, appErr, ExecutionProfile{}), input), nil
+		}
+		resolvedProfile = nextProfile
 	}
 
 	stdinReader, _ := opts.Stdin.(io.Reader)
@@ -81,12 +112,12 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 
 	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
 	executionProfile := ExecutionProfile{
-		Name:       connectionName,
-		Connection: connectionName,
-		Platform:   profile.Platform,
-		Subject:    profile.Subject,
+		Name:     connectionName,
+		Account:  connectionName,
+		Platform: resolvedProfile.Platform,
+		Subject:  resolvedProfile.Subject,
 		Grant: map[string]any{
-			"type": profile.Grant.Type,
+			"type": resolvedProfile.Grant.Type,
 		},
 	}
 
@@ -101,7 +132,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 				"action":         operation.Action,
 				"defaulted_from": cfg.Defaults.Platform,
 			},
-			"profile": executionProfile,
+			"account": executionProfile,
 			"input":   input,
 		}
 		if idempotency != nil {
@@ -155,7 +186,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	for {
 		data, appErr = definition.Handler(ctx, adapter.Call{
 			ProfileName:    connectionName,
-			Profile:        profile,
+			Profile:        resolvedProfile,
 			Input:          input,
 			IdempotencyKey: idempotencyKey,
 		})
@@ -219,10 +250,9 @@ func (e *Executor) finish(startAt time.Time, requestID, operation, platform stri
 
 	if profile.Name != "" || profile.Platform != "" || profile.Subject != "" {
 		envelope.Context = &Context{
-			Platform:   profile.Platform,
-			Subject:    profile.Subject,
-			Connection: profile.Connection,
-			Profile:    profile.Name,
+			Platform: profile.Platform,
+			Subject:  profile.Subject,
+			Account:  profile.Account,
 		}
 	}
 
@@ -246,14 +276,11 @@ func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelop
 	return envelope
 }
 
-func resolveConnection(cfg *config.Config, platform string, explicitConnection string, explicitProfile string, explicitSubject string) (string, config.Profile, *apperr.AppError) {
+func resolveConnection(cfg *config.Config, platform string, explicitAccount string, explicitSubject string) (string, config.Profile, *apperr.AppError) {
 	cfg.Ensure()
 	desiredSubject := strings.TrimSpace(explicitSubject)
 
-	selectedConnection := strings.TrimSpace(explicitConnection)
-	if selectedConnection == "" {
-		selectedConnection = strings.TrimSpace(explicitProfile)
-	}
+	selectedConnection := strings.TrimSpace(explicitAccount)
 	if desiredSubject == "" && selectedConnection == "" {
 		desiredSubject = strings.TrimSpace(cfg.Defaults.Subject)
 	}
@@ -272,28 +299,28 @@ func resolveConnection(cfg *config.Config, platform string, explicitConnection s
 		return selectedConnection, profile, nil
 	}
 
-	if defaultConnection := strings.TrimSpace(cfg.Defaults.Connections[platform]); defaultConnection != "" {
+	if defaultConnection := strings.TrimSpace(cfg.Defaults.PlatformAccounts[platform]); defaultConnection != "" {
 		profile, ok := cfg.Profiles[defaultConnection]
 		if !ok {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default connection %s does not exist", defaultConnection))
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default account %s does not exist", defaultConnection))
 		}
 		if profile.Platform != platform {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default connection %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default account %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
 		}
 		if desiredSubject == "" || profile.Subject == desiredSubject {
 			return defaultConnection, profile, nil
 		}
 	}
-	if defaultConnection := strings.TrimSpace(cfg.Defaults.Profile); defaultConnection != "" {
-		profile, ok := cfg.Profiles[defaultConnection]
+	if defaultAccount := strings.TrimSpace(cfg.Defaults.Account); defaultAccount != "" {
+		profile, ok := cfg.Profiles[defaultAccount]
 		if !ok {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default connection %s does not exist", defaultConnection))
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_NOT_FOUND", fmt.Sprintf("default account %s does not exist", defaultAccount))
 		}
 		if profile.Platform != platform {
-			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default connection %s belongs to platform %s and cannot be used for %s", defaultConnection, profile.Platform, platform))
+			return "", config.Profile{}, apperr.New("DEFAULT_PROFILE_PLATFORM_MISMATCH", fmt.Sprintf("default account %s belongs to platform %s and cannot be used for %s", defaultAccount, profile.Platform, platform))
 		}
 		if desiredSubject == "" || profile.Subject == desiredSubject {
-			return defaultConnection, profile, nil
+			return defaultAccount, profile, nil
 		}
 	}
 
@@ -301,16 +328,16 @@ func resolveConnection(cfg *config.Config, platform string, explicitConnection s
 	switch len(candidates) {
 	case 0:
 		if desiredSubject != "" {
-			return "", config.Profile{}, apperr.New("PROFILE_REQUIRED", fmt.Sprintf("platform %s has no available %s connection; run `clawrise connection use <name>` or pass --connection", platform, desiredSubject))
+			return "", config.Profile{}, apperr.New("ACCOUNT_REQUIRED", fmt.Sprintf("platform %s has no available %s account; run `clawrise account use <name>` or pass --account", platform, desiredSubject))
 		}
-		return "", config.Profile{}, apperr.New("PROFILE_REQUIRED", fmt.Sprintf("platform %s has no available connection; run `clawrise connection use <name>` or pass --connection", platform))
+		return "", config.Profile{}, apperr.New("ACCOUNT_REQUIRED", fmt.Sprintf("platform %s has no available account; run `clawrise account use <name>` or pass --account", platform))
 	case 1:
 		return candidates[0].Name, candidates[0].Profile, nil
 	default:
 		if desiredSubject != "" {
-			return "", config.Profile{}, apperr.New("PROFILE_AMBIGUOUS", fmt.Sprintf("platform %s has multiple %s connections; specify --connection explicitly", platform, desiredSubject))
+			return "", config.Profile{}, apperr.New("ACCOUNT_AMBIGUOUS", fmt.Sprintf("platform %s has multiple %s accounts; specify --account explicitly", platform, desiredSubject))
 		}
-		return "", config.Profile{}, apperr.New("PROFILE_AMBIGUOUS", fmt.Sprintf("platform %s has multiple candidate connections; specify --connection explicitly", platform))
+		return "", config.Profile{}, apperr.New("ACCOUNT_AMBIGUOUS", fmt.Sprintf("platform %s has multiple candidate accounts; specify --account explicitly", platform))
 	}
 }
 
@@ -352,4 +379,149 @@ func buildRequestID(now time.Time) string {
 // ExecuteContext is kept as a small seam for future adapter integration.
 func (e *Executor) ExecuteContext(ctx context.Context, opts ExecuteOptions) (Envelope, error) {
 	return e.Execute(ctx, opts)
+}
+
+func (e *Executor) resolveExecutionProfile(ctx context.Context, cfg *config.Config, accountName string, account config.Account, selectedProfile config.Profile) (config.Profile, *apperr.AppError) {
+	if e.manager == nil {
+		return selectedProfile, nil
+	}
+
+	authAccount, err := buildPluginAuthAccount(cfg, e.store.Path(), accountName, account)
+	if err != nil {
+		return config.Profile{}, apperr.New("AUTH_RESOLVE_FAILED", err.Error())
+	}
+	result, err := e.manager.ResolveAuth(ctx, account.Platform, pluginruntime.AuthResolveParams{
+		Account: authAccount,
+	})
+	if err != nil {
+		return config.Profile{}, apperr.New("AUTH_RESOLVE_FAILED", err.Error())
+	}
+	if !result.Ready {
+		code := "AUTHORIZATION_REQUIRED"
+		if result.Status == "invalid_auth_config" {
+			code = "INVALID_AUTH_CONFIG"
+		}
+		message := strings.TrimSpace(result.Message)
+		if message == "" {
+			message = "authorization is not ready"
+		}
+		return config.Profile{}, apperr.New(code, message)
+	}
+	if err := persistAuthPatches(cfg, e.store.Path(), accountName, account, result.SessionPatch, result.SecretPatches); err != nil {
+		return config.Profile{}, apperr.New("AUTH_STATE_PERSIST_FAILED", err.Error())
+	}
+	return buildResolvedProfile(selectedProfile, result.ExecutionAuth), nil
+}
+
+func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName string, account config.Account) (pluginruntime.AuthAccount, error) {
+	_ = cfg
+	secrets := map[string]string{}
+	for field, ref := range account.Auth.SecretRefs {
+		value, err := config.ResolveSecret(ref)
+		if err != nil {
+			continue
+		}
+		secrets[field] = value
+	}
+
+	sessionStore := authcache.NewFileStore(configPath)
+	var sessionPayload *pluginruntime.AuthSessionPayload
+	if session, err := sessionStore.Load(accountName); err == nil {
+		sessionPayload = pluginruntime.AuthSessionPayloadFromSession(session)
+	}
+
+	return pluginruntime.AuthAccount{
+		Name:       accountName,
+		Platform:   account.Platform,
+		Subject:    account.Subject,
+		AuthMethod: account.Auth.Method,
+		Public:     cloneAnyMap(account.Auth.Public),
+		Secrets:    secrets,
+		Session:    sessionPayload,
+	}, nil
+}
+
+func persistAuthPatches(cfg *config.Config, configPath string, accountName string, account config.Account, sessionPatch *pluginruntime.AuthSessionPayload, secretPatches map[string]string) error {
+	if sessionPatch != nil {
+		sessionStore := authcache.NewFileStore(configPath)
+		session := sessionPatch.ToSession()
+		session.ProfileName = accountName
+		session.Platform = account.Platform
+		session.Subject = account.Subject
+		session.GrantType = config.LegacyGrantTypeForMethod(account.Auth.Method)
+		if err := sessionStore.Save(session); err != nil {
+			return err
+		}
+	}
+
+	if len(secretPatches) > 0 {
+		backend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
+		if backend == "" {
+			backend = "auto"
+		}
+		secretStore, err := secretstore.Open(secretstore.Options{
+			ConfigPath:      configPath,
+			Backend:         backend,
+			FallbackBackend: cfg.Auth.SecretStore.FallbackBackend,
+		})
+		if err != nil {
+			return err
+		}
+		for field, value := range secretPatches {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if err := secretStore.Set(accountName, field, value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func buildResolvedProfile(selectedProfile config.Profile, executionAuth map[string]any) config.Profile {
+	profile := selectedProfile
+	profile.Grant.Type = asString(executionAuth["type"])
+	profile.Grant.AccessToken = asString(executionAuth["access_token"])
+	if value := asString(executionAuth["notion_version"]); value != "" {
+		profile.Grant.NotionVer = value
+	}
+	return profile
+}
+
+func cloneAnyMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func asString(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
+}
+
+func knownPlatforms(registry *adapter.Registry) []string {
+	if registry == nil {
+		return nil
+	}
+	items := make([]string, 0)
+	seen := map[string]struct{}{}
+	for _, definition := range registry.Definitions() {
+		platform := strings.TrimSpace(definition.Platform)
+		if platform == "" {
+			continue
+		}
+		if _, ok := seen[platform]; ok {
+			continue
+		}
+		seen[platform] = struct{}{}
+		items = append(items, platform)
+	}
+	return items
 }

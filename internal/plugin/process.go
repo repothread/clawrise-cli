@@ -84,8 +84,60 @@ func (r *ProcessRuntime) GetCatalog(ctx context.Context) ([]speccatalog.Entry, e
 	return append([]speccatalog.Entry(nil), result.Entries...), nil
 }
 
+func (r *ProcessRuntime) ListAuthMethods(ctx context.Context) ([]AuthMethodDescriptor, error) {
+	var result AuthMethodsListResult
+	if err := r.call(ctx, "clawrise.auth.methods.list", map[string]any{}, &result); err != nil {
+		return nil, err
+	}
+	return append([]AuthMethodDescriptor(nil), result.Methods...), nil
+}
+
+func (r *ProcessRuntime) ListAuthPresets(ctx context.Context) ([]AuthPresetDescriptor, error) {
+	var result AuthPresetsListResult
+	if err := r.call(ctx, "clawrise.auth.presets.list", map[string]any{}, &result); err != nil {
+		return nil, err
+	}
+	return append([]AuthPresetDescriptor(nil), result.Presets...), nil
+}
+
+func (r *ProcessRuntime) InspectAuth(ctx context.Context, params AuthInspectParams) (AuthInspectResult, error) {
+	var result AuthInspectResult
+	if err := r.call(ctx, "clawrise.auth.inspect", params, &result); err != nil {
+		return AuthInspectResult{}, err
+	}
+	return result, nil
+}
+
+func (r *ProcessRuntime) BeginAuth(ctx context.Context, params AuthBeginParams) (AuthBeginResult, error) {
+	var result AuthBeginResult
+	if err := r.call(ctx, "clawrise.auth.begin", params, &result); err != nil {
+		return AuthBeginResult{}, err
+	}
+	return result, nil
+}
+
+func (r *ProcessRuntime) CompleteAuth(ctx context.Context, params AuthCompleteParams) (AuthCompleteResult, error) {
+	var result AuthCompleteResult
+	if err := r.call(ctx, "clawrise.auth.complete", params, &result); err != nil {
+		return AuthCompleteResult{}, err
+	}
+	return result, nil
+}
+
+func (r *ProcessRuntime) ResolveAuth(ctx context.Context, params AuthResolveParams) (AuthResolveResult, error) {
+	var result AuthResolveResult
+	if err := r.call(ctx, "clawrise.auth.resolve", params, &result); err != nil {
+		return AuthResolveResult{}, err
+	}
+	return result, nil
+}
+
 func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 	var result ExecuteRPCResult
+	identityAuth := req.IdentityAuth
+	if identityAuth == nil {
+		identityAuth = buildResolvedAuthPayload(req.Profile)
+	}
 	if err := r.call(ctx, "clawrise.execute", ExecuteParams{
 		Request: ExecuteEnvelope{
 			RequestID:      "",
@@ -94,7 +146,7 @@ func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (Execu
 			IdempotencyKey: req.IdempotencyKey,
 			DryRun:         false,
 		},
-		Identity: buildExecuteIdentity(req.ProfileName, req.Profile),
+		Identity: buildExecuteIdentity(req.AccountName, req.Profile, identityAuth),
 	}, &result); err != nil {
 		return ExecuteResult{}, err
 	}
@@ -194,7 +246,7 @@ func (r *ProcessRuntime) ensureStarted(ctx context.Context) error {
 	return nil
 }
 
-// Close 主动回收 plugin 子进程，供诊断类命令复用。
+// Close terminates the plugin child process and releases related resources.
 func (r *ProcessRuntime) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -233,12 +285,12 @@ func NewProcessRuntimes(manifests []Manifest) []Runtime {
 	return runtimes
 }
 
-func buildExecuteIdentity(profileName string, profile config.Profile) ExecuteIdentity {
+func buildExecuteIdentity(accountName string, profile config.Profile, authPayload map[string]any) ExecuteIdentity {
 	return ExecuteIdentity{
 		Platform:    profile.Platform,
 		Subject:     profile.Subject,
-		ProfileName: strings.TrimSpace(profileName),
-		Auth:        buildResolvedAuthPayload(profile),
+		AccountName: strings.TrimSpace(accountName),
+		Auth:        authPayload,
 	}
 }
 

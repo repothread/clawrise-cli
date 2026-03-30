@@ -8,19 +8,19 @@ import (
 
 const defaultNotionVersion = "2026-03-11"
 
-// InitOptions 描述 `config init` 需要的参数。
+// InitOptions describes the inputs accepted by `config init`.
 type InitOptions struct {
-	Platform   string
-	Subject    string
-	Connection string
-	Method     string
-	Scopes     []string
+	Platform string
+	Subject  string
+	Account  string
+	Method   string
+	Scopes   []string
 }
 
-// InitResult 描述初始化后生成的配置与提示信息。
+// InitResult describes the generated config and setup hints.
 type InitResult struct {
 	Config         *Config  `json:"-"`
-	ConnectionName string   `json:"connection_name"`
+	AccountName    string   `json:"account_name"`
 	Platform       string   `json:"platform"`
 	Subject        string   `json:"subject"`
 	Method         string   `json:"method"`
@@ -29,7 +29,7 @@ type InitResult struct {
 	SecretBackend  string   `json:"secret_backend"`
 }
 
-// BuildInitConfig 生成最小可用的配置骨架。
+// BuildInitConfig creates the minimal initial config skeleton.
 func BuildInitConfig(opts InitOptions) (InitResult, error) {
 	platform := strings.TrimSpace(opts.Platform)
 	if platform == "" {
@@ -49,9 +49,9 @@ func BuildInitConfig(opts InitOptions) (InitResult, error) {
 		return InitResult{}, fmt.Errorf("unsupported platform and subject combination: %s/%s", platform, subject)
 	}
 
-	connectionName := strings.TrimSpace(opts.Connection)
-	if connectionName == "" {
-		connectionName = defaultConnectionName(platform, subject)
+	accountName := strings.TrimSpace(opts.Account)
+	if accountName == "" {
+		accountName = defaultAccountName(platform, subject)
 	}
 
 	connection, secretFields, err := buildConnectionTemplate(platform, subject, method, opts.Scopes)
@@ -62,8 +62,8 @@ func BuildInitConfig(opts InitOptions) (InitResult, error) {
 	cfg := New()
 	cfg.Ensure()
 	cfg.Defaults.Platform = platform
-	cfg.Defaults.Profile = connectionName
-	cfg.Defaults.Connections[platform] = connectionName
+	cfg.Defaults.Account = accountName
+	cfg.Defaults.PlatformAccounts[platform] = accountName
 	cfg.Auth = AuthConfig{
 		SecretStore: SecretStoreConfig{
 			Backend:         "auto",
@@ -80,12 +80,12 @@ func BuildInitConfig(opts InitOptions) (InitResult, error) {
 			MaxDelayMS:  1000,
 		},
 	}
-	cfg.Connections[connectionName] = connection
+	cfg.Accounts[accountName] = buildAccountFromConnection(accountName, connection)
 	cfg.Ensure()
 
 	return InitResult{
 		Config:         cfg,
-		ConnectionName: connectionName,
+		AccountName:    accountName,
 		Platform:       platform,
 		Subject:        subject,
 		Method:         method,
@@ -106,22 +106,22 @@ func buildConnectionTemplate(platform, subject, method string, scopes []string) 
 
 	switch method {
 	case "feishu.app_credentials":
-		connection.Params.AppID = "<请填写 app_id>"
+		connection.Params.AppID = "<fill_app_id>"
 		secretFields = []string{"app_secret"}
 	case "feishu.oauth_user":
-		connection.Params.ClientID = "<请填写 client_id>"
+		connection.Params.ClientID = "<fill_client_id>"
 		connection.Params.RedirectMode = "loopback"
 		connection.Params.Scopes = normalizeInitScopes(scopes, []string{"offline_access"})
-		// 首次交互式授权前只需要 client_secret，refresh_token 会在授权完成后自动写回。
+		// Before the first interactive authorization only client_secret is required.
 		secretFields = []string{"client_secret"}
 	case "notion.internal_token":
 		connection.Params.NotionVersion = defaultNotionVersion
 		secretFields = []string{"token"}
 	case "notion.oauth_public":
-		connection.Params.ClientID = "<请填写 client_id>"
+		connection.Params.ClientID = "<fill_client_id>"
 		connection.Params.NotionVersion = defaultNotionVersion
 		connection.Params.RedirectMode = "loopback"
-		// 首次交互式授权前只需要 client_secret，refresh_token 会在授权完成后自动写回。
+		// Before the first interactive authorization only client_secret is required.
 		secretFields = []string{"client_secret"}
 	default:
 		return Connection{}, nil, fmt.Errorf("unsupported method: %s", method)
@@ -186,7 +186,7 @@ func defaultMethod(platform, subject string) string {
 	}
 }
 
-func defaultConnectionName(platform, subject string) string {
+func defaultAccountName(platform, subject string) string {
 	switch {
 	case platform == "feishu" && subject == "bot":
 		return "feishu_bot_default"

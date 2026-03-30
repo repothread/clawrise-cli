@@ -1,0 +1,481 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+
+	"github.com/spf13/pflag"
+
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
+	"github.com/clawrise/clawrise-cli/internal/authflow"
+	"github.com/clawrise/clawrise-cli/internal/config"
+	"github.com/clawrise/clawrise-cli/internal/output"
+	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
+)
+
+func runAuthMethods(args []string, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if manager == nil {
+		return fmt.Errorf("plugin manager is required")
+	}
+
+	flags := pflag.NewFlagSet("clawrise auth methods", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var platform string
+	flags.StringVar(&platform, "platform", "", "list auth methods only for the selected platform")
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("usage: clawrise auth methods [--platform <name>]")
+	}
+
+	methods, err := manager.ListAuthMethods(context.Background(), strings.TrimSpace(platform))
+	if err != nil {
+		return err
+	}
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"methods": methods,
+		},
+	})
+}
+
+func runAuthPresets(args []string, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if manager == nil {
+		return fmt.Errorf("plugin manager is required")
+	}
+
+	flags := pflag.NewFlagSet("clawrise auth presets", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var platform string
+	flags.StringVar(&platform, "platform", "", "list account presets only for the selected platform")
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("usage: clawrise auth presets [--platform <name>]")
+	}
+
+	presets, err := manager.ListAuthPresets(context.Background(), strings.TrimSpace(platform))
+	if err != nil {
+		return err
+	}
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"presets": presets,
+		},
+	})
+}
+
+func runAuthInspectV2(args []string, cfg *config.Config, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if manager == nil {
+		return fmt.Errorf("plugin manager is required")
+	}
+	if len(args) > 1 {
+		return fmt.Errorf("usage: clawrise auth inspect [account]")
+	}
+
+	accountName, account, ok, err := resolveAccountSelection(cfg, args)
+	if err != nil {
+		return writeCLIError(stdout, "ACCOUNT_REQUIRED", err.Error())
+	}
+	if !ok {
+		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
+	}
+
+	authAccount, err := buildPluginAuthAccount(cfg, store, accountName, account)
+	if err != nil {
+		return err
+	}
+	result, err := manager.InspectAuth(context.Background(), account.Platform, pluginruntime.AuthInspectParams{
+		Account: authAccount,
+	})
+	if err != nil {
+		return err
+	}
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": result.Ready,
+		"data": map[string]any{
+			"account": map[string]any{
+				"name":        accountName,
+				"platform":    account.Platform,
+				"subject":     account.Subject,
+				"auth_method": account.Auth.Method,
+			},
+			"inspection": result,
+		},
+	})
+}
+
+func runAuthCheckV2(args []string, cfg *config.Config, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if err := runAuthInspectV2(args, cfg, store, stdout, manager); err != nil {
+		return err
+	}
+	accountName, account, ok, err := resolveAccountSelection(cfg, args)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ExitError{Code: 1}
+	}
+	authAccount, err := buildPluginAuthAccount(cfg, store, accountName, account)
+	if err != nil {
+		return err
+	}
+	result, err := manager.InspectAuth(context.Background(), account.Platform, pluginruntime.AuthInspectParams{
+		Account: authAccount,
+	})
+	if err != nil {
+		return err
+	}
+	if !result.Ready {
+		return ExitError{Code: 1}
+	}
+	return nil
+}
+
+func runAuthLogin(args []string, cfg *config.Config, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if manager == nil {
+		return fmt.Errorf("plugin manager is required")
+	}
+
+	flags := pflag.NewFlagSet("clawrise auth login", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var mode string
+	var redirectURI string
+	var callbackHost string
+	var callbackPath string
+	var openBrowser bool
+
+	flags.StringVar(&mode, "mode", "", "set the auth mode, for example local_browser or manual_code")
+	flags.StringVar(&redirectURI, "redirect-uri", "", "set the OAuth redirect_uri explicitly")
+	flags.StringVar(&callbackHost, "callback-host", "", "set the loopback callback host")
+	flags.StringVar(&callbackPath, "callback-path", "/callback", "set the loopback callback path")
+	flags.BoolVar(&openBrowser, "open-browser", true, "open the authorization URL in a browser automatically")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) > 1 {
+		return fmt.Errorf("usage: clawrise auth login [account] [--mode <name>] [--redirect-uri <uri>]")
+	}
+
+	accountName, account, ok, err := resolveAccountSelection(cfg, flags.Args())
+	if err != nil {
+		return writeCLIError(stdout, "ACCOUNT_REQUIRED", err.Error())
+	}
+	if !ok {
+		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
+	}
+
+	authAccount, err := buildPluginAuthAccount(cfg, store, accountName, account)
+	if err != nil {
+		return err
+	}
+	result, err := manager.BeginAuth(context.Background(), account.Platform, pluginruntime.AuthBeginParams{
+		Account:      authAccount,
+		Mode:         strings.TrimSpace(mode),
+		RedirectURI:  strings.TrimSpace(redirectURI),
+		CallbackHost: strings.TrimSpace(callbackHost),
+		CallbackPath: strings.TrimSpace(callbackPath),
+	})
+	if err != nil {
+		return err
+	}
+
+	flow := authFlowFromPluginResult(accountName, account, result.Flow)
+	flowStore := authflow.NewFileStore(store.Path())
+	if err := flowStore.Save(flow); err != nil {
+		return err
+	}
+
+	openResult := map[string]any{
+		"attempted": openBrowser,
+		"opened":    false,
+	}
+	if openBrowser && strings.TrimSpace(result.Flow.AuthorizationURL) != "" {
+		if openErr := openAuthURL(result.Flow.AuthorizationURL); openErr != nil {
+			openResult["error"] = openErr.Error()
+		} else {
+			openResult["opened"] = true
+		}
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"account": map[string]any{
+				"name":        accountName,
+				"platform":    account.Platform,
+				"subject":     account.Subject,
+				"auth_method": account.Auth.Method,
+			},
+			"flow": map[string]any{
+				"id":                result.Flow.ID,
+				"method":            result.Flow.Method,
+				"mode":              result.Flow.Mode,
+				"state":             result.Flow.State,
+				"redirect_uri":      result.Flow.RedirectURI,
+				"authorization_url": result.Flow.AuthorizationURL,
+				"expires_at":        result.Flow.ExpiresAt,
+			},
+			"browser":      openResult,
+			"next_actions": result.NextActions,
+		},
+	})
+}
+
+func runAuthCompleteV2(args []string, cfg *config.Config, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if manager == nil {
+		return fmt.Errorf("plugin manager is required")
+	}
+
+	flags := pflag.NewFlagSet("clawrise auth complete", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var code string
+	var callbackURL string
+	flags.StringVar(&code, "code", "", "pass the authorization code directly")
+	flags.StringVar(&callbackURL, "callback-url", "", "pass the full callback URL")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 1 {
+		return fmt.Errorf("usage: clawrise auth complete <flow_id> [--callback-url <url> | --code <text>]")
+	}
+
+	flowStore := authflow.NewFileStore(store.Path())
+	flow, err := flowStore.Load(strings.TrimSpace(flags.Args()[0]))
+	if err != nil {
+		return writeCLIError(stdout, "AUTH_FLOW_NOT_FOUND", "the selected auth flow does not exist")
+	}
+
+	cfg.Ensure()
+	accountName := strings.TrimSpace(flow.ConnectionName)
+	account, ok := cfg.Accounts[accountName]
+	if !ok {
+		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the flow account does not exist in current config")
+	}
+
+	authAccount, err := buildPluginAuthAccount(cfg, store, accountName, account)
+	if err != nil {
+		return err
+	}
+	result, err := manager.CompleteAuth(context.Background(), account.Platform, pluginruntime.AuthCompleteParams{
+		Account:     authAccount,
+		Flow:        pluginFlowFromStoredFlow(*flow),
+		Code:        strings.TrimSpace(code),
+		CallbackURL: strings.TrimSpace(callbackURL),
+	})
+	if err != nil {
+		return err
+	}
+	if !result.Ready {
+		return output.WriteJSON(stdout, map[string]any{
+			"ok": false,
+			"data": map[string]any{
+				"account": accountName,
+				"result":  result,
+			},
+		})
+	}
+
+	if err := persistAuthPatches(cfg, store, accountName, account, result.SessionPatch, result.SecretPatches); err != nil {
+		return err
+	}
+
+	completedAt := time.Now().UTC()
+	flow.State = "completed"
+	flow.CompletedAt = &completedAt
+	flow.Result = map[string]any{
+		"account": accountName,
+	}
+	flow.ErrorCode = ""
+	flow.ErrorMessage = ""
+	if err := flowStore.Save(*flow); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"account": accountName,
+			"result":  result,
+		},
+	})
+}
+
+func runAuthLogout(args []string, cfg *config.Config, store *config.Store, stdout io.Writer) error {
+	if len(args) > 1 {
+		return fmt.Errorf("usage: clawrise auth logout [account]")
+	}
+
+	accountName, account, ok, err := resolveAccountSelection(cfg, args)
+	if err != nil {
+		return writeCLIError(stdout, "ACCOUNT_REQUIRED", err.Error())
+	}
+	if !ok {
+		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
+	}
+
+	sessionStore := authcache.NewFileStore(store.Path())
+	if err := sessionStore.Delete(accountName); err != nil {
+		return err
+	}
+
+	secretStore, err := openCLISecretStore(cfg, store)
+	if err != nil {
+		return err
+	}
+	for _, field := range []string{"access_token", "refresh_token"} {
+		if _, ok := account.Auth.SecretRefs[field]; ok {
+			if err := secretStore.Delete(accountName, field); err != nil {
+				return err
+			}
+		}
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"account":    accountName,
+			"logged_out": true,
+		},
+	})
+}
+
+func resolveAccountSelection(cfg *config.Config, args []string) (string, config.Account, bool, error) {
+	cfg.Ensure()
+
+	name := ""
+	if len(args) == 1 {
+		name = strings.TrimSpace(args[0])
+	}
+	if name == "" && strings.TrimSpace(cfg.Defaults.Account) != "" {
+		name = strings.TrimSpace(cfg.Defaults.Account)
+	}
+	if name == "" && strings.TrimSpace(cfg.Defaults.Platform) != "" {
+		name = strings.TrimSpace(cfg.Defaults.PlatformAccounts[cfg.Defaults.Platform])
+	}
+	if name == "" {
+		return "", config.Account{}, false, fmt.Errorf("no account was provided and no default account is configured")
+	}
+
+	account, ok := cfg.Accounts[name]
+	return name, account, ok, nil
+}
+
+func buildPluginAuthAccount(cfg *config.Config, store *config.Store, accountName string, account config.Account) (pluginruntime.AuthAccount, error) {
+	cfg.Ensure()
+	secrets := map[string]string{}
+	for field, ref := range account.Auth.SecretRefs {
+		value, err := config.ResolveSecret(ref)
+		if err != nil {
+			continue
+		}
+		secrets[field] = value
+	}
+
+	sessionStore := authcache.NewFileStore(store.Path())
+	var sessionPayload *pluginruntime.AuthSessionPayload
+	if session, err := sessionStore.Load(accountName); err == nil {
+		sessionPayload = pluginruntime.AuthSessionPayloadFromSession(session)
+	}
+
+	return pluginruntime.AuthAccount{
+		Name:       accountName,
+		Platform:   account.Platform,
+		Subject:    account.Subject,
+		AuthMethod: account.Auth.Method,
+		Public:     cloneAnyMap(account.Auth.Public),
+		Secrets:    secrets,
+		Session:    sessionPayload,
+	}, nil
+}
+
+func persistAuthPatches(cfg *config.Config, store *config.Store, accountName string, account config.Account, sessionPatch *pluginruntime.AuthSessionPayload, secretPatches map[string]string) error {
+	if sessionPatch != nil {
+		sessionStore := authcache.NewFileStore(store.Path())
+		session := sessionPatch.ToSession()
+		session.ProfileName = accountName
+		session.Platform = account.Platform
+		session.Subject = account.Subject
+		session.GrantType = config.LegacyGrantTypeForMethod(account.Auth.Method)
+		if err := sessionStore.Save(session); err != nil {
+			return err
+		}
+	}
+
+	if len(secretPatches) > 0 {
+		secretStore, err := openCLISecretStore(cfg, store)
+		if err != nil {
+			return err
+		}
+		for field, value := range secretPatches {
+			if strings.TrimSpace(value) == "" {
+				continue
+			}
+			if err := secretStore.Set(accountName, field, value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func authFlowFromPluginResult(accountName string, account config.Account, flow pluginruntime.AuthFlowPayload) authflow.Flow {
+	result := authflow.Flow{
+		ID:               flow.ID,
+		ConnectionName:   accountName,
+		Platform:         account.Platform,
+		Method:           account.Auth.Method,
+		Mode:             flow.Mode,
+		State:            flow.State,
+		RedirectURI:      flow.RedirectURI,
+		AuthorizationURL: flow.AuthorizationURL,
+		Metadata:         flow.Metadata,
+	}
+	if flow.ExpiresAt != "" {
+		if expiresAt, err := time.Parse(time.RFC3339, flow.ExpiresAt); err == nil {
+			result.ExpiresAt = expiresAt.UTC()
+		}
+	}
+	return result
+}
+
+func pluginFlowFromStoredFlow(flow authflow.Flow) pluginruntime.AuthFlowPayload {
+	payload := pluginruntime.AuthFlowPayload{
+		ID:               flow.ID,
+		Method:           flow.Method,
+		Mode:             flow.Mode,
+		State:            flow.State,
+		RedirectURI:      flow.RedirectURI,
+		AuthorizationURL: flow.AuthorizationURL,
+		Metadata:         flow.Metadata,
+	}
+	if !flow.ExpiresAt.IsZero() {
+		payload.ExpiresAt = flow.ExpiresAt.UTC().Format(time.RFC3339)
+	}
+	return payload
+}

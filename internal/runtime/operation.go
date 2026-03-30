@@ -16,12 +16,32 @@ type Operation struct {
 
 // ParseOperation converts user input into the normalized operation shape.
 func ParseOperation(raw, defaultPlatform string) (Operation, error) {
+	return ParseOperationWithPlatforms(raw, defaultPlatform, nil)
+}
+
+// ParseOperationWithPlatforms uses a dynamic platform set to distinguish full and shorthand paths.
+func ParseOperationWithPlatforms(raw, defaultPlatform string, knownPlatforms []string) (Operation, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return Operation{}, fmt.Errorf("operation must not be empty")
 	}
 
 	parts := strings.Split(raw, ".")
+	knownPlatformSet := map[string]struct{}{}
+	for _, platform := range knownPlatforms {
+		platform = strings.TrimSpace(platform)
+		if platform == "" {
+			continue
+		}
+		knownPlatformSet[platform] = struct{}{}
+	}
+	isKnownPlatform := func(value string) bool {
+		if len(knownPlatformSet) == 0 {
+			return isKnownPlatformLegacy(value)
+		}
+		_, ok := knownPlatformSet[strings.TrimSpace(value)]
+		return ok
+	}
 	switch {
 	case len(parts) >= 3 && isKnownPlatform(parts[0]):
 		platform := parts[0]
@@ -60,7 +80,7 @@ func ParseOperation(raw, defaultPlatform string) (Operation, error) {
 	}
 }
 
-func isKnownPlatform(value string) bool {
+func isKnownPlatformLegacy(value string) bool {
 	switch value {
 	case "feishu", "notion", "google":
 		return true

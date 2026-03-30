@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
@@ -20,7 +19,6 @@ import (
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 	"github.com/clawrise/clawrise-cli/internal/config"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
-	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
 func TestRunRootHelpFlag(t *testing.T) {
@@ -45,7 +43,7 @@ func TestRunRootHelpFlag(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise spec [list|get|status|export]")) {
 		t.Fatalf("expected spec usage in root help, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|inspect|check|begin|connect|status|continue|session|secret]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")) {
 		t.Fatalf("expected auth usage in root help, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
@@ -138,13 +136,13 @@ func TestRunSubjectUse(t *testing.T) {
 	}
 }
 
-func TestRunConnectionUseSynchronizesSubject(t *testing.T) {
+func TestRunAccountUseSynchronizesSubject(t *testing.T) {
 	copyExampleConfig(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err := Run([]string{"connection", "use", "feishu_user_alice"}, Dependencies{
+	err := Run([]string{"account", "use", "feishu_user_alice"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -154,7 +152,7 @@ func TestRunConnectionUseSynchronizesSubject(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "user"`)) {
-		t.Fatalf("expected connection use to expose user subject, got: %s", stdout.String())
+		t.Fatalf("expected account use to expose user subject, got: %s", stdout.String())
 	}
 
 	stdout.Reset()
@@ -169,17 +167,17 @@ func TestRunConnectionUseSynchronizesSubject(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "user"`)) {
-		t.Fatalf("expected connection use to synchronize default subject, got: %s", stdout.String())
+		t.Fatalf("expected account use to synchronize default subject, got: %s", stdout.String())
 	}
 }
 
-func TestRunProfileUseUsesProfileCommandBehavior(t *testing.T) {
+func TestRunAccountUseUsesAccountCommandBehavior(t *testing.T) {
 	copyExampleConfig(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err := Run([]string{"profile", "use", "notion_team_docs"}, Dependencies{
+	err := Run([]string{"account", "use", "notion_team_docs"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -188,15 +186,15 @@ func TestRunProfileUseUsesProfileCommandBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"profile": "notion_team_docs"`)) {
-		t.Fatalf("expected profile response payload, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"name": "notion_team_docs"`)) {
+		t.Fatalf("expected account response payload, got: %s", stdout.String())
 	}
-	if bytes.Contains(stdout.Bytes(), []byte(`"connection"`)) {
-		t.Fatalf("expected profile command to avoid connection payload shape, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"account"`)) {
+		t.Fatalf("expected account payload shape, got: %s", stdout.String())
 	}
 }
 
-func TestRunProfileUseSynchronizesPlatformForBareOperation(t *testing.T) {
+func TestRunAccountUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
 	t.Setenv("NOTION_TEAM_DOCS_TOKEN", "notion-token")
@@ -213,7 +211,7 @@ func TestRunProfileUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err = Run([]string{"profile", "use", "notion_team_docs"}, Dependencies{
+	err = Run([]string{"account", "use", "notion_team_docs"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -239,8 +237,8 @@ func TestRunProfileUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"normalized": "notion.page.get"`)) {
 		t.Fatalf("expected bare operation to resolve with notion platform, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"profile": "notion_team_docs"`)) {
-		t.Fatalf("expected notion profile in output, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "notion_team_docs"`)) {
+		t.Fatalf("expected notion account in output, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "integration"`)) {
 		t.Fatalf("expected integration subject in output, got: %s", stdout.String())
@@ -289,8 +287,8 @@ func TestRunSubjectUseInfluencesBareOperationResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"profile": "feishu_user_alice"`)) {
-		t.Fatalf("expected user profile to be selected after subject switch, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "feishu_user_alice"`)) {
+		t.Fatalf("expected user account to be selected after subject switch, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "user"`)) {
 		t.Fatalf("expected user subject after subject switch, got: %s", stdout.String())
@@ -606,7 +604,7 @@ func TestRunConfigInit(t *testing.T) {
 		"init",
 		"--platform", "notion",
 		"--subject", "integration",
-		"--profile", "notion_team_docs",
+		"--account", "notion_team_docs",
 	}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
@@ -617,8 +615,8 @@ func TestRunConfigInit(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte(`"profile_name": "notion_team_docs"`)) {
-		t.Fatalf("expected profile name in output, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "notion_team_docs"`)) {
+		t.Fatalf("expected account name in output, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"grant_type": "static_token"`)) {
 		t.Fatalf("expected grant type in output, got: %s", stdout.String())
@@ -645,11 +643,11 @@ func TestRunAuthCheck(t *testing.T) {
 		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte(`"resolved_valid": true`)) {
-		t.Fatalf("expected valid auth check output, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"status": "ready"`)) {
+		t.Fatalf("expected ready auth check output, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"subject_allowed_operation_count"`)) {
-		t.Fatalf("expected operation summary in auth output, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": true`)) {
+		t.Fatalf("expected ready=true in auth output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
@@ -677,151 +675,11 @@ func TestRunAuthCheckReportsAuthorizationPending(t *testing.T) {
 	if !errors.As(err, &exitErr) || exitErr.Code != 1 {
 		t.Fatalf("expected exit code 1, got: %v", err)
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"resolved_valid": true`)) {
-		t.Fatalf("expected resolved config to be valid, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"status": "authorization_required"`)) {
+		t.Fatalf("expected authorization_required status, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"ready": false`)) {
 		t.Fatalf("expected ready=false in auth check output, got: %s", stdout.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"auth_status": "authorization_required"`)) {
-		t.Fatalf("expected authorization_required status, got: %s", stdout.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected empty stderr, got: %s", stderr.String())
-	}
-}
-
-func TestRunAuthSessionInspectAndClear(t *testing.T) {
-	configPath := copyExampleConfig(t)
-
-	sessionStore := authcache.NewFileStore(configPath)
-	expiresAt := time.Now().UTC().Add(30 * time.Minute)
-	if err := sessionStore.Save(authcache.Session{
-		ProfileName:  "notion_public_workspace_a",
-		Platform:     "notion",
-		Subject:      "integration",
-		GrantType:    "oauth_refreshable",
-		AccessToken:  "fresh-token",
-		RefreshToken: "refresh-token-2",
-		TokenType:    "Bearer",
-		ExpiresAt:    &expiresAt,
-	}); err != nil {
-		t.Fatalf("failed to seed session cache: %v", err)
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	err := Run([]string{"auth", "session", "inspect", "notion_public_workspace_a"}, Dependencies{
-		Version:       "test",
-		Stdout:        &stdout,
-		Stderr:        &stderr,
-		PluginManager: newTestPluginManager(t),
-	})
-	if err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"exists": true`)) {
-		t.Fatalf("expected existing session output, got: %s", stdout.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"matches": true`)) {
-		t.Fatalf("expected matching profile output, got: %s", stdout.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"access_token": "fr***en"`)) {
-		t.Fatalf("expected redacted access token output, got: %s", stdout.String())
-	}
-
-	stdout.Reset()
-	stderr.Reset()
-
-	err = Run([]string{"auth", "session", "clear", "notion_public_workspace_a"}, Dependencies{
-		Version:       "test",
-		Stdout:        &stdout,
-		Stderr:        &stderr,
-		PluginManager: newTestPluginManager(t),
-	})
-	if err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"deleted": true`)) {
-		t.Fatalf("expected deleted session output, got: %s", stdout.String())
-	}
-	if _, err := os.Stat(sessionStore.Path("notion_public_workspace_a")); !os.IsNotExist(err) {
-		t.Fatalf("expected session file to be removed, got: %v", err)
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected empty stderr, got: %s", stderr.String())
-	}
-}
-
-func TestRunAuthSessionRefresh(t *testing.T) {
-	configPath := copyExampleConfig(t)
-	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
-	runSecretSet(t, "notion_public_workspace_a", "refresh_token", "refresh-token")
-
-	previousFactory := newNotionAuthSessionClient
-	t.Cleanup(func() {
-		newNotionAuthSessionClient = previousFactory
-	})
-
-	newNotionAuthSessionClient = func(sessionStore authcache.Store) (*notionadapter.Client, error) {
-		return notionadapter.NewClient(notionadapter.Options{
-			BaseURL: "https://api.notion.com",
-			HTTPClient: &http.Client{
-				Transport: &testRoundTripFunc{
-					handler: func(request *http.Request) (*http.Response, error) {
-						if request.URL.Path != "/v1/oauth/token" {
-							t.Fatalf("unexpected request path: %s", request.URL.Path)
-						}
-						var payload map[string]any
-						if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
-							t.Fatalf("failed to decode refresh payload: %v", err)
-						}
-						if payload["refresh_token"] != "refresh-token" {
-							t.Fatalf("unexpected refresh token: %+v", payload["refresh_token"])
-						}
-						return testJSONResponse(t, http.StatusOK, map[string]any{
-							"access_token":  "fresh-token",
-							"token_type":    "bearer",
-							"refresh_token": "refresh-token-2",
-							"expires_in":    3600,
-						}), nil
-					},
-				},
-			},
-			SessionStore: sessionStore,
-		})
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	err := Run([]string{"auth", "session", "refresh", "notion_public_workspace_a"}, Dependencies{
-		Version:       "test",
-		Stdout:        &stdout,
-		Stderr:        &stderr,
-		PluginManager: newTestPluginManager(t),
-	})
-	if err != nil {
-		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"exists": true`)) {
-		t.Fatalf("expected refreshed session output, got: %s", stdout.String())
-	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"access_token": "fr***en"`)) {
-		t.Fatalf("expected redacted cached access token output, got: %s", stdout.String())
-	}
-
-	sessionStore := authcache.NewFileStore(configPath)
-	session, err := sessionStore.Load("notion_public_workspace_a")
-	if err != nil {
-		t.Fatalf("failed to load refreshed session: %v", err)
-	}
-	if session.AccessToken != "fresh-token" {
-		t.Fatalf("unexpected cached access token: %s", session.AccessToken)
-	}
-	if session.RefreshToken != "refresh-token-2" {
-		t.Fatalf("unexpected cached refresh token: %s", session.RefreshToken)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
@@ -831,8 +689,8 @@ func TestRunAuthSessionRefresh(t *testing.T) {
 func TestRunAuthBeginNotionPublic(t *testing.T) {
 	copyExampleConfig(t)
 
-	result := runAuthBeginForTest(t, []string{
-		"auth", "begin", "notion_public_workspace_a",
+	result := runAuthLoginForTest(t, []string{
+		"auth", "login", "notion_public_workspace_a",
 		"--mode", "manual_code",
 		"--redirect-uri", "https://example.com/callback",
 	})
@@ -846,11 +704,11 @@ func TestRunAuthBeginNotionPublic(t *testing.T) {
 	}
 }
 
-func TestRunAuthBeginUsesLoopbackRedirectModeDefault(t *testing.T) {
+func TestRunAuthLoginUsesLoopbackRedirectModeDefault(t *testing.T) {
 	copyExampleConfig(t)
 
-	result := runAuthBeginForTest(t, []string{
-		"auth", "begin", "notion_public_workspace_a",
+	result := runAuthLoginForTest(t, []string{
+		"auth", "login", "notion_public_workspace_a",
 		"--mode", "manual_code",
 	})
 
@@ -863,7 +721,7 @@ func TestRunAuthBeginUsesLoopbackRedirectModeDefault(t *testing.T) {
 	}
 }
 
-func TestRunAuthConnectOpensAuthorizationURL(t *testing.T) {
+func TestRunAuthLoginOpensAuthorizationURL(t *testing.T) {
 	copyExampleConfig(t)
 
 	previousOpenAuthURL := openAuthURL
@@ -880,7 +738,7 @@ func TestRunAuthConnectOpensAuthorizationURL(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	err := Run([]string{
-		"auth", "connect", "notion_public_workspace_a",
+		"auth", "login", "notion_public_workspace_a",
 		"--mode", "manual_code",
 		"--redirect-uri", "https://example.com/callback",
 	}, Dependencies{
@@ -894,7 +752,7 @@ func TestRunAuthConnectOpensAuthorizationURL(t *testing.T) {
 	}
 
 	if openedURL == "" {
-		t.Fatalf("expected auth connect to open authorization url, stdout=%s", stdout.String())
+		t.Fatalf("expected auth login to open authorization url, stdout=%s", stdout.String())
 	}
 	if !strings.HasPrefix(openedURL, "https://api.notion.com/v1/oauth/authorize") {
 		t.Fatalf("unexpected opened url: %s", openedURL)
@@ -907,16 +765,36 @@ func TestRunAuthConnectOpensAuthorizationURL(t *testing.T) {
 	}
 }
 
-func TestRunAuthContinueNotionPublicWithCallbackURL(t *testing.T) {
+func TestRunAuthCompleteNotionPublicWithCallbackURL(t *testing.T) {
 	configPath := copyExampleConfig(t)
 	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
 
-	previousFactory := newNotionAuthFlowClient
-	t.Cleanup(func() {
-		newNotionAuthFlowClient = previousFactory
+	beginResult := runAuthLoginForTest(t, []string{
+		"auth", "login", "notion_public_workspace_a",
+		"--mode", "manual_code",
+		"--redirect-uri", "https://example.com/callback",
 	})
 
-	newNotionAuthFlowClient = func(sessionStore authcache.Store) (*notionadapter.Client, error) {
+	flowID := nestedString(beginResult, "data", "flow", "id")
+	authURL := nestedString(beginResult, "data", "flow", "authorization_url")
+	if flowID == "" || authURL == "" {
+		t.Fatalf("expected flow id and authorization_url, got: %+v", beginResult)
+	}
+
+	parsedURL, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("failed to parse authorization url: %v", err)
+	}
+	stateToken := parsedURL.Query().Get("state")
+	if stateToken == "" {
+		t.Fatalf("expected state token in authorization url: %s", authURL)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	callbackURL := "https://example.com/callback?code=demo-code&state=" + stateToken
+
+	manager := newTestPluginManagerWithNotionClient(t, func(sessionStore authcache.Store) (*notionadapter.Client, error) {
 		return notionadapter.NewClient(notionadapter.Options{
 			BaseURL: "https://api.notion.com",
 			HTTPClient: &http.Client{
@@ -949,45 +827,20 @@ func TestRunAuthContinueNotionPublicWithCallbackURL(t *testing.T) {
 			},
 			SessionStore: sessionStore,
 		})
-	}
-
-	beginResult := runAuthBeginForTest(t, []string{
-		"auth", "begin", "notion_public_workspace_a",
-		"--mode", "manual_code",
-		"--redirect-uri", "https://example.com/callback",
 	})
 
-	flowID := nestedString(beginResult, "data", "flow", "id")
-	authURL := nestedString(beginResult, "data", "flow", "authorization_url")
-	if flowID == "" || authURL == "" {
-		t.Fatalf("expected flow id and authorization_url, got: %+v", beginResult)
-	}
-
-	parsedURL, err := url.Parse(authURL)
-	if err != nil {
-		t.Fatalf("failed to parse authorization url: %v", err)
-	}
-	stateToken := parsedURL.Query().Get("state")
-	if stateToken == "" {
-		t.Fatalf("expected state token in authorization url: %s", authURL)
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	callbackURL := "https://example.com/callback?code=demo-code&state=" + stateToken
-
-	err = Run([]string{"auth", "continue", flowID, "--callback-url", callbackURL}, Dependencies{
+	err = Run([]string{"auth", "complete", flowID, "--callback-url", callbackURL}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
-		PluginManager: newTestPluginManager(t),
+		PluginManager: manager,
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte(`"state": "completed"`)) {
-		t.Fatalf("expected completed flow output, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte(`"status": "ready"`)) {
+		t.Fatalf("expected ready result output, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"workspace_name": "Workspace Demo"`)) {
 		t.Fatalf("expected workspace metadata in output, got: %s", stdout.String())
@@ -1046,7 +899,26 @@ func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
+	return newTestPluginManagerWithClients(t, feishuClient, nil)
+}
+
+func newTestPluginManagerWithNotionClient(t *testing.T, factory func(sessionStore authcache.Store) (*notionadapter.Client, error)) *pluginruntime.Manager {
+	t.Helper()
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu test client: %v", err)
+	}
+	return newTestPluginManagerWithClients(t, feishuClient, factory)
+}
+
+func newTestPluginManagerWithClients(t *testing.T, feishuClient *feishuadapter.Client, notionFactory func(sessionStore authcache.Store) (*notionadapter.Client, error)) *pluginruntime.Manager {
+	t.Helper()
+
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
+	if notionFactory != nil {
+		notionClient, err = notionFactory(nil)
+	}
 	if err != nil {
 		t.Fatalf("failed to construct notion test client: %v", err)
 	}
@@ -1058,8 +930,12 @@ func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 	notionadapter.RegisterOperations(notionRegistry, notionClient)
 
 	manager, err := pluginruntime.NewManager(context.Background(), []pluginruntime.Runtime{
-		pluginruntime.NewRegistryRuntime("feishu", "test", []string{"feishu"}, feishuRegistry, pluginruntime.FilterCatalogByPrefix(speccatalog.All(), "feishu.")),
-		pluginruntime.NewRegistryRuntime("notion", "test", []string{"notion"}, notionRegistry, pluginruntime.FilterCatalogByPrefix(speccatalog.All(), "notion.")),
+		pluginruntime.NewRegistryRuntimeWithOptions("feishu", "test", []string{"feishu"}, feishuRegistry, pluginruntime.CatalogFromRegistry(feishuRegistry), pluginruntime.RegistryRuntimeOptions{
+			AuthProvider: feishuadapter.NewAuthProvider(feishuClient),
+		}),
+		pluginruntime.NewRegistryRuntimeWithOptions("notion", "test", []string{"notion"}, notionRegistry, pluginruntime.CatalogFromRegistry(notionRegistry), pluginruntime.RegistryRuntimeOptions{
+			AuthProvider: notionadapter.NewAuthProvider(notionClient),
+		}),
 	})
 	if err != nil {
 		t.Fatalf("failed to construct test plugin manager: %v", err)
@@ -1142,7 +1018,7 @@ func runSecretSet(t *testing.T, connectionName string, fieldName string, value s
 	}
 }
 
-func runAuthBeginForTest(t *testing.T, args []string) map[string]any {
+func runAuthLoginForTest(t *testing.T, args []string) map[string]any {
 	t.Helper()
 
 	var stdout bytes.Buffer

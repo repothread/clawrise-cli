@@ -14,39 +14,42 @@ type Config struct {
 	Paths       PathsConfig           `yaml:"paths,omitempty"`
 	Auth        AuthConfig            `yaml:"auth,omitempty"`
 	Runtime     RuntimeConfig         `yaml:"runtime,omitempty"`
-	Connections map[string]Connection `yaml:"connections"`
+	Accounts    map[string]Account    `yaml:"accounts,omitempty"`
+	Connections map[string]Connection `yaml:"-"`
 	Profiles    map[string]Profile    `yaml:"-"`
 }
 
 // Defaults stores the default platform and default execution connection.
 type Defaults struct {
-	Platform    string            `yaml:"platform,omitempty"`
-	Connections map[string]string `yaml:"connections,omitempty"`
+	Platform         string            `yaml:"platform,omitempty"`
+	Connections      map[string]string `yaml:"-"`
+	PlatformAccounts map[string]string `yaml:"platform_accounts,omitempty"`
+	Account          string            `yaml:"account,omitempty"`
 
-	// 这些字段仅保留给当前仓库的内部兼容层，不再作为推荐模型。
+	// These fields remain internal-only for the current adapter bridge.
 	Subject string `yaml:"subject,omitempty"`
-	Profile string `yaml:"profile,omitempty"`
+	Profile string `yaml:"-"`
 }
 
-// PathsConfig 描述配置目录和状态目录覆盖项。
+// PathsConfig describes config and state path overrides.
 type PathsConfig struct {
 	ConfigDir string `yaml:"config_dir,omitempty"`
 	StateDir  string `yaml:"state_dir,omitempty"`
 }
 
-// AuthConfig 描述授权相关的底层存储策略。
+// AuthConfig describes low-level auth storage settings.
 type AuthConfig struct {
 	SecretStore  SecretStoreConfig  `yaml:"secret_store,omitempty"`
 	SessionStore SessionStoreConfig `yaml:"session_store,omitempty"`
 }
 
-// SecretStoreConfig 描述长期敏感信息的存储策略。
+// SecretStoreConfig describes storage settings for long-lived secrets.
 type SecretStoreConfig struct {
 	Backend         string `yaml:"backend,omitempty"`
 	FallbackBackend string `yaml:"fallback_backend,omitempty"`
 }
 
-// SessionStoreConfig 描述短期 session 的存储策略。
+// SessionStoreConfig describes storage settings for short-lived sessions.
 type SessionStoreConfig struct {
 	Backend string `yaml:"backend,omitempty"`
 }
@@ -59,11 +62,26 @@ type Connection struct {
 	Method   string           `yaml:"method,omitempty"`
 	Params   ConnectionParams `yaml:"params,omitempty"`
 
-	// 这一组字段只用于当前代码库的适配层，避免一次性改动全部 adapter。
+	// This legacy grant stays only as an internal adapter bridge.
 	Grant Grant `yaml:"grant,omitempty"`
 }
 
-// ConnectionParams 描述会落入主配置文件的非敏感参数。
+// Account is the persisted account configuration shape.
+type Account struct {
+	Title    string      `yaml:"title,omitempty"`
+	Platform string      `yaml:"platform"`
+	Subject  string      `yaml:"subject"`
+	Auth     AccountAuth `yaml:"auth,omitempty"`
+}
+
+// AccountAuth describes the auth method and fields used by one account.
+type AccountAuth struct {
+	Method     string            `yaml:"method,omitempty"`
+	Public     map[string]any    `yaml:"public,omitempty"`
+	SecretRefs map[string]string `yaml:"secret_refs,omitempty"`
+}
+
+// ConnectionParams describes non-secret fields for legacy adapter wiring.
 type ConnectionParams struct {
 	AppID         string   `yaml:"app_id,omitempty"`
 	ClientID      string   `yaml:"client_id,omitempty"`
@@ -85,19 +103,19 @@ type Grant struct {
 	NotionVer    string `yaml:"notion_version,omitempty"`
 }
 
-// RuntimeConfig 描述运行时治理相关配置。
+// RuntimeConfig describes runtime governance settings.
 type RuntimeConfig struct {
 	Retry RetryConfig `yaml:"retry,omitempty"`
 }
 
-// RetryConfig 描述自动重试策略。
+// RetryConfig describes automatic retry settings.
 type RetryConfig struct {
 	MaxAttempts int `yaml:"max_attempts,omitempty"`
 	BaseDelayMS int `yaml:"base_delay_ms,omitempty"`
 	MaxDelayMS  int `yaml:"max_delay_ms,omitempty"`
 }
 
-// Profile 是 Connection 的内部别名，便于平滑迁移已有实现。
+// Profile remains an internal alias for the resolved execution shape.
 type Profile = Connection
 
 // NamedProfile is a connection value paired with its config key.
@@ -109,6 +127,7 @@ type NamedProfile struct {
 // New returns an empty config.
 func New() *Config {
 	return &Config{
+		Accounts:    map[string]Account{},
 		Connections: map[string]Connection{},
 		Profiles:    map[string]Profile{},
 	}
@@ -116,8 +135,21 @@ func New() *Config {
 
 // Ensure initializes nil maps so later writes remain safe.
 func (c *Config) Ensure() {
+	if c.Accounts == nil {
+		c.Accounts = map[string]Account{}
+	}
 	if c.Connections == nil {
 		c.Connections = map[string]Connection{}
+	}
+	if len(c.Accounts) == 0 && len(c.Connections) > 0 {
+		for name, connection := range c.Connections {
+			c.Accounts[name] = buildAccountFromConnection(name, connection)
+		}
+	}
+	if len(c.Connections) == 0 && len(c.Accounts) > 0 {
+		for name, account := range c.Accounts {
+			c.Connections[name] = buildConnectionFromAccount(name, account)
+		}
 	}
 	if len(c.Connections) == 0 && len(c.Profiles) > 0 {
 		for name, profile := range c.Profiles {
@@ -127,9 +159,31 @@ func (c *Config) Ensure() {
 	if c.Defaults.Connections == nil {
 		c.Defaults.Connections = map[string]string{}
 	}
+	if c.Defaults.PlatformAccounts == nil {
+		c.Defaults.PlatformAccounts = map[string]string{}
+	}
+	if c.Defaults.Account == "" && strings.TrimSpace(c.Defaults.Profile) != "" {
+		c.Defaults.Account = strings.TrimSpace(c.Defaults.Profile)
+	}
+	if c.Defaults.Profile == "" && strings.TrimSpace(c.Defaults.Account) != "" {
+		c.Defaults.Profile = strings.TrimSpace(c.Defaults.Account)
+	}
+	if len(c.Defaults.PlatformAccounts) == 0 && len(c.Defaults.Connections) > 0 {
+		for platform, accountName := range c.Defaults.Connections {
+			c.Defaults.PlatformAccounts[platform] = accountName
+		}
+	}
+	if len(c.Defaults.Connections) == 0 && len(c.Defaults.PlatformAccounts) > 0 {
+		for platform, accountName := range c.Defaults.PlatformAccounts {
+			c.Defaults.Connections[platform] = accountName
+		}
+	}
 	for name, connection := range c.Connections {
 		connection = normalizeConnection(name, connection)
 		c.Connections[name] = connection
+		if _, ok := c.Accounts[name]; !ok {
+			c.Accounts[name] = buildAccountFromConnection(name, connection)
+		}
 	}
 	c.Profiles = c.Connections
 }
@@ -137,6 +191,12 @@ func (c *Config) Ensure() {
 // CandidateProfiles returns candidate profiles for a platform in a stable order.
 func (c *Config) CandidateProfiles(platform string) []NamedProfile {
 	return c.CandidateProfilesBySubject(platform, "")
+}
+
+// ResolvedAccount returns the resolved internal execution shape for an account.
+func (c *Config) ResolvedAccount(name string) Connection {
+	c.Ensure()
+	return c.Connections[strings.TrimSpace(name)]
 }
 
 // CandidateProfilesBySubject returns candidate profiles for a platform and,
@@ -173,15 +233,204 @@ func (c *Config) Marshal() ([]byte, error) {
 
 	cloned := *c
 	cloned.Profiles = nil
-	cloned.Connections = map[string]Connection{}
+	cloned.Connections = nil
+	cloned.Defaults.Connections = nil
+	cloned.Defaults.Profile = ""
 	for name, connection := range c.Connections {
-		connection = normalizeConnection(name, connection)
-		if shouldOmitLegacyGrantOnMarshal(connection) {
-			connection.Grant = Grant{}
+		if _, ok := cloned.Accounts[name]; ok {
+			continue
 		}
-		cloned.Connections[name] = connection
+		cloned.Accounts[name] = buildAccountFromConnection(name, connection)
 	}
 	return yaml.Marshal(&cloned)
+}
+
+func buildAccountFromConnection(connectionName string, connection Connection) Account {
+	connection = normalizeConnection(connectionName, connection)
+	account := Account{
+		Title:    connection.Title,
+		Platform: connection.Platform,
+		Subject:  connection.Subject,
+		Auth: AccountAuth{
+			Method:     strings.TrimSpace(connection.Method),
+			Public:     map[string]any{},
+			SecretRefs: map[string]string{},
+		},
+	}
+
+	setSecretRef := func(field string, value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		account.Auth.SecretRefs[field] = value
+	}
+
+	switch strings.TrimSpace(connection.Method) {
+	case "feishu.app_credentials":
+		if value := strings.TrimSpace(connection.Params.AppID); value != "" {
+			account.Auth.Public["app_id"] = value
+		}
+		setSecretRef("app_secret", connection.Grant.AppSecret)
+	case "feishu.oauth_user":
+		if value := strings.TrimSpace(connection.Params.ClientID); value != "" {
+			account.Auth.Public["client_id"] = value
+		}
+		if value := strings.TrimSpace(connection.Params.RedirectMode); value != "" {
+			account.Auth.Public["redirect_mode"] = value
+		}
+		if len(connection.Params.Scopes) > 0 {
+			account.Auth.Public["scopes"] = append([]string(nil), connection.Params.Scopes...)
+		}
+		setSecretRef("client_secret", connection.Grant.ClientSecret)
+		setSecretRef("access_token", connection.Grant.AccessToken)
+		setSecretRef("refresh_token", connection.Grant.RefreshToken)
+	case "notion.internal_token":
+		if value := strings.TrimSpace(connection.Params.NotionVersion); value != "" {
+			account.Auth.Public["notion_version"] = value
+		}
+		setSecretRef("token", connection.Grant.Token)
+	case "notion.oauth_public":
+		if value := strings.TrimSpace(connection.Params.ClientID); value != "" {
+			account.Auth.Public["client_id"] = value
+		}
+		if value := strings.TrimSpace(connection.Params.NotionVersion); value != "" {
+			account.Auth.Public["notion_version"] = value
+		}
+		if value := strings.TrimSpace(connection.Params.RedirectMode); value != "" {
+			account.Auth.Public["redirect_mode"] = value
+		}
+		if len(connection.Params.Scopes) > 0 {
+			account.Auth.Public["scopes"] = append([]string(nil), connection.Params.Scopes...)
+		}
+		setSecretRef("client_secret", connection.Grant.ClientSecret)
+		setSecretRef("access_token", connection.Grant.AccessToken)
+		setSecretRef("refresh_token", connection.Grant.RefreshToken)
+	default:
+		account.Auth.Method = strings.TrimSpace(connection.Method)
+	}
+
+	if len(account.Auth.Public) == 0 {
+		account.Auth.Public = nil
+	}
+	if len(account.Auth.SecretRefs) == 0 {
+		account.Auth.SecretRefs = nil
+	}
+	return account
+}
+
+func buildConnectionFromAccount(accountName string, account Account) Connection {
+	connection := Connection{
+		Title:    account.Title,
+		Platform: account.Platform,
+		Subject:  account.Subject,
+		Method:   strings.TrimSpace(account.Auth.Method),
+	}
+
+	publicString := func(field string) string {
+		if account.Auth.Public == nil {
+			return ""
+		}
+		value, ok := account.Auth.Public[field]
+		if !ok {
+			return ""
+		}
+		text, ok := value.(string)
+		if !ok {
+			return ""
+		}
+		return strings.TrimSpace(text)
+	}
+	publicStringSlice := func(field string) []string {
+		if account.Auth.Public == nil {
+			return nil
+		}
+		value, ok := account.Auth.Public[field]
+		if !ok {
+			return nil
+		}
+		switch typed := value.(type) {
+		case []string:
+			return append([]string(nil), typed...)
+		case []any:
+			items := make([]string, 0, len(typed))
+			for _, raw := range typed {
+				text, ok := raw.(string)
+				if !ok {
+					continue
+				}
+				text = strings.TrimSpace(text)
+				if text == "" {
+					continue
+				}
+				items = append(items, text)
+			}
+			return items
+		default:
+			return nil
+		}
+	}
+	secretRef := func(field string) string {
+		if account.Auth.SecretRefs == nil {
+			return ""
+		}
+		return strings.TrimSpace(account.Auth.SecretRefs[field])
+	}
+
+	switch connection.Method {
+	case "feishu.app_credentials":
+		connection.Params.AppID = publicString("app_id")
+		connection.Grant = Grant{
+			Type:      "client_credentials",
+			AppID:     connection.Params.AppID,
+			AppSecret: firstNonEmpty(secretRef("app_secret"), SecretRef(accountName, "app_secret")),
+		}
+	case "feishu.oauth_user":
+		connection.Params.ClientID = publicString("client_id")
+		connection.Params.RedirectMode = publicString("redirect_mode")
+		connection.Params.Scopes = publicStringSlice("scopes")
+		connection.Grant = Grant{
+			Type:         "oauth_user",
+			ClientID:     connection.Params.ClientID,
+			ClientSecret: firstNonEmpty(secretRef("client_secret"), SecretRef(accountName, "client_secret")),
+			AccessToken:  secretRef("access_token"),
+			RefreshToken: firstNonEmpty(secretRef("refresh_token"), SecretRef(accountName, "refresh_token")),
+		}
+	case "notion.internal_token":
+		connection.Params.NotionVersion = publicString("notion_version")
+		connection.Grant = Grant{
+			Type:      "static_token",
+			Token:     firstNonEmpty(secretRef("token"), SecretRef(accountName, "token")),
+			NotionVer: connection.Params.NotionVersion,
+		}
+	case "notion.oauth_public":
+		connection.Params.ClientID = publicString("client_id")
+		connection.Params.NotionVersion = publicString("notion_version")
+		connection.Params.RedirectMode = publicString("redirect_mode")
+		connection.Params.Scopes = publicStringSlice("scopes")
+		connection.Grant = Grant{
+			Type:         "oauth_refreshable",
+			ClientID:     connection.Params.ClientID,
+			ClientSecret: firstNonEmpty(secretRef("client_secret"), SecretRef(accountName, "client_secret")),
+			AccessToken:  secretRef("access_token"),
+			RefreshToken: firstNonEmpty(secretRef("refresh_token"), SecretRef(accountName, "refresh_token")),
+			NotionVer:    connection.Params.NotionVersion,
+		}
+	default:
+		connection.Grant = Grant{Type: legacyGrantTypeForMethod(connection.Method)}
+	}
+
+	return connection
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func normalizeConnection(name string, connection Connection) Connection {
@@ -255,7 +504,7 @@ func buildLegacyGrant(connectionName string, connection Connection) Grant {
 		grant = connection.Grant
 	}
 
-	// 测试里仍然可能直接构造 legacy Grant，这里保留回退路径。
+	// Tests may still build the legacy grant shape directly, so keep this fallback.
 	if grant.AppID == "" {
 		grant.AppID = connection.Grant.AppID
 	}
@@ -316,12 +565,12 @@ func legacyGrantTypeForMethod(method string) string {
 	}
 }
 
-// LegacyGrantTypeForMethod 返回当前 method 对应的 legacy grant type。
+// LegacyGrantTypeForMethod returns the legacy grant type for one auth method.
 func LegacyGrantTypeForMethod(method string) string {
 	return legacyGrantTypeForMethod(method)
 }
 
-// SecretRef 把 secret store 中的字段编码成统一引用。
+// SecretRef encodes one secret-store field reference in the shared format.
 func SecretRef(connectionName string, field string) string {
 	return "secret:" + strings.TrimSpace(connectionName) + ":" + strings.TrimSpace(field)
 }

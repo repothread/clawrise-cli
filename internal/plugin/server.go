@@ -79,6 +79,54 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 			}
 			return CatalogResult{Entries: entries}, nil
 		})
+	case "clawrise.auth.methods.list":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			methods, err := runtime.ListAuthMethods(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return AuthMethodsListResult{Methods: methods}, nil
+		})
+	case "clawrise.auth.presets.list":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			presets, err := runtime.ListAuthPresets(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return AuthPresetsListResult{Presets: presets}, nil
+		})
+	case "clawrise.auth.inspect":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			params, err := decodeRPCParams[AuthInspectParams](request.Params)
+			if err != nil {
+				return nil, err
+			}
+			return runtime.InspectAuth(ctx, params)
+		})
+	case "clawrise.auth.begin":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			params, err := decodeRPCParams[AuthBeginParams](request.Params)
+			if err != nil {
+				return nil, err
+			}
+			return runtime.BeginAuth(ctx, params)
+		})
+	case "clawrise.auth.complete":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			params, err := decodeRPCParams[AuthCompleteParams](request.Params)
+			if err != nil {
+				return nil, err
+			}
+			return runtime.CompleteAuth(ctx, params)
+		})
+	case "clawrise.auth.resolve":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			params, err := decodeRPCParams[AuthResolveParams](request.Params)
+			if err != nil {
+				return nil, err
+			}
+			return runtime.ResolveAuth(ctx, params)
+		})
 	case "clawrise.execute":
 		return callRPC(request, func(ctx context.Context) (any, error) {
 			params, err := decodeRPCParams[ExecuteParams](request.Params)
@@ -94,8 +142,9 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 
 			result, err := runtime.Execute(ctx, ExecuteRequest{
 				Operation:      params.Request.Operation,
-				ProfileName:    params.Identity.ProfileName,
+				AccountName:    params.Identity.AccountName,
 				Profile:        buildProfileFromIdentity(params.Identity),
+				IdentityAuth:   params.Identity.Auth,
 				Input:          params.Request.Input,
 				IdempotencyKey: params.Request.IdempotencyKey,
 			})
@@ -178,11 +227,24 @@ func writeRPCResponse(writer io.Writer, response RPCResponse) error {
 }
 
 func buildProfileFromIdentity(identity ExecuteIdentity) config.Profile {
+	authType := asStringOrEmpty(identity.Auth["type"])
+	if authType == "resolved_access_token" {
+		return config.Profile{
+			Platform: identity.Platform,
+			Subject:  identity.Subject,
+			Grant: config.Grant{
+				Type:        authType,
+				AccessToken: asStringOrEmpty(identity.Auth["access_token"]),
+				NotionVer:   asStringOrEmpty(identity.Auth["notion_version"]),
+			},
+		}
+	}
+
 	profile := config.Profile{
 		Platform: identity.Platform,
 		Subject:  identity.Subject,
 		Grant: config.Grant{
-			Type: asStringOrEmpty(identity.Auth["type"]),
+			Type: authType,
 		},
 	}
 	profile.Grant.AppID = asStringOrEmpty(identity.Auth["app_id"])

@@ -132,6 +132,11 @@ func (c *Client) requireAccessToken(ctx context.Context, profile config.Profile)
 
 	notionVersion := resolveNotionVersion(profile)
 	switch profile.Grant.Type {
+	case "resolved_access_token":
+		if strings.TrimSpace(profile.Grant.AccessToken) == "" {
+			return "", "", apperr.New("INVALID_AUTH_CONFIG", "resolved Notion access token is empty")
+		}
+		return strings.TrimSpace(profile.Grant.AccessToken), notionVersion, nil
 	case "static_token":
 		token, err := config.ResolveSecret(profile.Grant.Token)
 		if err != nil {
@@ -297,9 +302,9 @@ func resolveNotionVersion(profile config.Profile) string {
 func buildNotionAuthorizationRequiredError(ctx context.Context) *apperr.AppError {
 	profileName := strings.TrimSpace(adapter.ProfileNameFromContext(ctx))
 	if profileName == "" {
-		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth connect <connection>` first")
+		return apperr.New("AUTHORIZATION_REQUIRED", "interactive authorization has not been completed; run `clawrise auth login <account>` first")
 	}
-	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for connection %s; run `clawrise auth connect %s` first", profileName, profileName))
+	return apperr.New("AUTHORIZATION_REQUIRED", fmt.Sprintf("interactive authorization has not been completed for account %s; run `clawrise auth login %s` first", profileName, profileName))
 }
 
 func shouldTreatOAuthSecretAsPending(raw string, err error) bool {
