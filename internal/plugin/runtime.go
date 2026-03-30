@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
@@ -37,6 +38,14 @@ type AuthProvider interface {
 	Resolve(ctx context.Context, params AuthResolveParams) (AuthResolveResult, error)
 }
 
+// AuthLauncherRuntime 描述授权动作执行器 runtime。
+type AuthLauncherRuntime interface {
+	Name() string
+	Handshake(ctx context.Context) (HandshakeResult, error)
+	DescribeAuthLauncher(ctx context.Context) (AuthLauncherDescriptor, error)
+	LaunchAuth(ctx context.Context, params AuthLaunchParams) (AuthLaunchResult, error)
+}
+
 // HandshakeResult describes one provider runtime handshake result.
 type HandshakeResult struct {
 	ProtocolVersion int      `json:"protocol_version"`
@@ -67,16 +76,33 @@ type HealthResult struct {
 	Details map[string]any `json:"details,omitempty"`
 }
 
+// ManagerOptions 描述 manager 的可选能力。
+type ManagerOptions struct {
+	AuthLaunchers []AuthLauncherRuntime
+}
+
+type authLauncherRegistration struct {
+	runtime    AuthLauncherRuntime
+	descriptor AuthLauncherDescriptor
+	order      int
+}
+
 // Manager aggregates provider runtimes into one execution and discovery view.
 type Manager struct {
 	registry          *adapter.Registry
 	catalogEntries    []speccatalog.Entry
 	operationRuntimes map[string]Runtime
 	platformRuntimes  map[string]Runtime
+	authLaunchers     []authLauncherRegistration
 }
 
 // NewManager creates one aggregated provider runtime manager.
 func NewManager(ctx context.Context, runtimes []Runtime) (*Manager, error) {
+	return NewManagerWithOptions(ctx, runtimes, ManagerOptions{})
+}
+
+// NewManagerWithOptions creates one aggregated provider runtime manager with optional launchers.
+func NewManagerWithOptions(ctx context.Context, runtimes []Runtime, options ManagerOptions) (*Manager, error) {
 	registry := adapter.NewRegistry()
 	operationRuntimes := make(map[string]Runtime)
 	platformRuntimes := make(map[string]Runtime)
@@ -137,11 +163,38 @@ func NewManager(ctx context.Context, runtimes []Runtime) (*Manager, error) {
 		catalogEntries = append(catalogEntries, entries...)
 	}
 
+	authLaunchers := make([]authLauncherRegistration, 0, len(options.AuthLaunchers))
+	for index, runtime := range options.AuthLaunchers {
+		handshake, err := runtime.Handshake(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to handshake auth launcher %s: %w", runtime.Name(), err)
+		}
+		if handshake.Name == "" {
+			return nil, fmt.Errorf("auth launcher %s returned an empty handshake name", runtime.Name())
+		}
+		descriptor, err := runtime.DescribeAuthLauncher(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to describe auth launcher %s: %w", runtime.Name(), err)
+		}
+		if strings.TrimSpace(descriptor.ID) == "" {
+			descriptor.ID = handshake.Name
+		}
+		if strings.TrimSpace(descriptor.DisplayName) == "" {
+			descriptor.DisplayName = descriptor.ID
+		}
+		authLaunchers = append(authLaunchers, authLauncherRegistration{
+			runtime:    runtime,
+			descriptor: descriptor,
+			order:      index,
+		})
+	}
+
 	return &Manager{
 		registry:          registry,
 		catalogEntries:    catalogEntries,
 		operationRuntimes: operationRuntimes,
 		platformRuntimes:  platformRuntimes,
+		authLaunchers:     authLaunchers,
 	}, nil
 }
 
@@ -162,6 +215,18 @@ func (m *Manager) RuntimeForPlatform(platform string) (Runtime, bool) {
 	}
 	runtime, ok := m.platformRuntimes[strings.TrimSpace(platform)]
 	return runtime, ok
+}
+
+// AuthLaunchers returns all registered auth launcher descriptors.
+func (m *Manager) AuthLaunchers() []AuthLauncherDescriptor {
+	if m == nil || len(m.authLaunchers) == 0 {
+		return nil
+	}
+	items := make([]AuthLauncherDescriptor, 0, len(m.authLaunchers))
+	for _, launcher := range m.authLaunchers {
+		items = append(items, launcher.descriptor)
+	}
+	return items
 }
 
 // ListAuthMethods returns the auth method descriptors exposed by provider runtimes.
@@ -242,7 +307,73 @@ func (m *Manager) ResolveAuth(ctx context.Context, platform string, params AuthR
 	return runtime.ResolveAuth(ctx, params)
 }
 
-// NewDiscoveredManager creates a manager backed only by discovered external plugins.
+// LaunchAuth delegates one launchable auth action to the most suitable launcher runtime.
+func (m *Manager) LaunchAuth(ctx context.Context, params AuthLaunchParams) (AuthLaunchResult, error) {
+	if m == nil || len(m.authLaunchers) == 0 {
+		return AuthLaunchResult{
+			Handled: false,
+			Status:  "no_launcher_available",
+			Message: "no auth launcher is registered",
+		}, nil
+	}
+
+	candidates := make([]authLauncherRegistration, 0)
+	for _, launcher := range m.authLaunchers {
+		if !launcherSupportsAction(launcher.descriptor, params.Context.Platform, params.Action.Type) {
+			continue
+		}
+		candidates = append(candidates, launcher)
+	}
+	if len(candidates) == 0 {
+		return AuthLaunchResult{
+			Handled: false,
+			Status:  "no_matching_launcher",
+			Message: fmt.Sprintf("no auth launcher supports action %s", strings.TrimSpace(params.Action.Type)),
+		}, nil
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].descriptor.Priority == candidates[j].descriptor.Priority {
+			return candidates[i].order < candidates[j].order
+		}
+		return candidates[i].descriptor.Priority > candidates[j].descriptor.Priority
+	})
+
+	var launchErr error
+	for _, launcher := range candidates {
+		result, err := launcher.runtime.LaunchAuth(ctx, params)
+		if err != nil {
+			launchErr = err
+			continue
+		}
+		if strings.TrimSpace(result.LauncherID) == "" {
+			result.LauncherID = launcher.descriptor.ID
+		}
+		if strings.TrimSpace(result.Status) == "" {
+			if result.Handled {
+				result.Status = "launched"
+			} else {
+				result.Status = "skipped"
+			}
+		}
+		return result, nil
+	}
+
+	if launchErr == nil {
+		return AuthLaunchResult{
+			Handled: false,
+			Status:  "launcher_skipped",
+		}, nil
+	}
+	return AuthLaunchResult{
+		Handled: false,
+		Status:  "launcher_failed",
+		Message: launchErr.Error(),
+	}, launchErr
+}
+
+// NewDiscoveredManager creates a manager backed by discovered provider plugins
+// and available auth launchers.
 func NewDiscoveredManager(ctx context.Context) (*Manager, error) {
 	roots, err := DefaultDiscoveryRoots()
 	if err != nil {
@@ -252,5 +383,36 @@ func NewDiscoveredManager(ctx context.Context) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewManager(ctx, NewProcessRuntimes(manifests))
+	providerManifests, launcherManifests := SplitManifestsByKind(manifests)
+	launchers := append([]AuthLauncherRuntime{
+		NewSystemAuthLauncherRuntime(),
+	}, NewProcessAuthLaunchers(launcherManifests)...)
+	return NewManagerWithOptions(ctx, NewProcessRuntimes(providerManifests), ManagerOptions{
+		AuthLaunchers: launchers,
+	})
+}
+
+func launcherSupportsAction(descriptor AuthLauncherDescriptor, platform string, actionType string) bool {
+	actionType = strings.TrimSpace(actionType)
+	if actionType == "" {
+		return false
+	}
+
+	if len(descriptor.ActionTypes) > 0 && !stringSliceContainsTrimmed(descriptor.ActionTypes, actionType) {
+		return false
+	}
+	if len(descriptor.Platforms) > 0 && !stringSliceContainsTrimmed(descriptor.Platforms, platform) {
+		return false
+	}
+	return true
+}
+
+func stringSliceContainsTrimmed(values []string, target string) bool {
+	target = strings.TrimSpace(target)
+	for _, value := range values {
+		if strings.TrimSpace(value) == target {
+			return true
+		}
+	}
+	return false
 }

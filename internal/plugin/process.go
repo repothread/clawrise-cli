@@ -132,6 +132,24 @@ func (r *ProcessRuntime) ResolveAuth(ctx context.Context, params AuthResolvePara
 	return result, nil
 }
 
+// DescribeAuthLauncher returns launcher capability metadata from one external plugin.
+func (r *ProcessRuntime) DescribeAuthLauncher(ctx context.Context) (AuthLauncherDescriptor, error) {
+	var result AuthLauncherDescribeResult
+	if err := r.call(ctx, "clawrise.auth.launcher.describe", map[string]any{}, &result); err != nil {
+		return AuthLauncherDescriptor{}, err
+	}
+	return result.Launcher, nil
+}
+
+// LaunchAuth delegates one auth action to the external launcher plugin.
+func (r *ProcessRuntime) LaunchAuth(ctx context.Context, params AuthLaunchParams) (AuthLaunchResult, error) {
+	var result AuthLaunchResult
+	if err := r.call(ctx, "clawrise.auth.launcher.run", params, &result); err != nil {
+		return AuthLaunchResult{}, err
+	}
+	return result, nil
+}
+
 func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 	var result ExecuteRPCResult
 	identityAuth := req.IdentityAuth
@@ -244,6 +262,15 @@ func (r *ProcessRuntime) ensureStarted(ctx context.Context) error {
 	r.stdout = bufio.NewReader(stdout)
 	r.started = true
 	return nil
+}
+
+// NewProcessAuthLaunchers creates process-backed auth launchers from manifests.
+func NewProcessAuthLaunchers(manifests []Manifest) []AuthLauncherRuntime {
+	launchers := make([]AuthLauncherRuntime, 0, len(manifests))
+	for _, manifest := range manifests {
+		launchers = append(launchers, NewProcessRuntime(manifest))
+	}
+	return launchers
 }
 
 // Close terminates the plugin child process and releases related resources.

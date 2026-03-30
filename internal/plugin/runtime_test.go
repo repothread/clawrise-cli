@@ -62,6 +62,99 @@ func TestManagerAggregatesCatalogEntries(t *testing.T) {
 	}
 }
 
+func TestManagerLaunchAuthUsesHighestPriorityMatchingLauncher(t *testing.T) {
+	calls := []string{}
+	manager, err := NewManagerWithOptions(context.Background(), []Runtime{
+		NewRegistryRuntime("demo", "test", []string{"demo"}, buildDemoRegistry(), nil),
+	}, ManagerOptions{
+		AuthLaunchers: []AuthLauncherRuntime{
+			&testLauncherRuntime{
+				descriptor: AuthLauncherDescriptor{
+					ID:          "low",
+					DisplayName: "low",
+					ActionTypes: []string{"open_url"},
+					Priority:    10,
+				},
+				launch: func(params AuthLaunchParams) (AuthLaunchResult, error) {
+					calls = append(calls, "low")
+					return AuthLaunchResult{Handled: true, Status: "launched", LauncherID: "low"}, nil
+				},
+			},
+			&testLauncherRuntime{
+				descriptor: AuthLauncherDescriptor{
+					ID:          "high",
+					DisplayName: "high",
+					ActionTypes: []string{"open_url"},
+					Priority:    100,
+				},
+				launch: func(params AuthLaunchParams) (AuthLaunchResult, error) {
+					calls = append(calls, "high")
+					return AuthLaunchResult{Handled: true, Status: "launched", LauncherID: "high"}, nil
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions returned error: %v", err)
+	}
+
+	result, err := manager.LaunchAuth(context.Background(), AuthLaunchParams{
+		Context: AuthLaunchContext{
+			AccountName: "demo_account",
+			Platform:    "demo",
+		},
+		Action: AuthAction{
+			Type: "open_url",
+			URL:  "https://example.com/auth",
+		},
+	})
+	if err != nil {
+		t.Fatalf("LaunchAuth returned error: %v", err)
+	}
+	if !result.Handled || result.LauncherID != "high" {
+		t.Fatalf("unexpected launch result: %+v", result)
+	}
+	if len(calls) != 1 || calls[0] != "high" {
+		t.Fatalf("expected only high priority launcher to run, got: %+v", calls)
+	}
+}
+
+func TestManagerLaunchAuthReturnsNoMatchingLauncher(t *testing.T) {
+	manager, err := NewManagerWithOptions(context.Background(), []Runtime{
+		NewRegistryRuntime("demo", "test", []string{"demo"}, buildDemoRegistry(), nil),
+	}, ManagerOptions{
+		AuthLaunchers: []AuthLauncherRuntime{
+			&testLauncherRuntime{
+				descriptor: AuthLauncherDescriptor{
+					ID:          "device-only",
+					DisplayName: "device-only",
+					ActionTypes: []string{"device_code"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions returned error: %v", err)
+	}
+
+	result, err := manager.LaunchAuth(context.Background(), AuthLaunchParams{
+		Context: AuthLaunchContext{
+			AccountName: "demo_account",
+			Platform:    "demo",
+		},
+		Action: AuthAction{
+			Type: "open_url",
+			URL:  "https://example.com/auth",
+		},
+	})
+	if err != nil {
+		t.Fatalf("LaunchAuth returned error: %v", err)
+	}
+	if result.Handled || result.Status != "no_matching_launcher" {
+		t.Fatalf("unexpected launch result: %+v", result)
+	}
+}
+
 func buildDemoRegistry() *adapter.Registry {
 	registry := adapter.NewRegistry()
 	registry.Register(adapter.Definition{
@@ -85,4 +178,32 @@ func buildDemoRegistry() *adapter.Registry {
 		},
 	})
 	return registry
+}
+
+type testLauncherRuntime struct {
+	descriptor AuthLauncherDescriptor
+	launch     func(params AuthLaunchParams) (AuthLaunchResult, error)
+}
+
+func (r *testLauncherRuntime) Name() string {
+	return r.descriptor.ID
+}
+
+func (r *testLauncherRuntime) Handshake(ctx context.Context) (HandshakeResult, error) {
+	return HandshakeResult{
+		ProtocolVersion: ProtocolVersion,
+		Name:            r.descriptor.ID,
+		Version:         "test",
+	}, nil
+}
+
+func (r *testLauncherRuntime) DescribeAuthLauncher(ctx context.Context) (AuthLauncherDescriptor, error) {
+	return r.descriptor, nil
+}
+
+func (r *testLauncherRuntime) LaunchAuth(ctx context.Context, params AuthLaunchParams) (AuthLaunchResult, error) {
+	if r.launch == nil {
+		return AuthLaunchResult{Handled: false, Status: "skipped"}, nil
+	}
+	return r.launch(params)
 }

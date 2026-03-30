@@ -138,3 +138,77 @@ done
 		t.Fatalf("unexpected health result: %+v", health)
 	}
 }
+
+func TestProcessRuntimeDescribeAndLaunchAuthLauncher(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "launcher")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "launcher-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"launcher","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.auth.launcher.describe"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"launcher":{"id":"launcher","display_name":"Launcher","action_types":["open_url"],"priority":10}}}'"\n"
+      ;;
+    *'"method":"clawrise.auth.launcher.run"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"handled":true,"status":"launched","launcher_id":"launcher"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write launcher plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 1,
+  "name": "launcher",
+  "version": "0.1.0",
+  "kind": "auth_launcher",
+  "protocol_version": 1,
+  "entry": {
+    "type": "binary",
+    "command": ["./launcher-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessRuntime(manifest)
+
+	descriptor, err := runtime.DescribeAuthLauncher(context.Background())
+	if err != nil {
+		t.Fatalf("DescribeAuthLauncher returned error: %v", err)
+	}
+	if descriptor.ID != "launcher" {
+		t.Fatalf("unexpected launcher descriptor: %+v", descriptor)
+	}
+
+	result, err := runtime.LaunchAuth(context.Background(), AuthLaunchParams{
+		Context: AuthLaunchContext{
+			AccountName: "demo",
+			Platform:    "demo",
+		},
+		Action: AuthAction{
+			Type: "open_url",
+			URL:  "https://example.com/auth",
+		},
+	})
+	if err != nil {
+		t.Fatalf("LaunchAuth returned error: %v", err)
+	}
+	if !result.Handled || result.LauncherID != "launcher" {
+		t.Fatalf("unexpected launch result: %+v", result)
+	}
+}

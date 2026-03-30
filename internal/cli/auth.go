@@ -118,6 +118,7 @@ func printAuthHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth inspect [account]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth check [account]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth login [account] [--mode <name>] [--redirect-uri <uri>] [--open-browser=true|false]")
+	_, _ = fmt.Fprintln(stdout, "         --open-browser controls whether Clawrise should invoke an auth launcher automatically")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth complete <flow_id> [--callback-url <url> | --code <text>]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth logout [account]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth secret [set|put|delete] <account> <field>")

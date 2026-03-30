@@ -723,16 +723,23 @@ func TestRunAuthLoginUsesLoopbackRedirectModeDefault(t *testing.T) {
 
 func TestRunAuthLoginOpensAuthorizationURL(t *testing.T) {
 	copyExampleConfig(t)
-
-	previousOpenAuthURL := openAuthURL
-	t.Cleanup(func() {
-		openAuthURL = previousOpenAuthURL
-	})
-
-	openedURL := ""
-	openAuthURL = func(rawURL string) error {
-		openedURL = rawURL
-		return nil
+	launcher := &testAuthLauncherRuntime{
+		descriptor: pluginruntime.AuthLauncherDescriptor{
+			ID:          "test_launcher",
+			DisplayName: "test launcher",
+			ActionTypes: []string{"open_url"},
+			Priority:    100,
+		},
+		launch: func(params pluginruntime.AuthLaunchParams) (pluginruntime.AuthLaunchResult, error) {
+			return pluginruntime.AuthLaunchResult{
+				Handled:    true,
+				Status:     "launched",
+				LauncherID: "test_launcher",
+				Metadata: map[string]any{
+					"url": params.Action.URL,
+				},
+			}, nil
+		},
 	}
 
 	var stdout bytes.Buffer
@@ -745,23 +752,214 @@ func TestRunAuthLoginOpensAuthorizationURL(t *testing.T) {
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
-		PluginManager: newTestPluginManager(t),
+		PluginManager: newTestPluginManagerWithLaunchers(t, []pluginruntime.AuthLauncherRuntime{launcher}),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
 	}
 
-	if openedURL == "" {
-		t.Fatalf("expected auth login to open authorization url, stdout=%s", stdout.String())
-	}
+	openedURL := nestedStringFromBytes(t, stdout.Bytes(), "data", "launcher", "metadata", "url")
 	if !strings.HasPrefix(openedURL, "https://api.notion.com/v1/oauth/authorize") {
 		t.Fatalf("unexpected opened url: %s", openedURL)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"opened": true`)) {
 		t.Fatalf("expected browser opened result, got: %s", stdout.String())
 	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"launcher_id": "test_launcher"`)) {
+		t.Fatalf("expected launcher result in output, got: %s", stdout.String())
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunAuthLoginAndCompleteWithDeviceCode(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	configYAML := `defaults:
+  platform: device
+  account: device_user
+  platform_accounts:
+    device: device_user
+
+auth:
+  secret_store:
+    backend: encrypted_file
+    fallback_backend: encrypted_file
+  session_store:
+    backend: file
+
+accounts:
+  device_user:
+    title: 设备码测试账号
+    platform: device
+    subject: user
+    auth:
+      method: device.oauth
+      public:
+        client_id: demo-client
+`
+	if err := os.WriteFile(configPath, []byte(configYAML), 0o600); err != nil {
+		t.Fatalf("failed to write device test config: %v", err)
+	}
+
+	var launchedAction pluginruntime.AuthLaunchParams
+	launcher := &testAuthLauncherRuntime{
+		descriptor: pluginruntime.AuthLauncherDescriptor{
+			ID:          "device_launcher",
+			DisplayName: "device launcher",
+			ActionTypes: []string{"device_code"},
+			Priority:    100,
+		},
+		launch: func(params pluginruntime.AuthLaunchParams) (pluginruntime.AuthLaunchResult, error) {
+			launchedAction = params
+			return pluginruntime.AuthLaunchResult{
+				Handled:    true,
+				Status:     "launched",
+				LauncherID: "device_launcher",
+				Metadata: map[string]any{
+					"verification_url": params.Action.VerificationURL,
+					"user_code":        params.Action.UserCode,
+				},
+			}, nil
+		},
+	}
+
+	provider := &testAuthProvider{
+		listMethods: func(ctx context.Context) ([]pluginruntime.AuthMethodDescriptor, error) {
+			return []pluginruntime.AuthMethodDescriptor{
+				{
+					ID:               "device.oauth",
+					Platform:         "device",
+					DisplayName:      "Device OAuth",
+					Subjects:         []string{"user"},
+					Kind:             "interactive",
+					Interactive:      true,
+					InteractiveModes: []string{"device_code"},
+				},
+			}, nil
+		},
+		begin: func(ctx context.Context, params pluginruntime.AuthBeginParams) (pluginruntime.AuthBeginResult, error) {
+			return pluginruntime.AuthBeginResult{
+				HumanRequired: true,
+				Flow: pluginruntime.AuthFlowPayload{
+					ID:              "flow_device_code_demo",
+					Method:          "device.oauth",
+					Mode:            "device_code",
+					State:           "awaiting_user_action",
+					DeviceCode:      "device-code-demo",
+					UserCode:        "ABCD-EFGH",
+					VerificationURL: "https://auth.example.com/verify",
+					IntervalSec:     5,
+					ExpiresAt:       "2026-03-30T10:00:00Z",
+				},
+				NextActions: []pluginruntime.AuthAction{
+					{
+						Type:            "device_code",
+						Message:         "请在浏览器中输入用户码完成授权",
+						DeviceCode:      "device-code-demo",
+						UserCode:        "ABCD-EFGH",
+						VerificationURL: "https://auth.example.com/verify",
+						IntervalSec:     5,
+					},
+				},
+			}, nil
+		},
+		complete: func(ctx context.Context, params pluginruntime.AuthCompleteParams) (pluginruntime.AuthCompleteResult, error) {
+			if params.Flow.Mode != "device_code" {
+				t.Fatalf("expected device_code mode in complete params, got: %+v", params.Flow)
+			}
+			if params.Flow.DeviceCode != "device-code-demo" {
+				t.Fatalf("expected persisted device_code in complete params, got: %+v", params.Flow)
+			}
+			if params.Flow.UserCode != "ABCD-EFGH" || params.Flow.VerificationURL != "https://auth.example.com/verify" {
+				t.Fatalf("expected persisted device code fields in complete params, got: %+v", params.Flow)
+			}
+			return pluginruntime.AuthCompleteResult{
+				Ready:  true,
+				Status: "ready",
+				ExecutionAuth: map[string]any{
+					"type":         "resolved_access_token",
+					"access_token": "device-token",
+				},
+			}, nil
+		},
+		resolve: func(ctx context.Context, params pluginruntime.AuthResolveParams) (pluginruntime.AuthResolveResult, error) {
+			return pluginruntime.AuthResolveResult{
+				Ready:             false,
+				Status:            "authorization_required",
+				HumanRequired:     true,
+				RecommendedAction: "auth.login",
+			}, nil
+		},
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu test client: %v", err)
+	}
+	deviceRuntime := pluginruntime.NewRegistryRuntimeWithOptions(
+		"device",
+		"test",
+		[]string{"device"},
+		adapter.NewRegistry(),
+		nil,
+		pluginruntime.RegistryRuntimeOptions{
+			AuthProvider: provider,
+		},
+	)
+	manager := newTestPluginManagerWithOptions(t, feishuClient, nil, []pluginruntime.AuthLauncherRuntime{launcher}, []pluginruntime.Runtime{deviceRuntime})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = Run([]string{"auth", "login", "device_user"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: manager,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if launchedAction.Action.Type != "device_code" {
+		t.Fatalf("expected launcher to receive device_code action, got: %+v", launchedAction)
+	}
+	if launchedAction.Action.UserCode != "ABCD-EFGH" {
+		t.Fatalf("expected launcher to receive user_code, got: %+v", launchedAction)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"mode": "device_code"`)) {
+		t.Fatalf("expected device_code mode in auth login output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"user_code": "ABCD-EFGH"`)) {
+		t.Fatalf("expected user_code in auth login output, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"launcher_id": "device_launcher"`)) {
+		t.Fatalf("expected launcher result in auth login output, got: %s", stdout.String())
+	}
+
+	var loginResult map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &loginResult); err != nil {
+		t.Fatalf("failed to decode login result: %v", err)
+	}
+	flowID := nestedString(loginResult, "data", "flow", "id")
+	if flowID != "flow_device_code_demo" {
+		t.Fatalf("unexpected flow id: %s", flowID)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"auth", "complete", flowID}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: manager,
+	})
+	if err != nil {
+		t.Fatalf("auth complete returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"status": "ready"`)) {
+		t.Fatalf("expected ready status in auth complete output, got: %s", stdout.String())
 	}
 }
 
@@ -899,7 +1097,7 @@ func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithClients(t, feishuClient, nil)
+	return newTestPluginManagerWithOptions(t, feishuClient, nil, nil, nil)
 }
 
 func newTestPluginManagerWithNotionClient(t *testing.T, factory func(sessionStore authcache.Store) (*notionadapter.Client, error)) *pluginruntime.Manager {
@@ -909,10 +1107,20 @@ func newTestPluginManagerWithNotionClient(t *testing.T, factory func(sessionStor
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithClients(t, feishuClient, factory)
+	return newTestPluginManagerWithOptions(t, feishuClient, factory, nil, nil)
 }
 
-func newTestPluginManagerWithClients(t *testing.T, feishuClient *feishuadapter.Client, notionFactory func(sessionStore authcache.Store) (*notionadapter.Client, error)) *pluginruntime.Manager {
+func newTestPluginManagerWithLaunchers(t *testing.T, launchers []pluginruntime.AuthLauncherRuntime) *pluginruntime.Manager {
+	t.Helper()
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu test client: %v", err)
+	}
+	return newTestPluginManagerWithOptions(t, feishuClient, nil, launchers, nil)
+}
+
+func newTestPluginManagerWithOptions(t *testing.T, feishuClient *feishuadapter.Client, notionFactory func(sessionStore authcache.Store) (*notionadapter.Client, error), launchers []pluginruntime.AuthLauncherRuntime, extraRuntimes []pluginruntime.Runtime) *pluginruntime.Manager {
 	t.Helper()
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
@@ -929,18 +1137,102 @@ func newTestPluginManagerWithClients(t *testing.T, feishuClient *feishuadapter.C
 	notionRegistry := adapter.NewRegistry()
 	notionadapter.RegisterOperations(notionRegistry, notionClient)
 
-	manager, err := pluginruntime.NewManager(context.Background(), []pluginruntime.Runtime{
+	runtimes := []pluginruntime.Runtime{
 		pluginruntime.NewRegistryRuntimeWithOptions("feishu", "test", []string{"feishu"}, feishuRegistry, pluginruntime.CatalogFromRegistry(feishuRegistry), pluginruntime.RegistryRuntimeOptions{
 			AuthProvider: feishuadapter.NewAuthProvider(feishuClient),
 		}),
 		pluginruntime.NewRegistryRuntimeWithOptions("notion", "test", []string{"notion"}, notionRegistry, pluginruntime.CatalogFromRegistry(notionRegistry), pluginruntime.RegistryRuntimeOptions{
 			AuthProvider: notionadapter.NewAuthProvider(notionClient),
 		}),
+	}
+	runtimes = append(runtimes, extraRuntimes...)
+
+	manager, err := pluginruntime.NewManagerWithOptions(context.Background(), runtimes, pluginruntime.ManagerOptions{
+		AuthLaunchers: launchers,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct test plugin manager: %v", err)
 	}
 	return manager
+}
+
+type testAuthLauncherRuntime struct {
+	descriptor pluginruntime.AuthLauncherDescriptor
+	launch     func(params pluginruntime.AuthLaunchParams) (pluginruntime.AuthLaunchResult, error)
+}
+
+func (r *testAuthLauncherRuntime) Name() string {
+	return r.descriptor.ID
+}
+
+func (r *testAuthLauncherRuntime) Handshake(ctx context.Context) (pluginruntime.HandshakeResult, error) {
+	return pluginruntime.HandshakeResult{
+		ProtocolVersion: pluginruntime.ProtocolVersion,
+		Name:            r.descriptor.ID,
+		Version:         "test",
+	}, nil
+}
+
+func (r *testAuthLauncherRuntime) DescribeAuthLauncher(ctx context.Context) (pluginruntime.AuthLauncherDescriptor, error) {
+	return r.descriptor, nil
+}
+
+func (r *testAuthLauncherRuntime) LaunchAuth(ctx context.Context, params pluginruntime.AuthLaunchParams) (pluginruntime.AuthLaunchResult, error) {
+	if r.launch == nil {
+		return pluginruntime.AuthLaunchResult{Handled: false, Status: "skipped"}, nil
+	}
+	return r.launch(params)
+}
+
+type testAuthProvider struct {
+	listMethods func(ctx context.Context) ([]pluginruntime.AuthMethodDescriptor, error)
+	listPresets func(ctx context.Context) ([]pluginruntime.AuthPresetDescriptor, error)
+	inspect     func(ctx context.Context, params pluginruntime.AuthInspectParams) (pluginruntime.AuthInspectResult, error)
+	begin       func(ctx context.Context, params pluginruntime.AuthBeginParams) (pluginruntime.AuthBeginResult, error)
+	complete    func(ctx context.Context, params pluginruntime.AuthCompleteParams) (pluginruntime.AuthCompleteResult, error)
+	resolve     func(ctx context.Context, params pluginruntime.AuthResolveParams) (pluginruntime.AuthResolveResult, error)
+}
+
+func (p *testAuthProvider) ListMethods(ctx context.Context) ([]pluginruntime.AuthMethodDescriptor, error) {
+	if p.listMethods == nil {
+		return nil, nil
+	}
+	return p.listMethods(ctx)
+}
+
+func (p *testAuthProvider) ListPresets(ctx context.Context) ([]pluginruntime.AuthPresetDescriptor, error) {
+	if p.listPresets == nil {
+		return nil, nil
+	}
+	return p.listPresets(ctx)
+}
+
+func (p *testAuthProvider) Inspect(ctx context.Context, params pluginruntime.AuthInspectParams) (pluginruntime.AuthInspectResult, error) {
+	if p.inspect == nil {
+		return pluginruntime.AuthInspectResult{}, nil
+	}
+	return p.inspect(ctx, params)
+}
+
+func (p *testAuthProvider) Begin(ctx context.Context, params pluginruntime.AuthBeginParams) (pluginruntime.AuthBeginResult, error) {
+	if p.begin == nil {
+		return pluginruntime.AuthBeginResult{}, nil
+	}
+	return p.begin(ctx, params)
+}
+
+func (p *testAuthProvider) Complete(ctx context.Context, params pluginruntime.AuthCompleteParams) (pluginruntime.AuthCompleteResult, error) {
+	if p.complete == nil {
+		return pluginruntime.AuthCompleteResult{}, nil
+	}
+	return p.complete(ctx, params)
+}
+
+func (p *testAuthProvider) Resolve(ctx context.Context, params pluginruntime.AuthResolveParams) (pluginruntime.AuthResolveResult, error) {
+	if p.resolve == nil {
+		return pluginruntime.AuthResolveResult{}, nil
+	}
+	return p.resolve(ctx, params)
 }
 
 type testRoundTripFunc struct {
@@ -1051,4 +1343,14 @@ func nestedString(data map[string]any, keys ...string) string {
 	}
 	text, _ := current.(string)
 	return text
+}
+
+func nestedStringFromBytes(t *testing.T, data []byte, keys ...string) string {
+	t.Helper()
+
+	result := map[string]any{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("failed to decode json output: %v; output=%s", err, string(data))
+	}
+	return nestedString(result, keys...)
 }

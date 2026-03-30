@@ -150,8 +150,10 @@ type AuthAction struct {
 	Type            string `json:"type"`
 	Message         string `json:"message,omitempty"`
 	URL             string `json:"url,omitempty"`
+	DeviceCode      string `json:"device_code,omitempty"`
 	UserCode        string `json:"user_code,omitempty"`
 	VerificationURL string `json:"verification_url,omitempty"`
+	IntervalSec     int    `json:"interval_sec,omitempty"`
 	Field           string `json:"field,omitempty"`
 }
 
@@ -240,8 +242,10 @@ type AuthFlowPayload struct {
 	State            string            `json:"state,omitempty"`
 	RedirectURI      string            `json:"redirect_uri,omitempty"`
 	AuthorizationURL string            `json:"authorization_url,omitempty"`
+	DeviceCode       string            `json:"device_code,omitempty"`
 	UserCode         string            `json:"user_code,omitempty"`
 	VerificationURL  string            `json:"verification_url,omitempty"`
+	IntervalSec      int               `json:"interval_sec,omitempty"`
 	Metadata         map[string]string `json:"metadata,omitempty"`
 	ExpiresAt        string            `json:"expires_at,omitempty"`
 }
@@ -299,4 +303,44 @@ type AuthResolveResult struct {
 	HumanRequired     bool                `json:"human_required,omitempty"`
 	RecommendedAction string              `json:"recommended_action,omitempty"`
 	NextActions       []AuthAction        `json:"next_actions,omitempty"`
+}
+
+// AuthLaunchContext 描述一次授权动作执行所需的最小上下文。
+// 这里刻意不包含 secret / session，避免把敏感信息泄漏给 launcher。
+type AuthLaunchContext struct {
+	AccountName string `json:"account_name"`
+	Platform    string `json:"platform"`
+	Subject     string `json:"subject,omitempty"`
+	AuthMethod  string `json:"auth_method,omitempty"`
+}
+
+// AuthLauncherDescriptor 描述一个授权动作执行器的能力。
+type AuthLauncherDescriptor struct {
+	ID          string   `json:"id"`
+	DisplayName string   `json:"display_name"`
+	Description string   `json:"description,omitempty"`
+	ActionTypes []string `json:"action_types,omitempty"`
+	Platforms   []string `json:"platforms,omitempty"`
+	Priority    int      `json:"priority,omitempty"`
+}
+
+// AuthLauncherDescribeResult 描述 launcher 元数据响应。
+type AuthLauncherDescribeResult struct {
+	Launcher AuthLauncherDescriptor `json:"launcher"`
+}
+
+// AuthLaunchParams 描述 launcher 执行一次授权动作的请求。
+type AuthLaunchParams struct {
+	Context AuthLaunchContext `json:"context"`
+	Flow    AuthFlowPayload   `json:"flow"`
+	Action  AuthAction        `json:"action"`
+}
+
+// AuthLaunchResult 描述 launcher 对一次授权动作的执行结果。
+type AuthLaunchResult struct {
+	Handled    bool           `json:"handled"`
+	Status     string         `json:"status"`
+	Message    string         `json:"message,omitempty"`
+	LauncherID string         `json:"launcher_id,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }

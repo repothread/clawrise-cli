@@ -20,6 +20,10 @@ type Flow struct {
 	CallbackPort     int               `json:"callback_port,omitempty"`
 	CallbackPath     string            `json:"callback_path,omitempty"`
 	AuthorizationURL string            `json:"authorization_url,omitempty"`
+	DeviceCode       string            `json:"device_code,omitempty"`
+	UserCode         string            `json:"user_code,omitempty"`
+	VerificationURL  string            `json:"verification_url,omitempty"`
+	IntervalSec      int               `json:"interval_sec,omitempty"`
 	CreatedAt        time.Time         `json:"created_at"`
 	UpdatedAt        time.Time         `json:"updated_at"`
 	ExpiresAt        time.Time         `json:"expires_at"`
@@ -88,6 +92,14 @@ func BuildActions(flow Flow) []Action {
 	}
 
 	actions := []Action{}
+	if flow.Mode == "device_code" && flow.VerificationURL != "" {
+		actions = append(actions, Action{
+			Type:        "device_code",
+			URL:         flow.VerificationURL,
+			Field:       "device_code",
+			Description: "在浏览器中打开验证页面并输入用户码完成授权",
+		})
+	}
 	if flow.AuthorizationURL != "" {
 		actions = append(actions, Action{
 			Type:        "open_url",

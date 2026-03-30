@@ -165,7 +165,7 @@ func runAuthLogin(args []string, cfg *config.Config, store *config.Store, stdout
 	flags.StringVar(&redirectURI, "redirect-uri", "", "set the OAuth redirect_uri explicitly")
 	flags.StringVar(&callbackHost, "callback-host", "", "set the loopback callback host")
 	flags.StringVar(&callbackPath, "callback-path", "/callback", "set the loopback callback path")
-	flags.BoolVar(&openBrowser, "open-browser", true, "open the authorization URL in a browser automatically")
+	flags.BoolVar(&openBrowser, "open-browser", true, "launch the primary auth action automatically when possible")
 
 	if err := flags.Parse(args); err != nil {
 		if err == pflag.ErrHelp {
@@ -206,16 +206,48 @@ func runAuthLogin(args []string, cfg *config.Config, store *config.Store, stdout
 		return err
 	}
 
-	openResult := map[string]any{
+	launcherInfo := map[string]any{
+		"attempted": openBrowser,
+		"handled":   false,
+	}
+	if openBrowser {
+		launchResult, launchErr := launchPrimaryAuthAction(context.Background(), manager, accountName, account, result.Flow, result.NextActions)
+		launcherInfo["handled"] = launchResult.Handled
+		if strings.TrimSpace(launchResult.Status) != "" {
+			launcherInfo["status"] = launchResult.Status
+		}
+		if strings.TrimSpace(launchResult.LauncherID) != "" {
+			launcherInfo["launcher_id"] = launchResult.LauncherID
+		}
+		if strings.TrimSpace(launchResult.Message) != "" {
+			launcherInfo["message"] = launchResult.Message
+		}
+		if len(launchResult.Metadata) > 0 {
+			launcherInfo["metadata"] = launchResult.Metadata
+		}
+		if launchErr != nil {
+			launcherInfo["error"] = launchErr.Error()
+		}
+	}
+
+	browserInfo := map[string]any{
 		"attempted": openBrowser,
 		"opened":    false,
 	}
-	if openBrowser && strings.TrimSpace(result.Flow.AuthorizationURL) != "" {
-		if openErr := openAuthURL(result.Flow.AuthorizationURL); openErr != nil {
-			openResult["error"] = openErr.Error()
-		} else {
-			openResult["opened"] = true
-		}
+	if handled, _ := launcherInfo["handled"].(bool); handled {
+		browserInfo["opened"] = true
+	}
+	if status, _ := launcherInfo["status"].(string); strings.TrimSpace(status) != "" {
+		browserInfo["status"] = status
+	}
+	if message, _ := launcherInfo["message"].(string); strings.TrimSpace(message) != "" {
+		browserInfo["message"] = message
+	}
+	if launcherID, _ := launcherInfo["launcher_id"].(string); strings.TrimSpace(launcherID) != "" {
+		browserInfo["launcher_id"] = launcherID
+	}
+	if launchErr, _ := launcherInfo["error"].(string); strings.TrimSpace(launchErr) != "" {
+		browserInfo["error"] = launchErr
 	}
 
 	return output.WriteJSON(stdout, map[string]any{
@@ -234,9 +266,14 @@ func runAuthLogin(args []string, cfg *config.Config, store *config.Store, stdout
 				"state":             result.Flow.State,
 				"redirect_uri":      result.Flow.RedirectURI,
 				"authorization_url": result.Flow.AuthorizationURL,
+				"device_code":       result.Flow.DeviceCode,
+				"user_code":         result.Flow.UserCode,
+				"verification_url":  result.Flow.VerificationURL,
+				"interval_sec":      result.Flow.IntervalSec,
 				"expires_at":        result.Flow.ExpiresAt,
 			},
-			"browser":      openResult,
+			"launcher":     launcherInfo,
+			"browser":      browserInfo,
 			"next_actions": result.NextActions,
 		},
 	})
@@ -454,6 +491,10 @@ func authFlowFromPluginResult(accountName string, account config.Account, flow p
 		State:            flow.State,
 		RedirectURI:      flow.RedirectURI,
 		AuthorizationURL: flow.AuthorizationURL,
+		DeviceCode:       flow.DeviceCode,
+		UserCode:         flow.UserCode,
+		VerificationURL:  flow.VerificationURL,
+		IntervalSec:      flow.IntervalSec,
 		Metadata:         flow.Metadata,
 	}
 	if flow.ExpiresAt != "" {
@@ -472,10 +513,55 @@ func pluginFlowFromStoredFlow(flow authflow.Flow) pluginruntime.AuthFlowPayload 
 		State:            flow.State,
 		RedirectURI:      flow.RedirectURI,
 		AuthorizationURL: flow.AuthorizationURL,
+		DeviceCode:       flow.DeviceCode,
+		UserCode:         flow.UserCode,
+		VerificationURL:  flow.VerificationURL,
+		IntervalSec:      flow.IntervalSec,
 		Metadata:         flow.Metadata,
 	}
 	if !flow.ExpiresAt.IsZero() {
 		payload.ExpiresAt = flow.ExpiresAt.UTC().Format(time.RFC3339)
 	}
 	return payload
+}
+
+func launchPrimaryAuthAction(ctx context.Context, manager *pluginruntime.Manager, accountName string, account config.Account, flow pluginruntime.AuthFlowPayload, actions []pluginruntime.AuthAction) (pluginruntime.AuthLaunchResult, error) {
+	if manager == nil {
+		return pluginruntime.AuthLaunchResult{
+			Handled: false,
+			Status:  "no_launcher_available",
+			Message: "plugin manager is not available",
+		}, nil
+	}
+
+	action, ok := selectLaunchableAuthAction(actions)
+	if !ok {
+		return pluginruntime.AuthLaunchResult{
+			Handled: false,
+			Status:  "no_launchable_action",
+			Message: "the auth flow does not expose a launchable action",
+		}, nil
+	}
+
+	return manager.LaunchAuth(ctx, pluginruntime.AuthLaunchParams{
+		Context: pluginruntime.AuthLaunchContext{
+			AccountName: accountName,
+			Platform:    account.Platform,
+			Subject:     account.Subject,
+			AuthMethod:  account.Auth.Method,
+		},
+		Flow:   flow,
+		Action: action,
+	})
+}
+
+func selectLaunchableAuthAction(actions []pluginruntime.AuthAction) (pluginruntime.AuthAction, bool) {
+	for _, preferredType := range []string{"device_code", "open_url"} {
+		for _, action := range actions {
+			if strings.TrimSpace(action.Type) == preferredType {
+				return action, true
+			}
+		}
+	}
+	return pluginruntime.AuthAction{}, false
 }

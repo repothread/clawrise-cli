@@ -11,7 +11,14 @@ import (
 // ManifestFileName defines the required plugin manifest file name.
 const ManifestFileName = "plugin.json"
 
-// Manifest describes one installed provider plugin package.
+const (
+	// ManifestKindProvider 表示 provider 类 plugin。
+	ManifestKindProvider = "provider"
+	// ManifestKindAuthLauncher 表示授权动作执行器 plugin。
+	ManifestKindAuthLauncher = "auth_launcher"
+)
+
+// Manifest describes one installed plugin package.
 type Manifest struct {
 	SchemaVersion   int           `json:"schema_version"`
 	Name            string        `json:"name"`
@@ -60,14 +67,19 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.Version) == "" {
 		return fmt.Errorf("plugin manifest version is required")
 	}
-	if strings.TrimSpace(m.Kind) != "provider" {
-		return fmt.Errorf("plugin manifest kind must be provider")
+	kind := strings.TrimSpace(m.Kind)
+	switch kind {
+	case ManifestKindProvider:
+		if len(m.Platforms) == 0 {
+			return fmt.Errorf("plugin manifest platforms must not be empty")
+		}
+	case ManifestKindAuthLauncher:
+		// launcher plugin 可以不绑定具体平台，只声明自己支持的动作类型。
+	default:
+		return fmt.Errorf("plugin manifest kind must be %s or %s", ManifestKindProvider, ManifestKindAuthLauncher)
 	}
 	if m.ProtocolVersion <= 0 {
 		return fmt.Errorf("plugin manifest protocol_version must be positive")
-	}
-	if len(m.Platforms) == 0 {
-		return fmt.Errorf("plugin manifest platforms must not be empty")
 	}
 	if strings.TrimSpace(m.Entry.Type) != "binary" {
 		return fmt.Errorf("plugin manifest entry.type must be binary")
