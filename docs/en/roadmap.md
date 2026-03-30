@@ -1,182 +1,208 @@
 # Clawrise OSS Roadmap
 
-## 1. Purpose
+## 1. What This Document Is For
 
-This document tracks forward-looking OSS core priorities only.
+This roadmap is written for users, contributors, and community readers who want to understand where Clawrise is heading.
 
-It intentionally does not repeat shipped work. Completed capabilities should live in the repository introduction and `README` status instead of staying in the roadmap forever.
+It focuses on the next set of priorities that matter most, rather than repeating work that has already shipped.  
+For completed capabilities, please refer to the project `README` and its current status section.
 
-## 2. Current OSS Product Boundary
+## 2. What Clawrise Is Focused On Right Now
 
-In this repository, Clawrise should stay focused on:
+Clawrise is staying aligned with its core position:
 
-- the core runtime and CLI
-- the provider plugin protocol and first-party plugin baseline
-- `spec`, completion, and metadata-driven reference surfaces
-- local governance, diagnostics, and playbook support
+- It is a multi-platform CLI execution layer for agent and automation scenarios.
+- It focuses on stable task execution, a consistent calling surface, and a provider model that can keep scaling.
+- It is not the dedicated CLI for a single SaaS platform, and it is not trying to become a universal replacement for every existing platform CLI.
 
-## 3. Near-term Must-have
+For the current OSS phase, the most important decisions are:
 
-### 3.1 Official First-party Plugin Release Workflow
+- We will prioritize SaaS platforms that have solid APIs, meaningful automation value, and weak or missing CLI ecosystems.
+- We will continue pushing the plugin-first direction so platform capabilities live in provider plugins instead of being hard-coded back into the core.
+- We will stay open, positive, and respectful toward platforms that already have mature CLIs, but we will not make “rewriting and competing with their full command surface” a near-term goal.
 
-Why:
+In practice, that means:
 
-- the plugin-first runtime is already real, but official plugin delivery is still too ad hoc
-- users still need a clear, documented path for install, upgrade, and compatibility checks
+- Platforms like Notion, where the API is already useful but CLI support is still clearly lacking, remain strong candidates for focused OSS investment.
+- Platforms like Feishu, where a mature CLI already exists, still matter to us and will continue to serve as useful validation samples, but they are not where we plan to compete on command coverage.
 
-Deliverables:
+## 3. What We Want to Improve First
 
-- versioned first-party plugin release artifacts
-- a documented release manifest shape
-- compatibility fields between core and plugin versions
-- a documented install and upgrade path for official first-party plugins
-- `plugin verify` behavior that can consume published release metadata cleanly
+### 3.1 Make Install, Upgrade, and Verification Easier to Understand
 
-Completion signal:
+Clawrise has already moved into a plugin-first shape, but the official delivery path for first-party plugins still needs work.
 
-- a user can install and upgrade an official first-party plugin through a short documented path
-- compatibility mismatches are visible before a real execution attempt
+Our next step is to make the following much clearer:
 
-### 3.2 Remote-source Trust and Verification Policy
+- how first-party plugin releases are packaged and versioned
+- how users should install and upgrade them
+- how core and plugin compatibility should be understood
+- how `plugin verify` should be used in practice
 
-Why:
+The outcome we want is simple:
 
-- `https://` and `npm://` sources already exist, but trust policy is still incomplete
-- remote install support without a clearer trust model is not enough for broader adoption
+- installing a first-party plugin should feel shorter and clearer
+- upgrade problems should be visible earlier, before a real execution attempt fails
 
-Deliverables:
+### 3.2 Shorten the Path to a First Real Call
 
-- a documented trust model for remote plugin sources
-- checksum policy and clearer verification semantics
-- visible trust and verification results in plugin inspection or verify output
-- explicit failure behavior for tampered, incompatible, or incomplete plugin artifacts
-- reserved extension points for stronger signature policy later
+The command surface is already usable, but the path from a fresh install to one successful real call is still too manual.
 
-Completion signal:
+We want to keep reducing that first-run friction, especially around:
 
-- remote plugin install and verify can explain what was checked, what was trusted, and why a plugin was rejected
+- a tighter quickstart
+- a smoother path through `config init`, `auth check`, `doctor`, and one real execution
+- example inputs that match real CLI shapes more closely
+- clearer links between playbooks and runnable operations
 
-### 3.3 Onboarding to the First Successful Call
+The goal is not to make users read design documents first.  
+The goal is to get them to a real successful call sooner.
 
-Why:
+### 3.3 Prioritize Platforms Where CLI Support Is Still Missing
 
-- the command surface is usable now, but the first practical path is still too manual
-- the project needs a shorter path from fresh install to one successful real call
+For the OSS version of Clawrise, the clearest independent value comes from filling real gaps.
 
-Deliverables:
+That is why near-term first-party provider work will favor platforms that are:
 
-- a tighter quickstart for core plus first-party plugin setup
-- a short documented flow through `config init`, `auth check`, `doctor`, and one real call
-- sample inputs that match the current CLI shapes
-- clearer links between playbooks and the first runnable operations
+- already usable through APIs
+- clearly valuable for automation
+- meaningful in real usage volume or demand
+- still underserved by CLI tooling, or lacking a mature community standard
 
-Completion signal:
+These platforms are the right place to invest because the added value is obvious:
 
-- a new user can get from fresh install to one real call without reading the design documents first
+- users are not just getting another wrapper, they are getting a command surface they did not really have before
+- contributors can more easily understand why the work matters
+- the project can build durable task-level operations, playbooks, and metadata around them
 
-### 3.4 Plugin Authoring and Compatibility DX
+### 3.4 Stay Open and Cooperative with Mature CLIs
 
-Why:
+We do not want Clawrise to become a closed or adversarial project.
 
-- the open ecosystem cannot grow if third-party plugin authors must reverse-engineer the core
-- the plugin protocol exists, but the authoring path still needs better productization
+When a platform already has a mature CLI, our default posture should be:
 
-Deliverables:
+- open
+- constructive
+- respectful of the existing ecosystem
+- focused on complementary value rather than defaulting to direct competition
 
-- a concise plugin author guide
-- manifest and compatibility reference docs
-- a local validation or compatibility-check flow for plugin authors
-- clearer test guidance for plugin handshake, catalog, and execution behavior
+That does not mean ignoring those platforms.  
+It means handling them with more discipline:
 
-Completion signal:
+- we do not need to rush into cloning full command trees
+- we do not need to turn command coverage into a near-term race
+- we should not let one platform’s existing ecosystem hijack the project’s priorities
 
-- a third-party author can build and validate a minimal plugin without reading core internals line by line
+A more realistic direction is:
 
-### 3.5 Metadata-driven Operation Reference
+- keep a small set of high-value first-party capabilities that fit agent and cross-task scenarios
+- keep watching for future opportunities to cooperate, interoperate, or complement mature CLIs
+- make that position explicit in public docs so users and contributors are not left guessing
 
-Why:
+### 3.5 Make Plugin Authoring Easier to Follow
 
-- `spec export` and completion already exist, but downstream docs can still drift from runtime facts
-- the metadata layer should keep becoming the shared source for runtime, docs, and discovery
+If plugin authors have to reverse-engineer large parts of the core, ecosystem growth will stay slow.
 
-Deliverables:
+So we want to keep improving:
 
-- a stable exported metadata contract for downstream consumers
-- generated operation reference material from the same metadata layer used by `spec`
-- clearer linkage between runtime registry facts, catalog declarations, completion, and generated docs
+- the plugin author guide
+- manifest and compatibility documentation
+- local validation and minimal onboarding paths for plugin authors
+- clearer guidance around handshake, catalog, and execute testing
 
-Completion signal:
+The practical goal is to let contributors answer two questions quickly:
 
-- operation reference material is derived from the same metadata layer as `spec export` and completion rather than maintained separately
+- can I build a minimal provider plugin for this platform?
+- once I do, how do I know it is compatible with the current core?
 
-## 4. Should-have After the Must-have Layer
+### 3.6 Keep `spec`, Completion, and Docs on the Same Source of Truth
 
-### 4.1 Broader First-party Provider Surface
+Clawrise already has `spec export` and completion. That direction should keep getting tighter, not split into parallel systems.
 
-Why:
+We want to keep improving:
 
-- broader provider coverage is useful, but it should come after release workflow, trust policy, and onboarding are stable
+- a more stable exported metadata contract
+- operation reference material generated from the same metadata layer
+- a clearer relationship between runtime facts, catalog data, completion, and generated docs
 
-Notes:
+The value here is straightforward:
 
-- `google` remains a candidate next provider
-- it should not become the immediate next milestone before the plugin-first core is better hardened
+- users get more consistent capability documentation
+- contributors do not need to maintain multiple drifting sources of truth
+- agents can consume a more stable discovery surface
 
-### 4.2 Expanded Locally Searchable Playbooks
+## 4. What We Want the Community to Notice
 
-Why:
+If this phase goes well, the community should see a few visible improvements:
 
-- the current playbooks are a good baseline, but task coverage should continue to expand around the existing first-party providers
+- first-party plugin install, upgrade, and verification paths will be clearer than they are today
+- new users will have a shorter path from zero to one real successful call
+- the project’s platform selection logic will be easier to understand
+- Clawrise’s stance toward mature CLIs will be more explicit and less likely to be misread as “we want to rebuild everything”
+- third-party plugin authors will have a more reliable onboarding and compatibility boundary
+- `spec`, completion, and operation documentation will feel more unified
 
-Scope:
+## 5. Directions That Still Matter After That
 
-- add more high-signal task playbooks for Feishu and Notion
-- keep examples close to real CLI input shapes and verifiable paths
+These directions still matter. They just come after the priorities above.
 
-## 5. Can Wait
+### 5.1 Expand High-signal Playbooks
 
-These are still valid ideas, but they should stay clearly behind the Must-have layer above:
+We want to keep adding playbooks that are closer to real tasks, especially those that are:
+
+- high-frequency
+- easy to verify end to end
+- good examples of Clawrise’s task-level value
+
+### 5.2 Keep Watching Collaboration Opportunities with Mature CLIs
+
+Feishu will not be the only platform with a mature CLI ecosystem.
+
+Tools like `gh` are worth watching closely as well.  
+But that kind of work fits better as a later extension around interoperability and complementary value, not as a higher priority than filling CLI gaps.
+
+### 5.3 Expand First-party Providers Where It Clearly Makes Sense
+
+Expanding provider coverage is still a natural direction, but only when it is justified by real value:
+
+- it should be worth doing
+- users should clearly need it
+- it should lead to stable task capabilities
+- it should not be done just to increase the platform count
+
+## 6. What Is Not a Priority Right Now
+
+These areas are not unimportant. They are just not at the top of the list right now:
 
 - a public plugin marketplace
-- untrusted plugin sandboxing
+- sandboxing for untrusted plugins
 - a REPL-first interactive shell
 - a full JSON Schema framework
 - a cross-platform workflow engine
+- large provider-specific command tree rewrites done mainly for coverage
 
-## 6. Recommended Order
+## 7. What We Want to Avoid
 
-1. official first-party plugin release workflow
-2. remote-source trust and verification policy
-3. onboarding to the first successful call
-4. plugin authoring and compatibility DX
-5. metadata-driven operation reference
-6. broader first-party provider surface
-7. expanded locally searchable playbooks
+To keep the project pointed in the right direction, we want to avoid:
 
-## 7. Risks and Cautions
+- hard-coding platform details back into the core
+- turning the project back into a single-platform CLI rewrite effort
+- jumping into low-value command coverage competition just because a platform already has a mature ecosystem
+- creating multiple drifting metadata sources across `spec`, docs, completion, and runtime
+- treating remote install support as if the trust model were already complete
+- expanding provider surface too early before we are clear on whether a platform really deserves a first-party provider
 
-### 7.1 Do Not Reintroduce Hard-coded Providers into the Core
+## 8. Summary
 
-The plugin-first direction should remain the default architecture.
+The next OSS phase for Clawrise is not about trying to do every platform first.  
+It is about doing the most valuable parts well enough that users and contributors can clearly see why the project matters.
 
-### 7.2 Do Not Fork Metadata Across Runtime, `spec`, Docs, and Completion
+In the near term, that means:
 
-Runtime facts, `spec`, generated docs, completion, and playbooks should keep converging on the same metadata layer instead of drifting apart.
+- making the plugin-first path more solid
+- shortening the first-run experience
+- going deeper on platforms where CLI support is still missing
+- making our stance toward mature CLIs more explicit
+- making community participation easier around extension and integration paths
 
-### 7.3 Do Not Treat Remote Install Support as a Finished Trust Model
-
-Remote sources already work, but release and trust hardening still need deliberate product work.
-
-### 7.4 Do Not Expand Provider Surface Before Packaging and Onboarding Are Stable
-
-Adding more providers too early risks increasing surface area while the first-run and release path still feel unfinished.
-
-## 8. Completion Signal for the Next Phase
-
-The next OSS-core phase can be considered complete when:
-
-- official first-party plugins have a documented release, install, and upgrade path
-- remote install has clear trust and verification behavior
-- a new user can reach one real call through a short documented path
-- a third-party plugin author can build and validate against a documented compatibility contract
-- generated operation reference material reuses the same metadata layer as `spec export` and completion
+If we do that well, Clawrise should become easier to understand, easier to adopt, and easier to contribute to.
