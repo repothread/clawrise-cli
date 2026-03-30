@@ -315,7 +315,7 @@ func runAuthComplete(args []string, cfg *config.Config, store *config.Store, std
 	}
 
 	cfg.Ensure()
-	accountName := strings.TrimSpace(flow.ConnectionName)
+	accountName := strings.TrimSpace(flow.AccountName)
 	account, ok := cfg.Accounts[accountName]
 	if !ok {
 		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the flow account does not exist in current config")
@@ -490,7 +490,7 @@ func persistAuthPatches(cfg *config.Config, store *config.Store, accountName str
 func authFlowFromPluginResult(accountName string, account config.Account, flow pluginruntime.AuthFlowPayload) authflow.Flow {
 	result := authflow.Flow{
 		ID:               flow.ID,
-		ConnectionName:   accountName,
+		AccountName:      accountName,
 		Platform:         account.Platform,
 		Method:           account.Auth.Method,
 		Mode:             flow.Mode,

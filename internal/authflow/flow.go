@@ -10,7 +10,7 @@ const (
 // Flow describes one in-progress local auth flow.
 type Flow struct {
 	ID               string            `json:"id"`
-	ConnectionName   string            `json:"connection_name"`
+	AccountName      string            `json:"account_name"`
 	Platform         string            `json:"platform"`
 	Method           string            `json:"method"`
 	Mode             string            `json:"mode"`
