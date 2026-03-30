@@ -14,6 +14,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 	"github.com/clawrise/clawrise-cli/internal/config"
+	"github.com/clawrise/clawrise-cli/internal/locator"
 )
 
 const (
@@ -24,6 +25,7 @@ const (
 // runtimeGovernance manages idempotency, audit, and retry behavior.
 type runtimeGovernance struct {
 	paths runtimePaths
+	store governanceStore
 	retry retryPolicy
 	now   func() time.Time
 }
@@ -40,6 +42,21 @@ type retryPolicy struct {
 	maxAttempts int
 	baseDelay   time.Duration
 	maxDelay    time.Duration
+}
+
+type governanceStore interface {
+	EnsureIdempotencyDir() error
+	LoadIdempotencyRecord(key string) (*persistedIdempotencyRecord, error)
+	SaveIdempotencyRecord(record *persistedIdempotencyRecord) error
+	AppendAuditRecord(day string, record auditRecord) error
+}
+
+type governanceStoreFactory func(paths runtimePaths) governanceStore
+
+var governanceStoreFactories = map[string]governanceStoreFactory{
+	"file": func(paths runtimePaths) governanceStore {
+		return &fileGovernanceStore{paths: paths}
+	},
 }
 
 // persistedIdempotencyRecord is the on-disk idempotency record.
@@ -71,19 +88,28 @@ type auditRecord struct {
 	Idempotency   *IdempotencyState `json:"idempotency,omitempty"`
 }
 
+type fileGovernanceStore struct {
+	paths runtimePaths
+}
+
 func newRuntimeGovernance(configPath string, runtimeConfig config.RuntimeConfig, now func() time.Time) *runtimeGovernance {
 	if now == nil {
 		now = time.Now
 	}
+	paths := resolveRuntimePaths(configPath)
 	return &runtimeGovernance{
-		paths: resolveRuntimePaths(configPath),
+		paths: paths,
+		store: openGovernanceStore(paths, runtimeConfig.Governance.Backend),
 		retry: resolveRetryPolicy(runtimeConfig),
 		now:   now,
 	}
 }
 
 func resolveRuntimePaths(configPath string) runtimePaths {
-	rootDir := filepath.Join(filepath.Dir(configPath), "runtime")
+	rootDir, err := locator.ResolveRuntimeDir(configPath)
+	if err != nil {
+		rootDir = filepath.Join(filepath.Dir(configPath), "runtime")
+	}
 	return runtimePaths{
 		rootDir:        rootDir,
 		idempotencyDir: filepath.Join(rootDir, "idempotency"),
@@ -116,8 +142,8 @@ func (g *runtimeGovernance) startIdempotency(state *IdempotencyState, operation 
 	if state == nil {
 		return nil, false, nil
 	}
-	if err := os.MkdirAll(g.paths.idempotencyDir, 0o755); err != nil {
-		return nil, false, fmt.Errorf("failed to create idempotency directory: %w", err)
+	if err := g.store.EnsureIdempotencyDir(); err != nil {
+		return nil, false, err
 	}
 
 	inputHash, err := calculateInputHash(operation, input)
@@ -125,7 +151,7 @@ func (g *runtimeGovernance) startIdempotency(state *IdempotencyState, operation 
 		return nil, false, err
 	}
 
-	existingRecord, err := g.loadIdempotencyRecord(state.Key)
+	existingRecord, err := g.store.LoadIdempotencyRecord(state.Key)
 	if err != nil {
 		return nil, false, err
 	}
@@ -143,7 +169,7 @@ func (g *runtimeGovernance) startIdempotency(state *IdempotencyState, operation 
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := g.saveIdempotencyRecord(record); err != nil {
+	if err := g.store.SaveIdempotencyRecord(record); err != nil {
 		return nil, false, err
 	}
 
@@ -168,7 +194,7 @@ func (g *runtimeGovernance) finishIdempotency(state *IdempotencyState, record *p
 	record.Error = envelope.Error
 	record.Meta = envelope.Meta
 
-	if err := g.saveIdempotencyRecord(record); err != nil {
+	if err := g.store.SaveIdempotencyRecord(record); err != nil {
 		return err
 	}
 
@@ -235,10 +261,6 @@ func (g *runtimeGovernance) validateIdempotencyConflict(state *IdempotencyState,
 }
 
 func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) error {
-	if err := os.MkdirAll(g.paths.auditDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create audit directory: %w", err)
-	}
-
 	record := auditRecord{
 		Time:          g.now().UTC().Format(time.RFC3339),
 		RequestID:     envelope.RequestID,
@@ -251,52 +273,7 @@ func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) 
 		Meta:          envelope.Meta,
 		Idempotency:   cloneIdempotencyState(envelope.Idempotency),
 	}
-
-	filePath := filepath.Join(g.paths.auditDir, g.now().UTC().Format("2006-01-02")+".jsonl")
-	encoded, err := json.Marshal(record)
-	if err != nil {
-		return fmt.Errorf("failed to encode audit record: %w", err)
-	}
-
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("failed to open audit log file: %w", err)
-	}
-	defer file.Close()
-
-	if _, err := file.Write(append(encoded, '\n')); err != nil {
-		return fmt.Errorf("failed to write audit log file: %w", err)
-	}
-	return nil
-}
-
-func (g *runtimeGovernance) loadIdempotencyRecord(key string) (*persistedIdempotencyRecord, error) {
-	filePath := filepath.Join(g.paths.idempotencyDir, safeFilename(key)+".json")
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to read idempotency record: %w", err)
-	}
-
-	var record persistedIdempotencyRecord
-	if err := json.Unmarshal(data, &record); err != nil {
-		return nil, fmt.Errorf("failed to decode idempotency record: %w", err)
-	}
-	return &record, nil
-}
-
-func (g *runtimeGovernance) saveIdempotencyRecord(record *persistedIdempotencyRecord) error {
-	if err := os.MkdirAll(g.paths.idempotencyDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create idempotency directory: %w", err)
-	}
-
-	filePath := filepath.Join(g.paths.idempotencyDir, safeFilename(record.Key)+".json")
-	if err := atomicWriteJSONFile(filePath, record, 0o600); err != nil {
-		return fmt.Errorf("failed to write idempotency record: %w", err)
-	}
-	return nil
+	return g.store.AppendAuditRecord(g.now().UTC().Format("2006-01-02"), record)
 }
 
 func (g *runtimeGovernance) shouldRetry(definition adapter.Definition, appErr *apperr.AppError, retryCount int) bool {
@@ -374,6 +351,77 @@ func atomicWriteJSONFile(path string, value any, perm os.FileMode) error {
 		return err
 	}
 	return os.Rename(tempPath, path)
+}
+
+func openGovernanceStore(paths runtimePaths, backend string) governanceStore {
+	backend = strings.TrimSpace(strings.ToLower(backend))
+	if backend == "" || backend == "auto" {
+		backend = "file"
+	}
+	factory, ok := governanceStoreFactories[backend]
+	if !ok {
+		factory = governanceStoreFactories["file"]
+	}
+	return factory(paths)
+}
+
+func (s *fileGovernanceStore) EnsureIdempotencyDir() error {
+	if err := os.MkdirAll(s.paths.idempotencyDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create idempotency directory: %w", err)
+	}
+	return nil
+}
+
+func (s *fileGovernanceStore) LoadIdempotencyRecord(key string) (*persistedIdempotencyRecord, error) {
+	filePath := filepath.Join(s.paths.idempotencyDir, safeFilename(key)+".json")
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read idempotency record: %w", err)
+	}
+
+	var record persistedIdempotencyRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, fmt.Errorf("failed to decode idempotency record: %w", err)
+	}
+	return &record, nil
+}
+
+func (s *fileGovernanceStore) SaveIdempotencyRecord(record *persistedIdempotencyRecord) error {
+	if err := os.MkdirAll(s.paths.idempotencyDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create idempotency directory: %w", err)
+	}
+
+	filePath := filepath.Join(s.paths.idempotencyDir, safeFilename(record.Key)+".json")
+	if err := atomicWriteJSONFile(filePath, record, 0o600); err != nil {
+		return fmt.Errorf("failed to write idempotency record: %w", err)
+	}
+	return nil
+}
+
+func (s *fileGovernanceStore) AppendAuditRecord(day string, record auditRecord) error {
+	if err := os.MkdirAll(s.paths.auditDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create audit directory: %w", err)
+	}
+
+	filePath := filepath.Join(s.paths.auditDir, day+".jsonl")
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("failed to encode audit record: %w", err)
+	}
+
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to open audit log file: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := file.Write(append(encoded, '\n')); err != nil {
+		return fmt.Errorf("failed to write audit log file: %w", err)
+	}
+	return nil
 }
 
 func buildRetryAbortError(err error) *apperr.AppError {

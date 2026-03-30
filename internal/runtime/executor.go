@@ -424,7 +424,10 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 		secrets[field] = value
 	}
 
-	sessionStore := authcache.NewFileStore(configPath)
+	sessionStore, err := authcache.OpenStore(configPath, cfg.Auth.SessionStore.Backend)
+	if err != nil {
+		return pluginruntime.AuthAccount{}, err
+	}
 	var sessionPayload *pluginruntime.AuthSessionPayload
 	if session, err := sessionStore.Load(accountName); err == nil {
 		sessionPayload = pluginruntime.AuthSessionPayloadFromSession(session)
@@ -443,7 +446,10 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 
 func persistAuthPatches(cfg *config.Config, configPath string, accountName string, account config.Account, sessionPatch *pluginruntime.AuthSessionPayload, secretPatches map[string]string) error {
 	if sessionPatch != nil {
-		sessionStore := authcache.NewFileStore(configPath)
+		sessionStore, err := authcache.OpenStore(configPath, cfg.Auth.SessionStore.Backend)
+		if err != nil {
+			return err
+		}
 		session := sessionPatch.ToSession()
 		session.ProfileName = accountName
 		session.Platform = account.Platform

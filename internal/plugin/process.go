@@ -313,17 +313,24 @@ func NewProcessRuntimes(manifests []Manifest) []Runtime {
 }
 
 func buildExecuteIdentity(accountName string, profile config.Profile, authPayload map[string]any) ExecuteIdentity {
+	if authPayload == nil {
+		authPayload = map[string]any{}
+	}
 	return ExecuteIdentity{
 		Platform:    profile.Platform,
 		Subject:     profile.Subject,
 		AccountName: strings.TrimSpace(accountName),
-		Auth:        authPayload,
+		Auth: map[string]any{
+			"method":         strings.TrimSpace(profile.Method),
+			"execution_auth": cloneMap(authPayload),
+		},
 	}
 }
 
 func buildResolvedAuthPayload(profile config.Profile) map[string]any {
-	auth := map[string]any{
-		"type": profile.Grant.Type,
+	auth := map[string]any{}
+	if profile.Grant.Type != "" {
+		auth["type"] = profile.Grant.Type
 	}
 
 	resolveAndSet := func(key, raw string) {
@@ -346,4 +353,15 @@ func buildResolvedAuthPayload(profile config.Profile) map[string]any {
 		auth["notion_version"] = profile.Grant.NotionVer
 	}
 	return auth
+}
+
+func cloneMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }

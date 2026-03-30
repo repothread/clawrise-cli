@@ -12,10 +12,10 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/clawrise/clawrise-cli/internal/config"
+	"github.com/clawrise/clawrise-cli/internal/metadata"
 	"github.com/clawrise/clawrise-cli/internal/output"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 	"github.com/clawrise/clawrise-cli/internal/runtime"
-	"github.com/clawrise/clawrise-cli/internal/spec"
 )
 
 // Dependencies describes the base dependencies used by the CLI runtime.
@@ -81,8 +81,8 @@ func Run(args []string, deps Dependencies) error {
 		if err != nil {
 			return err
 		}
-		specService := spec.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
-		return runSpec(args[1:], deps.Stdout, specService)
+		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
+		return runSpec(args[1:], deps.Stdout, metadataService.Spec())
 	case "auth":
 		var manager *pluginruntime.Manager
 		if deps.PluginManager != nil {
@@ -104,8 +104,8 @@ func Run(args []string, deps Dependencies) error {
 		if err != nil {
 			return err
 		}
-		specService := spec.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
-		return runCompletion(args[1:], deps.Stdout, specService)
+		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
+		return runCompletion(args[1:], deps.Stdout, metadataService.Spec())
 	case "batch":
 		return runPlaceholder(args[0], deps.Stdout)
 	default:
@@ -449,6 +449,34 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 		runtimeSummary["catalog_entry_count"] = len(manager.CatalogEntries())
 	}
 
+	playbookValidation := map[string]any{
+		"path": metadata.DefaultPlaybookIndexPath(),
+	}
+	if manager != nil {
+		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
+		validation, err := metadataService.ValidatePlaybooks()
+		if err != nil {
+			return err
+		}
+		playbookValidation = map[string]any{
+			"path":          validation.Path,
+			"ok":            validation.OK,
+			"total":         validation.Total,
+			"valid_count":   validation.ValidCount,
+			"invalid_count": validation.InvalidCount,
+			"missing_file":  validation.MissingFile,
+			"issues":        validation.Issues,
+		}
+		if validation.InvalidCount > 0 {
+			checks = append(checks, map[string]any{
+				"code":    "PLAYBOOK_INDEX_INVALID",
+				"status":  "warn",
+				"message": fmt.Sprintf("%d playbooks reference missing docs or unknown operations", validation.InvalidCount),
+			})
+			nextSteps = append(nextSteps, "fix docs/playbooks/index.yaml so each playbook points to existing docs and registered operations")
+		}
+	}
+
 	return output.WriteJSON(stdout, map[string]any{
 		"ok": true,
 		"data": map[string]any{
@@ -464,8 +492,9 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 				"count": len(accountInspections),
 				"items": accountInspections,
 			},
-			"plugins": discovery,
-			"runtime": runtimeSummary,
+			"plugins":   discovery,
+			"runtime":   runtimeSummary,
+			"playbooks": playbookValidation,
 			"environment": map[string]any{
 				"go_version": runtimeVersion(),
 				"os":         runtimeOS(),

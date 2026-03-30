@@ -1,6 +1,6 @@
 package plugin
 
-// SplitManifestsByKind 按 manifest kind 拆分 plugin 清单。
+// SplitManifestsByKind separates manifests by plugin kind.
 func SplitManifestsByKind(manifests []Manifest) ([]Manifest, []Manifest) {
 	providers := make([]Manifest, 0)
 	launchers := make([]Manifest, 0)

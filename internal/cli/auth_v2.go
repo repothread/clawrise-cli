@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/pflag"
 
-	authcache "github.com/clawrise/clawrise-cli/internal/auth"
+	accountstore "github.com/clawrise/clawrise-cli/internal/account"
 	"github.com/clawrise/clawrise-cli/internal/authflow"
 	"github.com/clawrise/clawrise-cli/internal/config"
 	"github.com/clawrise/clawrise-cli/internal/output"
@@ -201,7 +201,10 @@ func runAuthLogin(args []string, cfg *config.Config, store *config.Store, stdout
 	}
 
 	flow := authFlowFromPluginResult(accountName, account, result.Flow)
-	flowStore := authflow.NewFileStore(store.Path())
+	flowStore, err := openCLIAuthFlowStore(cfg, store)
+	if err != nil {
+		return err
+	}
 	if err := flowStore.Save(flow); err != nil {
 		return err
 	}
@@ -302,7 +305,10 @@ func runAuthCompleteV2(args []string, cfg *config.Config, store *config.Store, s
 		return fmt.Errorf("usage: clawrise auth complete <flow_id> [--callback-url <url> | --code <text>]")
 	}
 
-	flowStore := authflow.NewFileStore(store.Path())
+	flowStore, err := openCLIAuthFlowStore(cfg, store)
+	if err != nil {
+		return err
+	}
 	flow, err := flowStore.Load(strings.TrimSpace(flags.Args()[0]))
 	if err != nil {
 		return writeCLIError(stdout, "AUTH_FLOW_NOT_FOUND", "the selected auth flow does not exist")
@@ -376,7 +382,10 @@ func runAuthLogout(args []string, cfg *config.Config, store *config.Store, stdou
 		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
 	}
 
-	sessionStore := authcache.NewFileStore(store.Path())
+	sessionStore, err := openCLISessionStore(cfg, store)
+	if err != nil {
+		return err
+	}
 	if err := sessionStore.Delete(accountName); err != nil {
 		return err
 	}
@@ -403,24 +412,15 @@ func runAuthLogout(args []string, cfg *config.Config, store *config.Store, stdou
 }
 
 func resolveAccountSelection(cfg *config.Config, args []string) (string, config.Account, bool, error) {
-	cfg.Ensure()
-
-	name := ""
+	explicitName := ""
 	if len(args) == 1 {
-		name = strings.TrimSpace(args[0])
+		explicitName = strings.TrimSpace(args[0])
 	}
-	if name == "" && strings.TrimSpace(cfg.Defaults.Account) != "" {
-		name = strings.TrimSpace(cfg.Defaults.Account)
+	selection, err := accountstore.ResolveSelection(cfg, explicitName)
+	if err != nil {
+		return "", config.Account{}, false, err
 	}
-	if name == "" && strings.TrimSpace(cfg.Defaults.Platform) != "" {
-		name = strings.TrimSpace(cfg.Defaults.PlatformAccounts[cfg.Defaults.Platform])
-	}
-	if name == "" {
-		return "", config.Account{}, false, fmt.Errorf("no account was provided and no default account is configured")
-	}
-
-	account, ok := cfg.Accounts[name]
-	return name, account, ok, nil
+	return selection.Name, selection.Account, selection.Found, nil
 }
 
 func buildPluginAuthAccount(cfg *config.Config, store *config.Store, accountName string, account config.Account) (pluginruntime.AuthAccount, error) {
@@ -434,7 +434,10 @@ func buildPluginAuthAccount(cfg *config.Config, store *config.Store, accountName
 		secrets[field] = value
 	}
 
-	sessionStore := authcache.NewFileStore(store.Path())
+	sessionStore, err := openCLISessionStore(cfg, store)
+	if err != nil {
+		return pluginruntime.AuthAccount{}, err
+	}
 	var sessionPayload *pluginruntime.AuthSessionPayload
 	if session, err := sessionStore.Load(accountName); err == nil {
 		sessionPayload = pluginruntime.AuthSessionPayloadFromSession(session)
@@ -453,7 +456,10 @@ func buildPluginAuthAccount(cfg *config.Config, store *config.Store, accountName
 
 func persistAuthPatches(cfg *config.Config, store *config.Store, accountName string, account config.Account, sessionPatch *pluginruntime.AuthSessionPayload, secretPatches map[string]string) error {
 	if sessionPatch != nil {
-		sessionStore := authcache.NewFileStore(store.Path())
+		sessionStore, err := openCLISessionStore(cfg, store)
+		if err != nil {
+			return err
+		}
 		session := sessionPatch.ToSession()
 		session.ProfileName = accountName
 		session.Platform = account.Platform

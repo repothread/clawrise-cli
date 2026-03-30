@@ -13,16 +13,25 @@ import (
 )
 
 const (
-	// SessionVersion 用于后续平滑升级 session 文件结构。
+	// SessionVersion leaves room for future session file migrations.
 	SessionVersion = 1
 
-	// DefaultRefreshSkew 表示 access token 提前多久视为需要刷新。
+	// DefaultRefreshSkew is the lead time before expiry when a token should be refreshed.
 	DefaultRefreshSkew = 2 * time.Minute
 )
 
 var sessionProfileNameSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
-// Session 描述某个 profile 在运行时可直接复用的认证态。
+// StoreFactory describes a session-store backend constructor.
+type StoreFactory func(configPath string) Store
+
+var sessionStoreFactories = map[string]StoreFactory{
+	"file": func(configPath string) Store {
+		return NewFileStore(configPath)
+	},
+}
+
+// Session describes reusable runtime auth state for one profile.
 type Session struct {
 	Version            int               `json:"version"`
 	ProfileName        string            `json:"profile_name"`
@@ -39,17 +48,17 @@ type Session struct {
 	UpdatedAt          *time.Time        `json:"updated_at,omitempty"`
 }
 
-// HasAccessToken 判断当前 session 是否已经持有可用的 access token。
+// HasAccessToken reports whether the session already carries an access token.
 func (s Session) HasAccessToken() bool {
 	return strings.TrimSpace(s.AccessToken) != ""
 }
 
-// CanRefresh 判断当前 session 是否具备刷新能力。
+// CanRefresh reports whether the session can be refreshed.
 func (s Session) CanRefresh() bool {
 	return strings.TrimSpace(s.RefreshToken) != ""
 }
 
-// NeedsRefreshAt 判断在给定时间点是否应该提前刷新 token。
+// NeedsRefreshAt reports whether the token should be refreshed at the given time.
 func (s Session) NeedsRefreshAt(now time.Time, skew time.Duration) bool {
 	if !s.HasAccessToken() {
 		return true
@@ -63,12 +72,12 @@ func (s Session) NeedsRefreshAt(now time.Time, skew time.Duration) bool {
 	return !s.ExpiresAt.After(now.Add(skew))
 }
 
-// UsableAt 判断当前 session 在给定时间点是否仍可直接复用。
+// UsableAt reports whether the session can still be reused at the given time.
 func (s Session) UsableAt(now time.Time, skew time.Duration) bool {
 	return s.HasAccessToken() && !s.NeedsRefreshAt(now, skew)
 }
 
-// Store 定义 session/token cache 的最小存储接口。
+// Store defines the minimal session/token cache persistence interface.
 type Store interface {
 	Load(profileName string) (*Session, error)
 	Save(session Session) error
@@ -76,13 +85,35 @@ type Store interface {
 	Path(profileName string) string
 }
 
-// FileStore 通过本地文件实现轻量 session cache。
+// FileStore implements a lightweight file-based session cache.
 type FileStore struct {
 	rootDir string
 	now     func() time.Time
 }
 
-// NewFileStore 基于主配置路径推导 session cache 目录。
+// RegisterStoreBackend registers one session-store backend.
+func RegisterStoreBackend(name string, factory StoreFactory) {
+	name = strings.TrimSpace(strings.ToLower(name))
+	if name == "" || factory == nil {
+		return
+	}
+	sessionStoreFactories[name] = factory
+}
+
+// OpenStore creates a session store from the selected backend name.
+func OpenStore(configPath string, backend string) (Store, error) {
+	backend = strings.TrimSpace(strings.ToLower(backend))
+	if backend == "" || backend == "auto" {
+		backend = "file"
+	}
+	factory, ok := sessionStoreFactories[backend]
+	if !ok {
+		return nil, fmt.Errorf("unsupported session store backend: %s", backend)
+	}
+	return factory(configPath), nil
+}
+
+// NewFileStore derives the session cache directory from the main config path.
 func NewFileStore(configPath string) *FileStore {
 	return &FileStore{
 		rootDir: ResolveSessionDir(configPath),
@@ -90,7 +121,7 @@ func NewFileStore(configPath string) *FileStore {
 	}
 }
 
-// ResolveSessionDir 返回 session cache 的默认目录。
+// ResolveSessionDir returns the default session cache directory.
 func ResolveSessionDir(configPath string) string {
 	stateDir, err := paths.ResolveStateDir(configPath)
 	if err != nil {
@@ -99,12 +130,12 @@ func ResolveSessionDir(configPath string) string {
 	return filepath.Join(stateDir, "auth", "sessions")
 }
 
-// Path 返回指定 profile 的 session 文件路径。
+// Path returns the session file path for one profile.
 func (s *FileStore) Path(profileName string) string {
 	return filepath.Join(s.rootDir, sanitizeProfileName(profileName)+".json")
 }
 
-// Load 读取指定 profile 的 session。
+// Load reads the session for one profile.
 func (s *FileStore) Load(profileName string) (*Session, error) {
 	data, err := os.ReadFile(s.Path(profileName))
 	if err != nil {
@@ -118,7 +149,7 @@ func (s *FileStore) Load(profileName string) (*Session, error) {
 	return &session, nil
 }
 
-// Save 原子写入 session 文件，避免刷新流程写出半文件。
+// Save writes one session atomically to avoid partial refresh writes.
 func (s *FileStore) Save(session Session) error {
 	profileName := strings.TrimSpace(session.ProfileName)
 	if profileName == "" {
@@ -155,7 +186,7 @@ func (s *FileStore) Save(session Session) error {
 	return nil
 }
 
-// Delete 删除指定 profile 的 session cache。
+// Delete removes the session cache for one profile.
 func (s *FileStore) Delete(profileName string) error {
 	err := os.Remove(s.Path(profileName))
 	if err != nil && !os.IsNotExist(err) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -48,9 +49,13 @@ func runAuthSecretSet(args []string, cfg *config.Config, stdout io.Writer, secre
 
 	var value string
 	var fromStdin bool
+	var fromEnv string
+	var allowInsecureCLISecret bool
 
 	flags.StringVar(&value, "value", "", "write the secret value directly")
 	flags.BoolVar(&fromStdin, "stdin", false, "read the secret value from stdin")
+	flags.StringVar(&fromEnv, "from-env", "", "read the secret value from the selected environment variable")
+	flags.BoolVar(&allowInsecureCLISecret, "allow-insecure-cli-secret", false, "allow writing the secret directly from a CLI flag value")
 
 	if err := flags.Parse(args); err != nil {
 		if err == pflag.ErrHelp {
@@ -59,13 +64,30 @@ func runAuthSecretSet(args []string, cfg *config.Config, stdout io.Writer, secre
 		return err
 	}
 	if len(flags.Args()) != 2 {
-		return fmt.Errorf("usage: clawrise auth secret set <account> <field> [--value <text> | --stdin]")
+		return fmt.Errorf("usage: clawrise auth secret set <account> <field> [--stdin | --from-env <name> | --value <text> --allow-insecure-cli-secret]")
 	}
 
 	connectionName := strings.TrimSpace(flags.Args()[0])
 	fieldName := strings.TrimSpace(flags.Args()[1])
 	if _, ok := cfg.Accounts[connectionName]; !ok {
 		return writeCLIError(stdout, "ACCOUNT_NOT_FOUND", "the selected account does not exist")
+	}
+
+	inputModeCount := 0
+	if fromStdin {
+		inputModeCount++
+	}
+	if strings.TrimSpace(fromEnv) != "" {
+		inputModeCount++
+	}
+	if strings.TrimSpace(value) != "" {
+		inputModeCount++
+	}
+	if inputModeCount == 0 {
+		return fmt.Errorf("one secret input mode is required: use --stdin, --from-env, or --value with --allow-insecure-cli-secret")
+	}
+	if inputModeCount > 1 {
+		return fmt.Errorf("secret input modes are mutually exclusive: choose only one of --stdin, --from-env, or --value")
 	}
 
 	if fromStdin {
@@ -78,6 +100,15 @@ func runAuthSecretSet(args []string, cfg *config.Config, stdout io.Writer, secre
 			return err
 		}
 		value = strings.TrimSpace(string(input))
+	}
+	if envName := strings.TrimSpace(fromEnv); envName != "" {
+		value = strings.TrimSpace(os.Getenv(envName))
+		if value == "" {
+			return fmt.Errorf("environment variable %s is empty or not set", envName)
+		}
+	}
+	if strings.TrimSpace(value) != "" && !fromStdin && strings.TrimSpace(fromEnv) == "" && !allowInsecureCLISecret {
+		return fmt.Errorf("--value requires --allow-insecure-cli-secret")
 	}
 	if strings.TrimSpace(value) == "" {
 		return fmt.Errorf("secret value must not be empty")
@@ -123,4 +154,5 @@ func runAuthSecretDelete(args []string, cfg *config.Config, stdout io.Writer, se
 
 func printAuthSecretHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth secret [set|put|delete] <account> <field>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise auth secret set <account> <field> [--stdin | --from-env <name> | --value <text> --allow-insecure-cli-secret]")
 }

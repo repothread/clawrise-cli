@@ -12,9 +12,9 @@ import (
 const ManifestFileName = "plugin.json"
 
 const (
-	// ManifestKindProvider 表示 provider 类 plugin。
+	// ManifestKindProvider marks a provider plugin.
 	ManifestKindProvider = "provider"
-	// ManifestKindAuthLauncher 表示授权动作执行器 plugin。
+	// ManifestKindAuthLauncher marks an auth-launcher plugin.
 	ManifestKindAuthLauncher = "auth_launcher"
 )
 
@@ -74,7 +74,7 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("plugin manifest platforms must not be empty")
 		}
 	case ManifestKindAuthLauncher:
-		// launcher plugin 可以不绑定具体平台，只声明自己支持的动作类型。
+		// Launcher plugins may remain platform-agnostic and declare only supported action types.
 	default:
 		return fmt.Errorf("plugin manifest kind must be %s or %s", ManifestKindProvider, ManifestKindAuthLauncher)
 	}

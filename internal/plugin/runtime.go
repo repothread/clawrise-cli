@@ -38,7 +38,7 @@ type AuthProvider interface {
 	Resolve(ctx context.Context, params AuthResolveParams) (AuthResolveResult, error)
 }
 
-// AuthLauncherRuntime 描述授权动作执行器 runtime。
+// AuthLauncherRuntime describes one auth-action launcher runtime.
 type AuthLauncherRuntime interface {
 	Name() string
 	Handshake(ctx context.Context) (HandshakeResult, error)
@@ -76,7 +76,7 @@ type HealthResult struct {
 	Details map[string]any `json:"details,omitempty"`
 }
 
-// ManagerOptions 描述 manager 的可选能力。
+// ManagerOptions describes optional manager capabilities.
 type ManagerOptions struct {
 	AuthLaunchers []AuthLauncherRuntime
 }

@@ -8,11 +8,12 @@ import (
 	"strings"
 )
 
-// SystemAuthLauncherRuntime 提供一个默认的系统级授权动作执行器。
-// 它本身通过 launcher runtime 接口暴露能力，core 不再直接依赖系统命令。
+// SystemAuthLauncherRuntime provides the default system-level auth launcher.
+// It exposes launcher behavior through a runtime interface so core no longer
+// depends on platform-specific shell commands directly.
 type SystemAuthLauncherRuntime struct{}
 
-// NewSystemAuthLauncherRuntime 创建默认系统 launcher。
+// NewSystemAuthLauncherRuntime creates the default system launcher.
 func NewSystemAuthLauncherRuntime() AuthLauncherRuntime {
 	return &SystemAuthLauncherRuntime{}
 }
@@ -32,8 +33,8 @@ func (r *SystemAuthLauncherRuntime) Handshake(ctx context.Context) (HandshakeRes
 func (r *SystemAuthLauncherRuntime) DescribeAuthLauncher(ctx context.Context) (AuthLauncherDescriptor, error) {
 	return AuthLauncherDescriptor{
 		ID:          "system_browser",
-		DisplayName: "系统浏览器授权启动器",
-		Description: "使用系统默认浏览器打开授权链接或 device code 验证页。",
+		DisplayName: "System Browser Auth Launcher",
+		Description: "Open authorization URLs or device-code verification pages with the default system browser.",
 		ActionTypes: []string{"open_url", "device_code"},
 		Priority:    10,
 	}, nil

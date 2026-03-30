@@ -39,8 +39,9 @@ type PathsConfig struct {
 
 // AuthConfig describes low-level auth storage settings.
 type AuthConfig struct {
-	SecretStore  SecretStoreConfig  `yaml:"secret_store,omitempty"`
-	SessionStore SessionStoreConfig `yaml:"session_store,omitempty"`
+	SecretStore   SecretStoreConfig   `yaml:"secret_store,omitempty"`
+	SessionStore  SessionStoreConfig  `yaml:"session_store,omitempty"`
+	AuthFlowStore AuthFlowStoreConfig `yaml:"authflow_store,omitempty"`
 }
 
 // SecretStoreConfig describes storage settings for long-lived secrets.
@@ -51,6 +52,11 @@ type SecretStoreConfig struct {
 
 // SessionStoreConfig describes storage settings for short-lived sessions.
 type SessionStoreConfig struct {
+	Backend string `yaml:"backend,omitempty"`
+}
+
+// AuthFlowStoreConfig describes storage settings for auth flow state.
+type AuthFlowStoreConfig struct {
 	Backend string `yaml:"backend,omitempty"`
 }
 
@@ -105,7 +111,8 @@ type Grant struct {
 
 // RuntimeConfig describes runtime governance settings.
 type RuntimeConfig struct {
-	Retry RetryConfig `yaml:"retry,omitempty"`
+	Retry      RetryConfig      `yaml:"retry,omitempty"`
+	Governance GovernanceConfig `yaml:"governance,omitempty"`
 }
 
 // RetryConfig describes automatic retry settings.
@@ -113,6 +120,11 @@ type RetryConfig struct {
 	MaxAttempts int `yaml:"max_attempts,omitempty"`
 	BaseDelayMS int `yaml:"base_delay_ms,omitempty"`
 	MaxDelayMS  int `yaml:"max_delay_ms,omitempty"`
+}
+
+// GovernanceConfig describes runtime governance storage settings.
+type GovernanceConfig struct {
+	Backend string `yaml:"backend,omitempty"`
 }
 
 // Profile remains an internal alias for the resolved execution shape.

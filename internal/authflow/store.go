@@ -14,7 +14,16 @@ import (
 
 var flowIDSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
-// Store 定义授权 flow 的最小持久化接口。
+// StoreFactory describes an auth-flow store backend constructor.
+type StoreFactory func(configPath string) Store
+
+var storeFactories = map[string]StoreFactory{
+	"file": func(configPath string) Store {
+		return NewFileStore(configPath)
+	},
+}
+
+// Store defines the minimal persistence contract for auth flows.
 type Store interface {
 	Load(flowID string) (*Flow, error)
 	Save(flow Flow) error
@@ -22,13 +31,35 @@ type Store interface {
 	Path(flowID string) string
 }
 
-// FileStore 使用本地文件保存授权 flow。
+// FileStore persists auth flows as local files.
 type FileStore struct {
 	rootDir string
 	now     func() time.Time
 }
 
-// NewFileStore 基于配置路径推导 flow 存储目录。
+// RegisterStoreBackend registers one auth-flow store backend.
+func RegisterStoreBackend(name string, factory StoreFactory) {
+	name = strings.TrimSpace(strings.ToLower(name))
+	if name == "" || factory == nil {
+		return
+	}
+	storeFactories[name] = factory
+}
+
+// OpenStore creates an auth-flow store from the selected backend name.
+func OpenStore(configPath string, backend string) (Store, error) {
+	backend = strings.TrimSpace(strings.ToLower(backend))
+	if backend == "" || backend == "auto" {
+		backend = "file"
+	}
+	factory, ok := storeFactories[backend]
+	if !ok {
+		return nil, fmt.Errorf("unsupported auth flow store backend: %s", backend)
+	}
+	return factory(configPath), nil
+}
+
+// NewFileStore derives the auth-flow storage directory from the config path.
 func NewFileStore(configPath string) *FileStore {
 	stateDir, err := paths.ResolveStateDir(configPath)
 	if err != nil {
@@ -40,12 +71,12 @@ func NewFileStore(configPath string) *FileStore {
 	}
 }
 
-// Path 返回指定 flow 的状态文件路径。
+// Path returns the state-file path for one auth flow.
 func (s *FileStore) Path(flowID string) string {
 	return filepath.Join(s.rootDir, sanitizeFlowID(flowID)+".json")
 }
 
-// Load 读取指定 flow。
+// Load reads one auth flow.
 func (s *FileStore) Load(flowID string) (*Flow, error) {
 	data, err := os.ReadFile(s.Path(flowID))
 	if err != nil {
@@ -59,7 +90,7 @@ func (s *FileStore) Load(flowID string) (*Flow, error) {
 	return &flow, nil
 }
 
-// Save 原子写入 flow 文件。
+// Save writes one auth flow atomically.
 func (s *FileStore) Save(flow Flow) error {
 	flow.ID = strings.TrimSpace(flow.ID)
 	if flow.ID == "" {
@@ -96,7 +127,7 @@ func (s *FileStore) Save(flow Flow) error {
 	return nil
 }
 
-// Delete 删除 flow 文件。
+// Delete removes one auth-flow file.
 func (s *FileStore) Delete(flowID string) error {
 	err := os.Remove(s.Path(flowID))
 	if err != nil && !os.IsNotExist(err) {

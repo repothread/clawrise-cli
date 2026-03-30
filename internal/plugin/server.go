@@ -227,15 +227,18 @@ func writeRPCResponse(writer io.Writer, response RPCResponse) error {
 }
 
 func buildProfileFromIdentity(identity ExecuteIdentity) config.Profile {
-	authType := asStringOrEmpty(identity.Auth["type"])
+	method := asStringOrEmpty(identity.Auth["method"])
+	executionAuth := identityExecutionAuth(identity.Auth)
+	authType := asStringOrEmpty(executionAuth["type"])
 	if authType == "resolved_access_token" {
 		return config.Profile{
 			Platform: identity.Platform,
 			Subject:  identity.Subject,
+			Method:   method,
 			Grant: config.Grant{
 				Type:        authType,
-				AccessToken: asStringOrEmpty(identity.Auth["access_token"]),
-				NotionVer:   asStringOrEmpty(identity.Auth["notion_version"]),
+				AccessToken: asStringOrEmpty(executionAuth["access_token"]),
+				NotionVer:   asStringOrEmpty(executionAuth["notion_version"]),
 			},
 		}
 	}
@@ -243,19 +246,32 @@ func buildProfileFromIdentity(identity ExecuteIdentity) config.Profile {
 	profile := config.Profile{
 		Platform: identity.Platform,
 		Subject:  identity.Subject,
+		Method:   method,
 		Grant: config.Grant{
 			Type: authType,
 		},
 	}
-	profile.Grant.AppID = asStringOrEmpty(identity.Auth["app_id"])
-	profile.Grant.AppSecret = asStringOrEmpty(identity.Auth["app_secret"])
-	profile.Grant.Token = asStringOrEmpty(identity.Auth["token"])
-	profile.Grant.ClientID = asStringOrEmpty(identity.Auth["client_id"])
-	profile.Grant.ClientSecret = asStringOrEmpty(identity.Auth["client_secret"])
-	profile.Grant.AccessToken = asStringOrEmpty(identity.Auth["access_token"])
-	profile.Grant.RefreshToken = asStringOrEmpty(identity.Auth["refresh_token"])
-	profile.Grant.NotionVer = asStringOrEmpty(identity.Auth["notion_version"])
+	profile.Grant.AppID = asStringOrEmpty(executionAuth["app_id"])
+	profile.Grant.AppSecret = asStringOrEmpty(executionAuth["app_secret"])
+	profile.Grant.Token = asStringOrEmpty(executionAuth["token"])
+	profile.Grant.ClientID = asStringOrEmpty(executionAuth["client_id"])
+	profile.Grant.ClientSecret = asStringOrEmpty(executionAuth["client_secret"])
+	profile.Grant.AccessToken = asStringOrEmpty(executionAuth["access_token"])
+	profile.Grant.RefreshToken = asStringOrEmpty(executionAuth["refresh_token"])
+	profile.Grant.NotionVer = asStringOrEmpty(executionAuth["notion_version"])
 	return profile
+}
+
+func identityExecutionAuth(auth map[string]any) map[string]any {
+	if len(auth) == 0 {
+		return nil
+	}
+	if executionAuth, ok := auth["execution_auth"].(map[string]any); ok {
+		return executionAuth
+	}
+	// Keep backward compatibility with the legacy flat auth payload so older
+	// plugins do not break immediately during rollout.
+	return auth
 }
 
 func asStringOrEmpty(value any) string {

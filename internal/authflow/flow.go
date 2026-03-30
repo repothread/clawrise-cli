@@ -3,11 +3,11 @@ package authflow
 import "time"
 
 const (
-	// 默认授权 flow 过期时间，避免旧 flow 长时间残留。
+	// DefaultFlowTTL keeps abandoned auth flows from lingering too long.
 	DefaultFlowTTL = 10 * time.Minute
 )
 
-// Flow 表示一次进行中的本地授权流程。
+// Flow describes one in-progress local auth flow.
 type Flow struct {
 	ID               string            `json:"id"`
 	ConnectionName   string            `json:"connection_name"`
@@ -34,7 +34,7 @@ type Flow struct {
 	ErrorMessage     string            `json:"error_message,omitempty"`
 }
 
-// Action 描述 flow 当前需要调用方执行的动作。
+// Action describes one next step required by the current auth flow.
 type Action struct {
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
@@ -46,7 +46,7 @@ type Action struct {
 	Field       string `json:"field,omitempty"`
 }
 
-// MethodSpec 描述授权接入方式的交互能力。
+// MethodSpec describes the interactive capability surface of one auth method.
 type MethodSpec struct {
 	Name             string   `json:"name"`
 	Interactive      bool     `json:"interactive"`
@@ -55,7 +55,7 @@ type MethodSpec struct {
 	Modes            []string `json:"modes,omitempty"`
 }
 
-// LookupMethodSpec 返回 method 的授权能力描述。
+// LookupMethodSpec returns the auth capability descriptor for one method.
 func LookupMethodSpec(method string) (MethodSpec, bool) {
 	switch method {
 	case "feishu.oauth_user":
@@ -85,7 +85,7 @@ func LookupMethodSpec(method string) (MethodSpec, bool) {
 	}
 }
 
-// BuildActions 基于 flow 当前状态返回结构化动作。
+// BuildActions returns structured next-step actions for one flow state.
 func BuildActions(flow Flow) []Action {
 	if flow.State == "completed" || flow.State == "failed" {
 		return nil
@@ -97,14 +97,14 @@ func BuildActions(flow Flow) []Action {
 			Type:        "device_code",
 			URL:         flow.VerificationURL,
 			Field:       "device_code",
-			Description: "在浏览器中打开验证页面并输入用户码完成授权",
+			Description: "Open the verification page in a browser and enter the user code.",
 		})
 	}
 	if flow.AuthorizationURL != "" {
 		actions = append(actions, Action{
 			Type:        "open_url",
 			URL:         flow.AuthorizationURL,
-			Description: "在用户可交互的设备上打开授权链接",
+			Description: "Open the authorization URL on a user-accessible device.",
 		})
 	}
 	if flow.Mode == "local_browser" && flow.CallbackHost != "" && flow.CallbackPort > 0 {
@@ -114,7 +114,7 @@ func BuildActions(flow Flow) []Action {
 			Port:        flow.CallbackPort,
 			Path:        flow.CallbackPath,
 			TimeoutSec:  int(DefaultFlowTTL.Seconds()),
-			Description: "当前版本保留本地回调信息，后续可接自动监听；现在仍可用 callback_url 或 code 手动继续",
+			Description: "Loopback callback details are preserved for future automation; for now you can still continue with callback_url or code.",
 		})
 	}
 	actions = append(actions, Action{

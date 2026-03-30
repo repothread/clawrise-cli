@@ -1061,6 +1061,71 @@ func TestRunAuthCompleteNotionPublicWithCallbackURL(t *testing.T) {
 	}
 }
 
+func TestRunAuthSecretSetFromEnv(t *testing.T) {
+	configPath := copyExampleConfig(t)
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+	t.Setenv("TEST_SECRET_VALUE", "secret-from-env")
+
+	store := config.NewStore(configPath)
+	cfg, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	cfg.Auth.SecretStore.Backend = "encrypted_file"
+	cfg.Auth.SecretStore.FallbackBackend = "encrypted_file"
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = Run([]string{"auth", "secret", "set", "notion_team_docs", "token", "--from-env", "TEST_SECRET_VALUE"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	cfg, err = store.Load()
+	if err != nil {
+		t.Fatalf("failed to reload config: %v", err)
+	}
+	secretStore, err := openCLISecretStore(cfg, store)
+	if err != nil {
+		t.Fatalf("failed to open secret store: %v", err)
+	}
+	value, err := secretStore.Get("notion_team_docs", "token")
+	if err != nil {
+		t.Fatalf("failed to read stored secret: %v", err)
+	}
+	if value != "secret-from-env" {
+		t.Fatalf("unexpected secret value: %s", value)
+	}
+}
+
+func TestRunAuthSecretSetValueRequiresExplicitInsecureFlag(t *testing.T) {
+	copyExampleConfig(t)
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"auth", "secret", "set", "notion_team_docs", "token", "--value", "plain-secret"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err == nil {
+		t.Fatalf("expected command to fail without explicit insecure flag, stdout=%s", stdout.String())
+	}
+	if !strings.Contains(err.Error(), "--value requires --allow-insecure-cli-secret") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRunDoctor(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
@@ -1299,7 +1364,7 @@ func runSecretSet(t *testing.T, connectionName string, fieldName string, value s
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run([]string{"auth", "secret", "set", connectionName, fieldName, "--value", value}, Dependencies{
+	err := Run([]string{"auth", "secret", "set", connectionName, fieldName, "--value", value, "--allow-insecure-cli-secret"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,

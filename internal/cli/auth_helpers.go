@@ -1,18 +1,13 @@
 package cli
 
 import (
-	"fmt"
-	"os/exec"
-	goRuntime "runtime"
 	"strings"
 
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
+	"github.com/clawrise/clawrise-cli/internal/authflow"
 	"github.com/clawrise/clawrise-cli/internal/config"
 	"github.com/clawrise/clawrise-cli/internal/secretstore"
 )
-
-var openAuthURL = func(rawURL string) error {
-	return openURLInBrowser(rawURL)
-}
 
 func openCLISecretStore(cfg *config.Config, store *config.Store) (secretstore.Store, error) {
 	backend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
@@ -26,27 +21,18 @@ func openCLISecretStore(cfg *config.Config, store *config.Store) (secretstore.St
 	})
 }
 
-func openURLInBrowser(rawURL string) error {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
-		return fmt.Errorf("authorization url is empty")
+func openCLISessionStore(cfg *config.Config, store *config.Store) (authcache.Store, error) {
+	backend := strings.TrimSpace(cfg.Auth.SessionStore.Backend)
+	if backend == "" {
+		backend = "file"
 	}
+	return authcache.OpenStore(store.Path(), backend)
+}
 
-	var command *exec.Cmd
-	switch goRuntime.GOOS {
-	case "darwin":
-		command = exec.Command("open", rawURL)
-	case "windows":
-		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
-	default:
-		command = exec.Command("xdg-open", rawURL)
+func openCLIAuthFlowStore(cfg *config.Config, store *config.Store) (authflow.Store, error) {
+	backend := strings.TrimSpace(cfg.Auth.AuthFlowStore.Backend)
+	if backend == "" {
+		backend = "file"
 	}
-	if output, err := command.CombinedOutput(); err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
-			message = err.Error()
-		}
-		return fmt.Errorf("failed to open authorization url: %s", message)
-	}
-	return nil
+	return authflow.OpenStore(store.Path(), backend)
 }

@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// ServeAuthLauncherRuntime 通过 stdio 暴露 auth launcher plugin 协议。
+// ServeAuthLauncherRuntime serves the auth-launcher plugin protocol over stdio.
 func ServeAuthLauncherRuntime(runtime AuthLauncherRuntime) error {
 	reader := bufio.NewScanner(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
