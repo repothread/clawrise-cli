@@ -8,13 +8,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
-	"github.com/clawrise/clawrise-cli/internal/config"
 	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
@@ -152,14 +150,6 @@ func (r *ProcessRuntime) LaunchAuth(ctx context.Context, params AuthLaunchParams
 
 func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 	var result ExecuteRPCResult
-	executionAuth := req.ExecutionAuth
-	if executionAuth == nil {
-		executionAuth = buildResolvedAuthPayload(req.Profile)
-	}
-	authMethod := strings.TrimSpace(req.AuthMethod)
-	if authMethod == "" {
-		authMethod = strings.TrimSpace(req.Profile.Method)
-	}
 	if err := r.call(ctx, "clawrise.execute", ExecuteParams{
 		Request: ExecuteEnvelope{
 			RequestID:      "",
@@ -168,7 +158,7 @@ func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (Execu
 			IdempotencyKey: req.IdempotencyKey,
 			DryRun:         false,
 		},
-		Identity: buildExecuteIdentity(req.AccountName, req.Profile, authMethod, executionAuth),
+		Identity: req.Identity,
 	}, &result); err != nil {
 		return ExecuteResult{}, err
 	}
@@ -314,46 +304,6 @@ func NewProcessRuntimes(manifests []Manifest) []Runtime {
 		runtimes = append(runtimes, NewProcessRuntime(manifest))
 	}
 	return runtimes
-}
-
-func buildExecuteIdentity(accountName string, profile config.Profile, authMethod string, executionAuth map[string]any) ExecuteIdentity {
-	return ExecuteIdentity{
-		Platform:    profile.Platform,
-		Subject:     profile.Subject,
-		AccountName: strings.TrimSpace(accountName),
-		Auth: ExecuteAuth{
-			Method:        strings.TrimSpace(authMethod),
-			ExecutionAuth: cloneMap(executionAuth),
-		},
-	}
-}
-
-func buildResolvedAuthPayload(profile config.Profile) map[string]any {
-	auth := map[string]any{}
-	if profile.Grant.Type != "" {
-		auth["type"] = profile.Grant.Type
-	}
-
-	resolveAndSet := func(key, raw string) {
-		if raw == "" {
-			return
-		}
-		if value, err := config.ResolveSecret(raw); err == nil && value != "" {
-			auth[key] = value
-		}
-	}
-
-	resolveAndSet("app_id", profile.Grant.AppID)
-	resolveAndSet("app_secret", profile.Grant.AppSecret)
-	resolveAndSet("token", profile.Grant.Token)
-	resolveAndSet("client_id", profile.Grant.ClientID)
-	resolveAndSet("client_secret", profile.Grant.ClientSecret)
-	resolveAndSet("access_token", profile.Grant.AccessToken)
-	resolveAndSet("refresh_token", profile.Grant.RefreshToken)
-	if profile.Grant.NotionVer != "" {
-		auth["notion_version"] = profile.Grant.NotionVer
-	}
-	return auth
 }
 
 func cloneMap(values map[string]any) map[string]any {

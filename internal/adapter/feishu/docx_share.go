@@ -7,11 +7,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // ShareDocument 为新版文档增加一名协作者。
-func (c *Client) ShareDocument(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ShareDocument(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	documentID, ok := asString(input["document_id"])
 	if !ok || strings.TrimSpace(documentID) == "" {
 		return nil, apperr.New("INVALID_INPUT", "document_id is required")

@@ -7,10 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
-
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // ServeRuntime serves the plugin protocol over stdio for one runtime.
@@ -143,10 +140,7 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 
 			result, err := runtime.Execute(ctx, ExecuteRequest{
 				Operation:      params.Request.Operation,
-				AccountName:    params.Identity.AccountName,
-				Profile:        buildProfileFromIdentity(params.Identity),
-				AuthMethod:     strings.TrimSpace(params.Identity.Auth.Method),
-				ExecutionAuth:  cloneExecutionAuth(params.Identity.Auth.ExecutionAuth),
+				Identity:       params.Identity,
 				Input:          params.Request.Input,
 				IdempotencyKey: params.Request.IdempotencyKey,
 			})
@@ -226,59 +220,4 @@ func writeRPCResponse(writer io.Writer, response RPCResponse) error {
 		return flusher.Flush()
 	}
 	return nil
-}
-
-func buildProfileFromIdentity(identity ExecuteIdentity) config.Profile {
-	method := strings.TrimSpace(identity.Auth.Method)
-	executionAuth := identity.Auth.ExecutionAuth
-	authType := asStringOrEmpty(executionAuth["type"])
-	if authType == "resolved_access_token" {
-		return config.Profile{
-			Platform: identity.Platform,
-			Subject:  identity.Subject,
-			Method:   method,
-			Grant: config.Grant{
-				Type:        authType,
-				AccessToken: asStringOrEmpty(executionAuth["access_token"]),
-				NotionVer:   asStringOrEmpty(executionAuth["notion_version"]),
-			},
-		}
-	}
-
-	profile := config.Profile{
-		Platform: identity.Platform,
-		Subject:  identity.Subject,
-		Method:   method,
-		Grant: config.Grant{
-			Type: authType,
-		},
-	}
-	profile.Grant.AppID = asStringOrEmpty(executionAuth["app_id"])
-	profile.Grant.AppSecret = asStringOrEmpty(executionAuth["app_secret"])
-	profile.Grant.Token = asStringOrEmpty(executionAuth["token"])
-	profile.Grant.ClientID = asStringOrEmpty(executionAuth["client_id"])
-	profile.Grant.ClientSecret = asStringOrEmpty(executionAuth["client_secret"])
-	profile.Grant.AccessToken = asStringOrEmpty(executionAuth["access_token"])
-	profile.Grant.RefreshToken = asStringOrEmpty(executionAuth["refresh_token"])
-	profile.Grant.NotionVer = asStringOrEmpty(executionAuth["notion_version"])
-	return profile
-}
-
-func cloneExecutionAuth(values map[string]any) map[string]any {
-	if len(values) == 0 {
-		return nil
-	}
-	cloned := make(map[string]any, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-	return cloned
-}
-
-func asStringOrEmpty(value any) string {
-	text, ok := value.(string)
-	if !ok {
-		return ""
-	}
-	return text
 }

@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // GetComment reads a single Notion comment object.
-func (c *Client) GetComment(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetComment(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	commentID, appErr := requireIDField(input, "comment_id")
 	if appErr != nil {
 		return nil, appErr
@@ -49,7 +48,7 @@ func (c *Client) GetComment(ctx context.Context, profile config.Profile, input m
 }
 
 // ListComments lists open comments under a page or block.
-func (c *Client) ListComments(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListComments(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, ok := asString(input["block_id"])
 	if !ok || strings.TrimSpace(blockID) == "" {
 		return nil, apperr.New("INVALID_INPUT", "block_id is required")
@@ -107,7 +106,7 @@ func (c *Client) ListComments(ctx context.Context, profile config.Profile, input
 }
 
 // CreateComment creates a page, block, or discussion comment.
-func (c *Client) CreateComment(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) CreateComment(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	payload, appErr := buildCreateCommentPayload(input)
 	if appErr != nil {
 		return nil, appErr

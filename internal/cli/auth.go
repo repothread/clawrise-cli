@@ -107,16 +107,8 @@ func runAuthInspect(args []string, cfg *config.Config, store *config.Store, stdo
 		return err
 	}
 	return output.WriteJSON(stdout, map[string]any{
-		"ok": result.Ready,
-		"data": map[string]any{
-			"account": map[string]any{
-				"name":        accountName,
-				"platform":    account.Platform,
-				"subject":     account.Subject,
-				"auth_method": account.Auth.Method,
-			},
-			"inspection": result,
-		},
+		"ok":   result.Ready,
+		"data": buildAccountInspectionView(accountName, account, result),
 	})
 }
 
@@ -464,7 +456,7 @@ func persistAuthPatches(cfg *config.Config, store *config.Store, accountName str
 		session.AccountName = accountName
 		session.Platform = account.Platform
 		session.Subject = account.Subject
-		session.GrantType = config.LegacyGrantTypeForMethod(account.Auth.Method)
+		session.GrantType = strings.TrimSpace(account.Auth.Method)
 		if err := sessionStore.Save(session); err != nil {
 			return err
 		}

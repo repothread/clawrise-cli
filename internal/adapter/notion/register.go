@@ -18,7 +18,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionPageCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.CreatePage(ctx, call.Profile, call.Input)
+			return client.CreatePage(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -29,7 +29,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionPageGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetPage(ctx, call.Profile, call.Input)
+			return client.GetPage(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -40,7 +40,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionPagePropertyItemGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetPagePropertyItem(ctx, call.Profile, call.Input)
+			return client.GetPagePropertyItem(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -51,7 +51,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionPageUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.UpdatePage(ctx, call.Profile, call.Input)
+			return client.UpdatePage(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -62,7 +62,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionPageMarkdownGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetPageMarkdown(ctx, call.Profile, call.Input)
+			return client.GetPageMarkdown(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -73,7 +73,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionPageMarkdownUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.UpdatePageMarkdown(ctx, call.Profile, call.Input)
+			return client.UpdatePageMarkdown(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -84,7 +84,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionSearchQuerySpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.Search(ctx, call.Profile, call.Input)
+			return client.Search(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -95,7 +95,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionCommentGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetComment(ctx, call.Profile, call.Input)
+			return client.GetComment(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -106,7 +106,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionCommentListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListComments(ctx, call.Profile, call.Input)
+			return client.ListComments(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -117,7 +117,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionCommentCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.CreateComment(ctx, call.Profile, call.Input)
+			return client.CreateComment(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -128,7 +128,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionDataSourceGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetDataSource(ctx, call.Profile, call.Input)
+			return client.GetDataSource(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -139,7 +139,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionDataSourceCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.CreateDataSource(ctx, call.Profile, call.Input)
+			return client.CreateDataSource(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -150,7 +150,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionDataSourceUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.UpdateDataSource(ctx, call.Profile, call.Input)
+			return client.UpdateDataSource(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -161,7 +161,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionDataSourceQuerySpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.QueryDataSource(ctx, call.Profile, call.Input)
+			return client.QueryDataSource(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -172,7 +172,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionBlockGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetBlock(ctx, call.Profile, call.Input)
+			return client.GetBlock(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -183,7 +183,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionBlockListChildrenSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListBlockChildren(ctx, call.Profile, call.Input)
+			return client.ListBlockChildren(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -194,7 +194,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionBlockGetDescendantsSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetBlockDescendants(ctx, call.Profile, call.Input)
+			return client.GetBlockDescendants(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -205,7 +205,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionBlockAppendSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.AppendBlockChildren(ctx, call.Profile, call.Input)
+			return client.AppendBlockChildren(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -216,7 +216,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionBlockUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.UpdateBlock(ctx, call.Profile, call.Input)
+			return client.UpdateBlock(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -227,7 +227,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionBlockDeleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.DeleteBlock(ctx, call.Profile, call.Input)
+			return client.DeleteBlock(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -238,7 +238,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionUserGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetUser(ctx, call.Profile, call.Input)
+			return client.GetUser(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -249,7 +249,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"integration"},
 		Spec:            notionUserListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListUsers(ctx, call.Profile, call.Input)
+			return client.ListUsers(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 }

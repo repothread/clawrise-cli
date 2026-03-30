@@ -98,7 +98,13 @@ func Run(args []string, deps Dependencies) error {
 		}
 		return runAuthSecret(args[1:], cfg, store, deps.Stdout)
 	case "config":
-		return runConfig(args[1:], store, deps.Stdout)
+		var manager *pluginruntime.Manager
+		if deps.PluginManager != nil {
+			manager = deps.PluginManager
+		} else {
+			manager, _ = resolvePluginManager(deps)
+		}
+		return runConfig(args[1:], store, deps.Stdout, manager)
 	case "completion":
 		manager, err := resolvePluginManager(deps)
 		if err != nil {
@@ -266,8 +272,26 @@ func runSubject(args []string, store *config.Store, stdout io.Writer) error {
 			"message": "default subject has been cleared",
 		})
 	case "list":
+		subjects := make([]string, 0)
+		seen := map[string]struct{}{}
+		appendSubject := func(value string) {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				return
+			}
+			if _, ok := seen[value]; ok {
+				return
+			}
+			seen[value] = struct{}{}
+			subjects = append(subjects, value)
+		}
+		appendSubject(cfg.Defaults.Subject)
+		for _, account := range cfg.Accounts {
+			appendSubject(account.Subject)
+		}
+		sort.Strings(subjects)
 		return output.WriteJSON(stdout, map[string]any{
-			"subjects": []string{"bot", "user", "integration"},
+			"subjects": subjects,
 		})
 	default:
 		return fmt.Errorf("unknown subject command: %s", args[0])
@@ -379,16 +403,9 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	accountInspections := make([]map[string]any, 0, len(accountNames))
 	invalidAccounts := 0
 	pendingAuthAccounts := 0
+	readyAccounts := 0
 	for _, name := range accountNames {
 		account := cfg.Accounts[name]
-		item := map[string]any{
-			"name":        name,
-			"title":       account.Title,
-			"platform":    account.Platform,
-			"subject":     account.Subject,
-			"auth_method": account.Auth.Method,
-		}
-
 		if manager == nil {
 			return writeCLIError(stdout, "PLUGIN_MANAGER_REQUIRED", "plugin manager is required for doctor")
 		}
@@ -402,13 +419,15 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 		if inspectErr != nil {
 			return inspectErr
 		}
-		item["auth"] = inspection
+		item := buildAccountInspectionView(name, account, inspection)
 		if !inspection.Ready {
 			if inspection.Status == "invalid_auth_config" {
 				invalidAccounts++
 			} else {
 				pendingAuthAccounts++
 			}
+		} else {
+			readyAccounts++
 		}
 		accountInspections = append(accountInspections, item)
 	}
@@ -489,8 +508,11 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 				"default_account_ok": defaultAccountOK,
 			},
 			"accounts": map[string]any{
-				"count": len(accountInspections),
-				"items": accountInspections,
+				"count":              len(accountInspections),
+				"ready_count":        readyAccounts,
+				"invalid_count":      invalidAccounts,
+				"pending_auth_count": pendingAuthAccounts,
+				"items":              accountInspections,
 			},
 			"plugins":   discovery,
 			"runtime":   runtimeSummary,

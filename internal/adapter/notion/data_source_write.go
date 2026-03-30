@@ -8,11 +8,10 @@ import (
 	"net/url"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // CreateDataSource 创建一个 Notion data source。
-func (c *Client) CreateDataSource(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) CreateDataSource(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	payload, appErr := buildDataSourceWritePayload(input, false)
 	if appErr != nil {
 		return nil, appErr
@@ -48,7 +47,7 @@ func (c *Client) CreateDataSource(ctx context.Context, profile config.Profile, i
 }
 
 // UpdateDataSource 更新一个 Notion data source。
-func (c *Client) UpdateDataSource(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) UpdateDataSource(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	dataSourceID, appErr := requireIDField(input, "data_source_id")
 	if appErr != nil {
 		return nil, appErr

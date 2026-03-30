@@ -16,7 +16,8 @@ import (
 
 var errFeishuAuthorizationRequired = errors.New("feishu interactive authorization is required")
 
-func (c *Client) requireFeishuAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
+func (c *Client) requireFeishuAccessToken(ctx context.Context, profile ExecutionProfile) (string, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	if profile.Grant.Type == "resolved_access_token" && strings.TrimSpace(profile.Grant.AccessToken) != "" {
 		return strings.TrimSpace(profile.Grant.AccessToken), nil
 	}
@@ -30,22 +31,24 @@ func (c *Client) requireFeishuAccessToken(ctx context.Context, profile config.Pr
 	}
 }
 
-func (c *Client) requireBotAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
+func (c *Client) requireBotAccessToken(ctx context.Context, profile ExecutionProfile) (string, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	if profile.Subject != "bot" {
 		return "", apperr.New("SUBJECT_NOT_ALLOWED", "this Feishu operation currently requires a bot profile")
 	}
-	if profile.Grant.Type != "client_credentials" {
-		return "", apperr.New("UNSUPPORTED_GRANT", "this Feishu operation currently supports only client_credentials")
+	if profile.Method != "feishu.app_credentials" {
+		return "", apperr.New("UNSUPPORTED_GRANT", "this Feishu operation currently supports only feishu.app_credentials")
 	}
 	return c.fetchTenantAccessToken(ctx, profile)
 }
 
-func (c *Client) requireUserAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
+func (c *Client) requireUserAccessToken(ctx context.Context, profile ExecutionProfile) (string, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	if profile.Subject != "user" {
 		return "", apperr.New("SUBJECT_NOT_ALLOWED", "this Feishu operation currently requires a user profile")
 	}
-	if profile.Grant.Type != "oauth_user" {
-		return "", apperr.New("UNSUPPORTED_GRANT", "this Feishu operation currently supports only oauth_user for user subject")
+	if profile.Method != "feishu.oauth_user" {
+		return "", apperr.New("UNSUPPORTED_GRANT", "this Feishu operation currently supports only feishu.oauth_user for user subject")
 	}
 
 	cachedSession, ok := c.loadCachedSession(ctx, profile)
@@ -65,7 +68,8 @@ func (c *Client) requireUserAccessToken(ctx context.Context, profile config.Prof
 	return "", appErr
 }
 
-func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Profile, currentSession *authcache.Session) (*authcache.Session, *apperr.AppError) {
+func (c *Client) refreshUserAccessToken(ctx context.Context, profile ExecutionProfile, currentSession *authcache.Session) (*authcache.Session, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
 	if err != nil {
 		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_id: %v", err))
@@ -143,7 +147,8 @@ func (c *Client) refreshUserAccessToken(ctx context.Context, profile config.Prof
 	return &session, nil
 }
 
-func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile ExecutionProfile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
 	if err != nil {
 		return nil, apperr.New("INVALID_AUTH_CONFIG", fmt.Sprintf("missing client_id: %v", err))
@@ -220,7 +225,8 @@ func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.P
 	return &session, nil
 }
 
-func resolveFeishuRefreshToken(profile config.Profile, currentSession *authcache.Session) (string, error) {
+func resolveFeishuRefreshToken(profile ExecutionProfile, currentSession *authcache.Session) (string, error) {
+	profile = normalizeExecutionProfile(profile)
 	if currentSession != nil && strings.TrimSpace(currentSession.RefreshToken) != "" {
 		return strings.TrimSpace(currentSession.RefreshToken), nil
 	}

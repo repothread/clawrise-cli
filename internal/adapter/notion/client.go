@@ -125,19 +125,20 @@ func (c *Client) doJSONRequest(ctx context.Context, method, rawPath string, quer
 }
 
 // requireAccessToken resolves a usable access token from the given profile.
-func (c *Client) requireAccessToken(ctx context.Context, profile config.Profile) (string, string, *apperr.AppError) {
+func (c *Client) requireAccessToken(ctx context.Context, profile ExecutionProfile) (string, string, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	if profile.Subject != "integration" {
 		return "", "", apperr.New("SUBJECT_NOT_ALLOWED", "this Notion operation currently requires an integration profile")
 	}
 
 	notionVersion := resolveNotionVersion(profile)
-	switch profile.Grant.Type {
-	case "resolved_access_token":
+	switch {
+	case profile.Grant.Type == "resolved_access_token":
 		if strings.TrimSpace(profile.Grant.AccessToken) == "" {
 			return "", "", apperr.New("INVALID_AUTH_CONFIG", "resolved Notion access token is empty")
 		}
 		return strings.TrimSpace(profile.Grant.AccessToken), notionVersion, nil
-	case "static_token":
+	case profile.Method == "notion.internal_token":
 		token, err := config.ResolveSecret(profile.Grant.Token)
 		if err != nil {
 			return "", "", apperr.New("INVALID_AUTH_CONFIG", err.Error())
@@ -146,7 +147,7 @@ func (c *Client) requireAccessToken(ctx context.Context, profile config.Profile)
 			return "", "", apperr.New("INVALID_AUTH_CONFIG", "Notion token is empty")
 		}
 		return token, notionVersion, nil
-	case "oauth_refreshable":
+	case profile.Method == "notion.oauth_public":
 		cachedSession, ok := c.loadCachedSession(ctx, profile)
 		if ok && cachedSession.UsableAt(c.now(), authcache.DefaultRefreshSkew) {
 			return strings.TrimSpace(cachedSession.AccessToken), notionVersion, nil
@@ -163,12 +164,13 @@ func (c *Client) requireAccessToken(ctx context.Context, profile config.Profile)
 		}
 		return "", "", appErr
 	default:
-		return "", "", apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion operation does not support grant type %s", profile.Grant.Type))
+		return "", "", apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion operation does not support auth method %s", profile.Method))
 	}
 }
 
 // refreshAccessToken exchanges a refresh token for a new access token.
-func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile, currentSession *authcache.Session) (*authcache.Session, *apperr.AppError) {
+func (c *Client) refreshAccessToken(ctx context.Context, profile ExecutionProfile, currentSession *authcache.Session) (*authcache.Session, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
 	if err != nil {
 		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
@@ -225,7 +227,8 @@ func (c *Client) refreshAccessToken(ctx context.Context, profile config.Profile,
 	return &session, nil
 }
 
-func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile ExecutionProfile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	clientID, err := config.ResolveSecret(profile.Grant.ClientID)
 	if err != nil {
 		return nil, apperr.New("INVALID_AUTH_CONFIG", err.Error())
@@ -292,7 +295,8 @@ func (c *Client) exchangeAuthorizationCode(ctx context.Context, profile config.P
 	return &session, nil
 }
 
-func resolveNotionVersion(profile config.Profile) string {
+func resolveNotionVersion(profile ExecutionProfile) string {
+	profile = normalizeExecutionProfile(profile)
 	if strings.TrimSpace(profile.Grant.NotionVer) != "" {
 		return strings.TrimSpace(profile.Grant.NotionVer)
 	}

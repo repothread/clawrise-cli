@@ -18,17 +18,23 @@
 - `secret put --from-env` 与显式不安全写入开关已落地
 - operation 解析已经改为基于运行时平台集合
 - 第一方 plugin 的 catalog 已改为从 registry 动态生成
+- core execute 路径已经改为只传递 `account + auth.method + execution_auth`
+- provider runtime / process runtime 已不再在 core 中拼接 provider 专有 auth 字段
+- Feishu / Notion adapter 已改为在 provider 内部维护各自的 execution profile
+- `config init` 已改为基于 plugin metadata 选择 preset / auth method
+- doctor 与 `auth inspect` 的账号诊断输出已收敛到稳定扁平字段
+- `internal/spec/catalog` 的内置平台清单已删除
 - `PathsConfig` 已开始通过 `locator` 模块参与状态路径解析
 - playbook 索引校验已接入统一 metadata，并在 `doctor` 中暴露结果
 
 部分完成：
 
 - 文档和内部遗留命名仍在继续清理
-- doctor 已改为优先使用 plugin auth inspection，但输出结构仍可继续收敛
-- `subject` 的外部硬编码限制已移除，但内部 bridge 结构仍保留了一些 legacy 类型名
+- `subject` 的外部硬编码限制已移除，但内部仍保留少量 config inspection / legacy shim 类型名
 - `device_code` 的 core 协议、flow 持久化与 CLI 主流程已落地，但第一方 provider 还没有全部接成真实 device code
 - secret/session/authflow/governance 已具备可切换 backend 的注册点，但外部可分发 backend/plugin 形态仍可继续扩展
 - docs 自动生成已经可以复用统一 metadata 导出 Markdown，但独立的 docs 生成流水线仍可继续收敛
+- `profile` / `connection` / `account` 的内部收敛已经不再阻塞 core execute 路径，但 `config` 包里仍保留少量 legacy inspection shim
 
 尚未完成：
 
@@ -54,8 +60,8 @@
 
 - 第一方 provider 的真实 `device_code` 对接还没有全部补齐
 - storage backend 已经开始走可切换注册点，但外部分发与独立协议仍未完全落地
-- `profile` / `connection` / `account` 的内部遗留命名仍在继续清理
-- `subject` 的外部限制已经移除，但内部仍保留少量 legacy bridge 结构
+- `profile` / `connection` / `account` 的内部遗留命名仍在继续清理，但已不再阻塞 core execute 边界
+- `subject` 的外部限制已经移除，但 config inspection 里仍保留少量 legacy bridge 结构
 - playbook 校验已经接到统一 metadata，但 docs 自动生成流水线仍可继续收敛
 - `PathsConfig` 已开始参与 locator 路径解析，但长期是否继续作为用户可见配置仍未最终定案
 

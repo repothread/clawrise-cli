@@ -70,7 +70,7 @@ func NewClient(options Options) (*Client, error) {
 }
 
 // CreateCalendarEvent creates a Feishu calendar event using the selected Feishu identity.
-func (c *Client) CreateCalendarEvent(ctx context.Context, profile config.Profile, input map[string]any, idempotencyKey string) (map[string]any, *apperr.AppError) {
+func (c *Client) CreateCalendarEvent(ctx context.Context, profile ExecutionProfile, input map[string]any, idempotencyKey string) (map[string]any, *apperr.AppError) {
 	request, appErr := buildCreateCalendarEventRequest(input)
 	if appErr != nil {
 		return nil, appErr
@@ -89,7 +89,8 @@ func (c *Client) CreateCalendarEvent(ctx context.Context, profile config.Profile
 	return mapCreateCalendarEventData(response), nil
 }
 
-func (c *Client) fetchTenantAccessToken(ctx context.Context, profile config.Profile) (string, *apperr.AppError) {
+func (c *Client) fetchTenantAccessToken(ctx context.Context, profile ExecutionProfile) (string, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	appID, err := config.ResolveSecret(profile.Grant.AppID)
 	if err != nil {
 		return "", apperr.New("INVALID_AUTH_CONFIG", err.Error())

@@ -24,7 +24,8 @@ func newDefaultSessionStore() authcache.Store {
 	return authcache.NewFileStore(configPath)
 }
 
-func (c *Client) loadCachedSession(ctx context.Context, profile config.Profile) (*authcache.Session, bool) {
+func (c *Client) loadCachedSession(ctx context.Context, profile ExecutionProfile) (*authcache.Session, bool) {
+	profile = normalizeExecutionProfile(profile)
 	accountName := adapter.AccountNameFromContext(ctx)
 	if accountName == "" || c.sessionStore == nil {
 		return nil, false
@@ -43,7 +44,8 @@ func (c *Client) loadCachedSession(ctx context.Context, profile config.Profile) 
 	return session, true
 }
 
-func (c *Client) saveCachedSession(ctx context.Context, profile config.Profile, session authcache.Session) {
+func (c *Client) saveCachedSession(ctx context.Context, profile ExecutionProfile, session authcache.Session) {
+	profile = normalizeExecutionProfile(profile)
 	accountName := adapter.AccountNameFromContext(ctx)
 	if accountName == "" || c.sessionStore == nil {
 		return
@@ -52,20 +54,21 @@ func (c *Client) saveCachedSession(ctx context.Context, profile config.Profile, 
 	session.AccountName = accountName
 	session.Platform = profile.Platform
 	session.Subject = profile.Subject
-	session.GrantType = profile.Grant.Type
+	session.GrantType = profile.Method
 	if strings.TrimSpace(session.TokenType) == "" {
 		session.TokenType = "Bearer"
 	}
 	_ = c.sessionStore.Save(session)
 }
 
-func buildOAuthSession(now time.Time, accountName string, profile config.Profile, accessToken string, refreshToken string, tokenType string, expiresInSeconds int) authcache.Session {
+func buildOAuthSession(now time.Time, accountName string, profile ExecutionProfile, accessToken string, refreshToken string, tokenType string, expiresInSeconds int) authcache.Session {
+	profile = normalizeExecutionProfile(profile)
 	session := authcache.Session{
 		Version:      authcache.SessionVersion,
 		AccountName:  accountName,
 		Platform:     profile.Platform,
 		Subject:      profile.Subject,
-		GrantType:    profile.Grant.Type,
+		GrantType:    profile.Method,
 		AccessToken:  strings.TrimSpace(accessToken),
 		RefreshToken: strings.TrimSpace(refreshToken),
 		TokenType:    normalizeTokenType(tokenType),
@@ -77,7 +80,8 @@ func buildOAuthSession(now time.Time, accountName string, profile config.Profile
 	return session
 }
 
-func resolveNotionRefreshToken(profile config.Profile, currentSession *authcache.Session) (string, error) {
+func resolveNotionRefreshToken(profile ExecutionProfile, currentSession *authcache.Session) (string, error) {
+	profile = normalizeExecutionProfile(profile)
 	if currentSession != nil && strings.TrimSpace(currentSession.RefreshToken) != "" {
 		return strings.TrimSpace(currentSession.RefreshToken), nil
 	}
@@ -99,13 +103,19 @@ func resolveNotionRefreshToken(profile config.Profile, currentSession *authcache
 	return strings.TrimSpace(refreshToken), nil
 }
 
-func sessionMatchesProfile(session *authcache.Session, profile config.Profile) bool {
+func sessionMatchesProfile(session *authcache.Session, profile ExecutionProfile) bool {
+	profile = normalizeExecutionProfile(profile)
 	if session == nil {
 		return false
 	}
+	legacyGrantType := strings.TrimSpace(profile.Grant.Type)
+	if strings.TrimSpace(session.GrantType) == legacyGrantType && legacyGrantType != "" {
+		return strings.TrimSpace(session.Platform) == strings.TrimSpace(profile.Platform) &&
+			strings.TrimSpace(session.Subject) == strings.TrimSpace(profile.Subject)
+	}
 	return strings.TrimSpace(session.Platform) == strings.TrimSpace(profile.Platform) &&
 		strings.TrimSpace(session.Subject) == strings.TrimSpace(profile.Subject) &&
-		strings.TrimSpace(session.GrantType) == strings.TrimSpace(profile.Grant.Type)
+		strings.TrimSpace(session.GrantType) == strings.TrimSpace(profile.Method)
 }
 
 func normalizeTokenType(tokenType string) string {
@@ -120,12 +130,13 @@ func normalizeTokenType(tokenType string) string {
 }
 
 // RefreshSession 强制刷新指定 profile 的 OAuth session，并写回本地 cache。
-func (c *Client) RefreshSession(ctx context.Context, accountName string, profile config.Profile) (*authcache.Session, *apperr.AppError) {
+func (c *Client) RefreshSession(ctx context.Context, accountName string, profile ExecutionProfile) (*authcache.Session, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	if profile.Subject != "integration" {
 		return nil, apperr.New("SUBJECT_NOT_ALLOWED", "this Notion session refresh currently requires an integration profile")
 	}
-	if profile.Grant.Type != "oauth_refreshable" {
-		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion session refresh currently supports only oauth_refreshable, got %s", profile.Grant.Type))
+	if profile.Method != "notion.oauth_public" {
+		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion session refresh currently supports only notion.oauth_public, got %s", profile.Method))
 	}
 
 	ctx = adapter.WithAccountName(ctx, accountName)
@@ -140,12 +151,13 @@ func (c *Client) RefreshSession(ctx context.Context, accountName string, profile
 }
 
 // ExchangeAuthorizationCode 使用授权码换取新的 OAuth session，并写回本地 cache。
-func (c *Client) ExchangeAuthorizationCode(ctx context.Context, accountName string, profile config.Profile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+func (c *Client) ExchangeAuthorizationCode(ctx context.Context, accountName string, profile ExecutionProfile, code string, redirectURI string) (*authcache.Session, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	if profile.Subject != "integration" {
 		return nil, apperr.New("SUBJECT_NOT_ALLOWED", "this Notion auth code exchange currently requires an integration profile")
 	}
-	if profile.Grant.Type != "oauth_refreshable" {
-		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion auth code exchange currently supports only oauth_refreshable, got %s", profile.Grant.Type))
+	if profile.Method != "notion.oauth_public" {
+		return nil, apperr.New("UNSUPPORTED_GRANT", fmt.Sprintf("this Notion auth code exchange currently supports only notion.oauth_public, got %s", profile.Method))
 	}
 
 	ctx = adapter.WithAccountName(ctx, accountName)

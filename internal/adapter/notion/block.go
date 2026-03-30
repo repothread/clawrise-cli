@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // GetBlock reads the details of a single block.
-func (c *Client) GetBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetBlock(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
 		return nil, appErr
@@ -46,7 +45,7 @@ func (c *Client) GetBlock(ctx context.Context, profile config.Profile, input map
 }
 
 // ListBlockChildren reads the direct child blocks under the given block.
-func (c *Client) ListBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListBlockChildren(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
 		return nil, appErr
@@ -103,7 +102,7 @@ func (c *Client) ListBlockChildren(ctx context.Context, profile config.Profile, 
 }
 
 // AppendBlockChildren appends child blocks to the end of a page or block.
-func (c *Client) AppendBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
 		return nil, appErr
@@ -163,7 +162,7 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile config.Profile
 }
 
 // UpdateBlock updates the content of the specified block.
-func (c *Client) UpdateBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) UpdateBlock(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
 		return nil, appErr
@@ -201,7 +200,7 @@ func (c *Client) UpdateBlock(ctx context.Context, profile config.Profile, input 
 }
 
 // DeleteBlock moves the specified block to the trash.
-func (c *Client) DeleteBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) DeleteBlock(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
 		return nil, appErr

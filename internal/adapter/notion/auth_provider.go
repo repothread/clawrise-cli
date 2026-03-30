@@ -11,7 +11,6 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
-	"github.com/clawrise/clawrise-cli/internal/config"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
@@ -314,8 +313,8 @@ func (p *authProvider) Resolve(ctx context.Context, params pluginruntime.AuthRes
 	}
 }
 
-func buildNotionProfile(account pluginruntime.AuthAccount) config.Profile {
-	profile := config.Profile{
+func buildNotionProfile(account pluginruntime.AuthAccount) ExecutionProfile {
+	profile := ExecutionProfile{
 		Platform: "notion",
 		Subject:  account.Subject,
 		Method:   account.AuthMethod,
@@ -323,7 +322,7 @@ func buildNotionProfile(account pluginruntime.AuthAccount) config.Profile {
 	switch account.AuthMethod {
 	case "notion.internal_token":
 		profile.Params.NotionVersion = notionPublicString(account, "notion_version")
-		profile.Grant = config.Grant{
+		profile.Grant = ExecutionGrant{
 			Type:      "static_token",
 			Token:     strings.TrimSpace(account.Secrets["token"]),
 			NotionVer: profile.Params.NotionVersion,
@@ -332,7 +331,7 @@ func buildNotionProfile(account pluginruntime.AuthAccount) config.Profile {
 		profile.Params.ClientID = notionPublicString(account, "client_id")
 		profile.Params.NotionVersion = notionPublicString(account, "notion_version")
 		profile.Params.RedirectMode = notionPublicString(account, "redirect_mode")
-		profile.Grant = config.Grant{
+		profile.Grant = ExecutionGrant{
 			Type:         "oauth_refreshable",
 			ClientID:     profile.Params.ClientID,
 			ClientSecret: strings.TrimSpace(account.Secrets["client_secret"]),
@@ -340,6 +339,52 @@ func buildNotionProfile(account pluginruntime.AuthAccount) config.Profile {
 			RefreshToken: strings.TrimSpace(account.Secrets["refresh_token"]),
 			NotionVer:    profile.Params.NotionVersion,
 		}
+	}
+	return profile
+}
+
+func executionProfileFromCall(call adapter.Call) ExecutionProfile {
+	return buildNotionExecutionProfileFromIdentity(call.Identity)
+}
+
+func buildNotionExecutionProfileFromIdentity(identity adapter.Identity) ExecutionProfile {
+	profile := ExecutionProfile{
+		Platform: strings.TrimSpace(identity.Platform),
+		Subject:  strings.TrimSpace(identity.Subject),
+		Method:   strings.TrimSpace(identity.AuthMethod),
+	}
+
+	if accessToken := notionExecutionAuthString(identity.ExecutionAuth, "access_token"); accessToken != "" {
+		profile.Grant = ExecutionGrant{
+			Type:        notionFirstNonEmptyExecutionAuthType(identity.ExecutionAuth, "resolved_access_token"),
+			AccessToken: accessToken,
+			NotionVer:   notionExecutionAuthString(identity.ExecutionAuth, "notion_version"),
+		}
+		return profile
+	}
+
+	switch profile.Method {
+	case "notion.internal_token":
+		profile.Params.NotionVersion = notionIdentityPublicString(identity, "notion_version")
+		profile.Grant = ExecutionGrant{
+			Type:      "static_token",
+			Token:     notionIdentitySecretString(identity, "token"),
+			NotionVer: profile.Params.NotionVersion,
+		}
+	case "notion.oauth_public":
+		profile.Params.ClientID = notionIdentityPublicString(identity, "client_id")
+		profile.Params.NotionVersion = notionIdentityPublicString(identity, "notion_version")
+		profile.Params.RedirectMode = notionIdentityPublicString(identity, "redirect_mode")
+		profile.Grant = ExecutionGrant{
+			Type:         "oauth_refreshable",
+			ClientID:     profile.Params.ClientID,
+			ClientSecret: notionIdentitySecretString(identity, "client_secret"),
+			AccessToken:  notionIdentitySessionString(identity, "access_token"),
+			RefreshToken: notionFirstNonEmpty(notionIdentitySessionString(identity, "refresh_token"), notionIdentitySecretString(identity, "refresh_token")),
+			NotionVer:    profile.Params.NotionVersion,
+		}
+	default:
+		profile.Grant.Type = notionGrantTypeForMethod(profile.Method)
 	}
 	return profile
 }
@@ -394,6 +439,75 @@ func missingNotionSecretFields(account pluginruntime.AuthAccount, fields ...stri
 		}
 	}
 	return items
+}
+
+func notionIdentityPublicString(identity adapter.Identity, field string) string {
+	if identity.Public == nil {
+		return ""
+	}
+	value, ok := identity.Public[field]
+	if !ok {
+		return ""
+	}
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
+func notionIdentitySecretString(identity adapter.Identity, field string) string {
+	if identity.Secrets == nil {
+		return ""
+	}
+	return strings.TrimSpace(identity.Secrets[field])
+}
+
+func notionIdentitySessionString(identity adapter.Identity, field string) string {
+	if identity.Session == nil {
+		return ""
+	}
+	switch strings.TrimSpace(field) {
+	case "access_token":
+		return strings.TrimSpace(identity.Session.AccessToken)
+	case "refresh_token":
+		return strings.TrimSpace(identity.Session.RefreshToken)
+	default:
+		return ""
+	}
+}
+
+func notionExecutionAuthString(values map[string]any, field string) string {
+	text, _ := values[field].(string)
+	return strings.TrimSpace(text)
+}
+
+func notionFirstNonEmptyExecutionAuthType(values map[string]any, fallback string) string {
+	if value := notionExecutionAuthString(values, "type"); value != "" {
+		return value
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func notionFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func notionGrantTypeForMethod(method string) string {
+	switch strings.TrimSpace(method) {
+	case "notion.internal_token":
+		return "static_token"
+	case "notion.oauth_public":
+		return "oauth_refreshable"
+	default:
+		return ""
+	}
 }
 
 func canRefreshNotionAccount(account pluginruntime.AuthAccount, session *authcache.Session) bool {

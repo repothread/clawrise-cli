@@ -7,7 +7,6 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
@@ -30,9 +29,11 @@ func TestManagerRegistersOperationsThroughRuntimeBoundary(t *testing.T) {
 	}
 
 	data, appErr := definition.Handler(context.Background(), adapter.Call{
-		Profile: config.Profile{
-			Platform: "demo",
-			Subject:  "integration",
+		Identity: adapter.Identity{
+			AccountName: "demo_account",
+			Platform:    "demo",
+			Subject:     "integration",
+			AuthMethod:  "demo.token",
 		},
 		Input: map[string]any{
 			"id": "page_demo",
@@ -156,13 +157,17 @@ func TestManagerLaunchAuthReturnsNoMatchingLauncher(t *testing.T) {
 }
 
 func TestBuildExecuteIdentityUsesMethodAndExecutionAuthShape(t *testing.T) {
-	identity := buildExecuteIdentity("demo_account", config.Profile{
-		Platform: "demo",
-		Subject:  "integration",
-		Method:   "demo.token",
-	}, "demo.token", map[string]any{
-		"type":         "resolved_access_token",
-		"access_token": "demo-token",
+	identity := buildExecuteIdentityFromCall(adapter.Call{
+		Identity: adapter.Identity{
+			AccountName: "demo_account",
+			Platform:    "demo",
+			Subject:     "integration",
+			AuthMethod:  "demo.token",
+			ExecutionAuth: map[string]any{
+				"type":         "resolved_access_token",
+				"access_token": "demo-token",
+			},
+		},
 	})
 
 	if identity.Platform != "demo" || identity.Subject != "integration" {
@@ -177,13 +182,13 @@ func TestBuildExecuteIdentityUsesMethodAndExecutionAuthShape(t *testing.T) {
 	}
 }
 
-func TestBuildProfileFromIdentitySupportsNestedExecutionAuth(t *testing.T) {
-	profile := buildProfileFromIdentity(ExecuteIdentity{
-		Platform:    "notion",
-		Subject:     "integration",
-		AccountName: "demo_account",
-		Auth: ExecuteAuth{
-			Method: "notion.oauth_public",
+func TestBuildExecuteIdentityFromCallPrefersStructuredIdentity(t *testing.T) {
+	identity := buildExecuteIdentityFromCall(adapter.Call{
+		Identity: adapter.Identity{
+			AccountName: "demo_account",
+			Platform:    "notion",
+			Subject:     "integration",
+			AuthMethod:  "notion.oauth_public",
 			ExecutionAuth: map[string]any{
 				"type":           "resolved_access_token",
 				"access_token":   "nested-token",
@@ -192,11 +197,11 @@ func TestBuildProfileFromIdentitySupportsNestedExecutionAuth(t *testing.T) {
 		},
 	})
 
-	if profile.Method != "notion.oauth_public" {
-		t.Fatalf("unexpected profile method: %+v", profile)
+	if identity.Auth.Method != "notion.oauth_public" {
+		t.Fatalf("unexpected auth method: %+v", identity)
 	}
-	if profile.Grant.AccessToken != "nested-token" || profile.Grant.NotionVer != "2026-03-11" {
-		t.Fatalf("unexpected nested execution auth result: %+v", profile)
+	if identity.Auth.ExecutionAuth["access_token"] != "nested-token" {
+		t.Fatalf("unexpected execution_auth payload: %+v", identity.Auth.ExecutionAuth)
 	}
 }
 

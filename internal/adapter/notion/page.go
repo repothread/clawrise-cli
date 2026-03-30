@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // CreatePage creates a page.
-func (c *Client) CreatePage(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) CreatePage(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	payload, appErr := buildCreatePagePayload(profile, input)
 	if appErr != nil {
 		return nil, appErr
@@ -50,7 +49,7 @@ func (c *Client) CreatePage(ctx context.Context, profile config.Profile, input m
 }
 
 // GetPage reads page details.
-func (c *Client) GetPage(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetPage(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
 		return nil, appErr
@@ -87,7 +86,7 @@ func (c *Client) GetPage(ctx context.Context, profile config.Profile, input map[
 }
 
 // UpdatePage updates page properties or archive state.
-func (c *Client) UpdatePage(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) UpdatePage(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
 		return nil, appErr
@@ -129,7 +128,7 @@ func (c *Client) UpdatePage(ctx context.Context, profile config.Profile, input m
 }
 
 // GetPageMarkdown reads page content or unknown subtrees in enhanced markdown form.
-func (c *Client) GetPageMarkdown(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetPageMarkdown(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
 		return nil, appErr
@@ -167,7 +166,7 @@ func (c *Client) GetPageMarkdown(ctx context.Context, profile config.Profile, in
 }
 
 // UpdatePageMarkdown applies incremental or full-page updates with enhanced markdown commands.
-func (c *Client) UpdatePageMarkdown(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) UpdatePageMarkdown(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
 		return nil, appErr
@@ -205,7 +204,7 @@ func (c *Client) UpdatePageMarkdown(ctx context.Context, profile config.Profile,
 }
 
 // buildCreatePagePayload builds the request payload used to create a page.
-func buildCreatePagePayload(profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func buildCreatePagePayload(profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	title, ok := asString(input["title"])
 	if !ok || strings.TrimSpace(title) == "" {
 		return nil, apperr.New("INVALID_INPUT", "title is required")
@@ -307,9 +306,10 @@ func normalizeNotionFileObject(raw any, allowEmoji bool) (map[string]any, *apper
 	}
 }
 
-func buildPageParent(profile config.Profile, raw any) (map[string]any, string, *apperr.AppError) {
+func buildPageParent(profile ExecutionProfile, raw any) (map[string]any, string, *apperr.AppError) {
+	profile = normalizeExecutionProfile(profile)
 	// Public integrations may create top-level private workspace pages, so missing parent is allowed here.
-	if raw == nil && profile.Grant.Type == "oauth_refreshable" {
+	if raw == nil && profile.Method == "notion.oauth_public" {
 		return map[string]any{
 			"workspace": true,
 		}, "workspace", nil
@@ -347,7 +347,7 @@ func buildPageParent(profile config.Profile, raw any) (map[string]any, string, *
 			requestKey: strings.TrimSpace(parentID),
 		}, parentType, nil
 	case "workspace":
-		if profile.Grant.Type != "oauth_refreshable" {
+		if profile.Method != "notion.oauth_public" {
 			return nil, "", apperr.New("INVALID_INPUT", "workspace-level page creation requires a public Notion integration profile")
 		}
 		return map[string]any{

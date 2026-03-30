@@ -63,41 +63,6 @@ func runAuth(args []string, store *config.Store, stdout io.Writer, manager *plug
 	}
 }
 
-func buildAuthOperationSummary(profile config.Profile, manager *pluginruntime.Manager) map[string]any {
-	summary := map[string]any{
-		"platform": profile.Platform,
-		"subject":  profile.Subject,
-	}
-	if manager == nil {
-		return summary
-	}
-
-	definitions := manager.Registry().Definitions()
-	platformCount := 0
-	allowedCount := 0
-	for _, definition := range definitions {
-		if definition.Platform != profile.Platform {
-			continue
-		}
-		platformCount++
-		if stringSliceContains(definition.AllowedSubjects, profile.Subject) {
-			allowedCount++
-		}
-	}
-	summary["platform_operation_count"] = platformCount
-	summary["subject_allowed_operation_count"] = allowedCount
-	return summary
-}
-
-func stringSliceContains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
 func writeCLIError(stdout io.Writer, code string, message string) error {
 	if err := output.WriteJSON(stdout, map[string]any{
 		"ok": false,
@@ -109,6 +74,25 @@ func writeCLIError(stdout io.Writer, code string, message string) error {
 		return err
 	}
 	return ExitError{Code: 1}
+}
+
+func buildAccountInspectionView(accountName string, account config.Account, result pluginruntime.AuthInspectResult) map[string]any {
+	return map[string]any{
+		"name":                  accountName,
+		"title":                 account.Title,
+		"platform":              account.Platform,
+		"subject":               account.Subject,
+		"auth_method":           account.Auth.Method,
+		"ready":                 result.Ready,
+		"status":                result.Status,
+		"message":               result.Message,
+		"missing_public_fields": result.MissingPublicFields,
+		"missing_secret_fields": result.MissingSecretFields,
+		"session_status":        result.SessionStatus,
+		"human_required":        result.HumanRequired,
+		"recommended_action":    result.RecommendedAction,
+		"next_actions":          result.NextActions,
+	}
 }
 
 func printAuthHelp(stdout io.Writer) {

@@ -10,11 +10,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // GetDocument fetches basic document metadata.
-func (c *Client) GetDocument(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetDocument(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -61,7 +60,7 @@ func (c *Client) GetDocument(ctx context.Context, profile config.Profile, input 
 }
 
 // ListDocumentBlocks returns document blocks with pagination support.
-func (c *Client) ListDocumentBlocks(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListDocumentBlocks(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -118,7 +117,7 @@ func (c *Client) ListDocumentBlocks(ctx context.Context, profile config.Profile,
 }
 
 // GetDocumentBlock fetches the structured content of a single block.
-func (c *Client) GetDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetDocumentBlock(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -166,7 +165,7 @@ func (c *Client) GetDocumentBlock(ctx context.Context, profile config.Profile, i
 }
 
 // GetDocumentBlockChildren returns child blocks under the given block with pagination support.
-func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -231,14 +230,14 @@ func (c *Client) GetDocumentBlockChildren(ctx context.Context, profile config.Pr
 }
 
 // GetDocumentBlockDescendants returns all descendant blocks under the given block.
-func (c *Client) GetDocumentBlockDescendants(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetDocumentBlockDescendants(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	descendantsInput := cloneFeishuInputMap(input)
 	descendantsInput["with_descendants"] = true
 	return c.GetDocumentBlockChildren(ctx, profile, descendantsInput)
 }
 
 // UpdateDocumentBlock updates the text content of a single block.
-func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
+func (c *Client) UpdateDocumentBlock(ctx context.Context, profile ExecutionProfile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -288,7 +287,7 @@ func (c *Client) UpdateDocumentBlock(ctx context.Context, profile config.Profile
 }
 
 // BatchDeleteDocumentBlockChildren deletes a contiguous range of child blocks from a parent block.
-func (c *Client) BatchDeleteDocumentBlockChildren(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
+func (c *Client) BatchDeleteDocumentBlockChildren(ctx context.Context, profile ExecutionProfile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -342,7 +341,7 @@ func (c *Client) BatchDeleteDocumentBlockChildren(ctx context.Context, profile c
 }
 
 // AppendDocumentBlocks appends text-oriented blocks to a docx document.
-func (c *Client) AppendDocumentBlocks(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
+func (c *Client) AppendDocumentBlocks(ctx context.Context, profile ExecutionProfile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -399,7 +398,7 @@ func (c *Client) AppendDocumentBlocks(ctx context.Context, profile config.Profil
 }
 
 // GetDocumentRawContent fetches pure text content from a docx document.
-func (c *Client) GetDocumentRawContent(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetDocumentRawContent(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr

@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // GetBlockDescendants 递归拉取整个块树，返回扁平后代列表。
-func (c *Client) GetBlockDescendants(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetBlockDescendants(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
 		return nil, appErr

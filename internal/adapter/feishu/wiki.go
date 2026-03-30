@@ -10,11 +10,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // ListWikiSpaces 列出当前执行身份可见的飞书知识库空间。
-func (c *Client) ListWikiSpaces(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListWikiSpaces(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -69,7 +68,7 @@ func (c *Client) ListWikiSpaces(ctx context.Context, profile config.Profile, inp
 }
 
 // ListWikiNodes 列出指定知识库空间或父节点下的子节点。
-func (c *Client) ListWikiNodes(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListWikiNodes(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -134,7 +133,7 @@ func (c *Client) ListWikiNodes(ctx context.Context, profile config.Profile, inpu
 }
 
 // CreateWikiNode 在指定知识库空间或父节点下创建 docx 节点。
-func (c *Client) CreateWikiNode(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) CreateWikiNode(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr

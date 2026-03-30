@@ -13,7 +13,6 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 func TestCreateCalendarEventSuccess(t *testing.T) {
@@ -87,10 +86,10 @@ func TestCreateCalendarEventSuccess(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	data, appErr := client.CreateCalendarEvent(context.Background(), config.Profile{
+	data, appErr := client.CreateCalendarEvent(context.Background(), ExecutionProfile{
 		Platform: "feishu",
 		Subject:  "bot",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:      "client_credentials",
 			AppID:     "env:FEISHU_APP_ID",
 			AppSecret: "env:FEISHU_APP_SECRET",
@@ -126,10 +125,10 @@ func TestCreateCalendarEventRejectsAttendees(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	_, appErr := client.CreateCalendarEvent(context.Background(), config.Profile{
+	_, appErr := client.CreateCalendarEvent(context.Background(), ExecutionProfile{
 		Platform: "feishu",
 		Subject:  "bot",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:      "client_credentials",
 			AppID:     "env:FEISHU_APP_ID",
 			AppSecret: "env:FEISHU_APP_SECRET",
@@ -225,10 +224,10 @@ func TestRequireUserAccessTokenUsesSessionCacheAndRotatedRefreshToken(t *testing
 	}
 
 	ctx := adapter.WithAccountName(context.Background(), "feishu_user_alice")
-	profile := config.Profile{
+	profile := ExecutionProfile{
 		Platform: "feishu",
 		Subject:  "user",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:         "oauth_user",
 			ClientID:     "env:FEISHU_CLIENT_ID",
 			ClientSecret: "env:FEISHU_CLIENT_SECRET",
@@ -297,10 +296,10 @@ func TestRequireUserAccessTokenRequiresInteractiveAuthorization(t *testing.T) {
 	}
 
 	ctx := adapter.WithAccountName(context.Background(), "feishu_user_alice")
-	_, appErr := client.requireUserAccessToken(ctx, config.Profile{
+	_, appErr := client.requireUserAccessToken(ctx, ExecutionProfile{
 		Platform: "feishu",
 		Subject:  "user",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:         "oauth_user",
 			ClientID:     "env:FEISHU_CLIENT_ID",
 			ClientSecret: "env:FEISHU_CLIENT_SECRET",
@@ -1232,11 +1231,11 @@ func TestNormalizeFeishuErrorRateLimited(t *testing.T) {
 	}
 }
 
-func testBotProfile() config.Profile {
-	return config.Profile{
+func testBotProfile() ExecutionProfile {
+	return ExecutionProfile{
 		Platform: "feishu",
 		Subject:  "bot",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:      "client_credentials",
 			AppID:     "env:FEISHU_APP_ID",
 			AppSecret: "env:FEISHU_APP_SECRET",

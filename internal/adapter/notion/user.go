@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // GetUser reads a user object and supports both a concrete user_id and user_id=me.
-func (c *Client) GetUser(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetUser(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	userID, appErr := requireIDField(input, "user_id")
 	if appErr != nil {
 		return nil, appErr
@@ -55,7 +54,7 @@ func (c *Client) GetUser(ctx context.Context, profile config.Profile, input map[
 }
 
 // ListUsers 列出当前集成可见的 Notion 用户。
-func (c *Client) ListUsers(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListUsers(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr

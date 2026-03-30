@@ -18,7 +18,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            calendarCalendarListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListCalendars(ctx, call.Profile, call.Input)
+			return client.ListCalendars(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -29,7 +29,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            calendarEventCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.CreateCalendarEvent(ctx, call.Profile, call.Input, call.IdempotencyKey)
+			return client.CreateCalendarEvent(ctx, executionProfileFromCall(call), call.Input, call.IdempotencyKey)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -40,7 +40,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            calendarEventListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListCalendarEvents(ctx, call.Profile, call.Input)
+			return client.ListCalendarEvents(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -51,7 +51,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            calendarEventGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetCalendarEvent(ctx, call.Profile, call.Input)
+			return client.GetCalendarEvent(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -62,7 +62,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            calendarEventUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.UpdateCalendarEvent(ctx, call.Profile, call.Input)
+			return client.UpdateCalendarEvent(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -73,7 +73,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            calendarEventDeleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.DeleteCalendarEvent(ctx, call.Profile, call.Input)
+			return client.DeleteCalendarEvent(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -84,7 +84,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.CreateDocument(ctx, call.Profile, call.Input)
+			return client.CreateDocument(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -95,7 +95,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetDocument(ctx, call.Profile, call.Input)
+			return client.GetDocument(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -106,7 +106,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentListBlocksSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListDocumentBlocks(ctx, call.Profile, call.Input)
+			return client.ListDocumentBlocks(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -117,7 +117,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsBlockGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetDocumentBlock(ctx, call.Profile, call.Input)
+			return client.GetDocumentBlock(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -128,7 +128,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsBlockListChildrenSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetDocumentBlockChildren(ctx, call.Profile, call.Input)
+			return client.GetDocumentBlockChildren(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -139,7 +139,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot"},
 		Spec:            docsBlockGetDescendantsSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetDocumentBlockDescendants(ctx, call.Profile, call.Input)
+			return client.GetDocumentBlockDescendants(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -150,7 +150,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsBlockUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.UpdateDocumentBlock(ctx, call.Profile, call.Input, call.IdempotencyKey)
+			return client.UpdateDocumentBlock(ctx, executionProfileFromCall(call), call.Input, call.IdempotencyKey)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -161,7 +161,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsBlockBatchDeleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.BatchDeleteDocumentBlockChildren(ctx, call.Profile, call.Input, call.IdempotencyKey)
+			return client.BatchDeleteDocumentBlockChildren(ctx, executionProfileFromCall(call), call.Input, call.IdempotencyKey)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -172,7 +172,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            wikiSpaceListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListWikiSpaces(ctx, call.Profile, call.Input)
+			return client.ListWikiSpaces(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -183,7 +183,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            wikiNodeListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListWikiNodes(ctx, call.Profile, call.Input)
+			return client.ListWikiNodes(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -194,7 +194,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            wikiNodeCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.CreateWikiNode(ctx, call.Profile, call.Input)
+			return client.CreateWikiNode(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -205,7 +205,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentAppendBlocksSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.AppendDocumentBlocks(ctx, call.Profile, call.Input, call.IdempotencyKey)
+			return client.AppendDocumentBlocks(ctx, executionProfileFromCall(call), call.Input, call.IdempotencyKey)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -216,7 +216,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentEditSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.EditDocument(ctx, call.Profile, call.Input, call.IdempotencyKey)
+			return client.EditDocument(ctx, executionProfileFromCall(call), call.Input, call.IdempotencyKey)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -227,7 +227,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentGetRawContentSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetDocumentRawContent(ctx, call.Profile, call.Input)
+			return client.GetDocumentRawContent(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -238,7 +238,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            docsDocumentShareSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ShareDocument(ctx, call.Profile, call.Input)
+			return client.ShareDocument(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -249,7 +249,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            contactUserGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetUser(ctx, call.Profile, call.Input)
+			return client.GetUser(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -260,7 +260,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            contactUserSearchSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.SearchUsers(ctx, call.Profile, call.Input)
+			return client.SearchUsers(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -271,7 +271,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            contactDepartmentListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListDepartments(ctx, call.Profile, call.Input)
+			return client.ListDepartments(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -282,7 +282,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            departmentUserListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListDepartmentUsers(ctx, call.Profile, call.Input)
+			return client.ListDepartmentUsers(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -293,7 +293,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableTableListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListBitableTables(ctx, call.Profile, call.Input)
+			return client.ListBitableTables(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -304,7 +304,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableFieldListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListBitableFields(ctx, call.Profile, call.Input)
+			return client.ListBitableFields(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -315,7 +315,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordListSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.ListBitableRecords(ctx, call.Profile, call.Input)
+			return client.ListBitableRecords(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -326,7 +326,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordGetSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.GetBitableRecord(ctx, call.Profile, call.Input)
+			return client.GetBitableRecord(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -337,7 +337,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.CreateBitableRecord(ctx, call.Profile, call.Input)
+			return client.CreateBitableRecord(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -348,7 +348,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordBatchCreateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.BatchCreateBitableRecords(ctx, call.Profile, call.Input)
+			return client.BatchCreateBitableRecords(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -359,7 +359,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.UpdateBitableRecord(ctx, call.Profile, call.Input)
+			return client.UpdateBitableRecord(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -370,7 +370,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordBatchUpdateSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.BatchUpdateBitableRecords(ctx, call.Profile, call.Input)
+			return client.BatchUpdateBitableRecords(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -381,7 +381,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordDeleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.DeleteBitableRecord(ctx, call.Profile, call.Input)
+			return client.DeleteBitableRecord(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -392,7 +392,7 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		AllowedSubjects: []string{"bot", "user"},
 		Spec:            bitableRecordBatchDeleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
-			return client.BatchDeleteBitableRecords(ctx, call.Profile, call.Input)
+			return client.BatchDeleteBitableRecords(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 

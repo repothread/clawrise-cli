@@ -136,6 +136,88 @@ func TestRunSubjectUse(t *testing.T) {
 	}
 }
 
+func TestRunConfigInitSelectsMachinePresetByDefault(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "init", "--platform", "notion"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"method": "notion.internal_token"`)) {
+		t.Fatalf("expected config init to choose the machine preset, got: %s", stdout.String())
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load generated config: %v", err)
+	}
+	account, ok := cfg.Accounts["notion_integration_default"]
+	if !ok {
+		t.Fatalf("expected notion_integration_default account, got: %+v", cfg.Accounts)
+	}
+	if account.Auth.Method != "notion.internal_token" {
+		t.Fatalf("unexpected auth method: %+v", account)
+	}
+	if cfg.Defaults.Account != "notion_integration_default" || cfg.Defaults.Platform != "notion" {
+		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
+	}
+}
+
+func TestRunConfigInitUsesInteractivePresetScopes(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{
+		"config", "init",
+		"--platform", "feishu",
+		"--subject", "user",
+		"--scope", "offline_access",
+		"--scope", "docx:document",
+	}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"method": "feishu.oauth_user"`)) {
+		t.Fatalf("expected config init to choose feishu.oauth_user, got: %s", stdout.String())
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load generated config: %v", err)
+	}
+	account, ok := cfg.Accounts["feishu_user_default"]
+	if !ok {
+		t.Fatalf("expected feishu_user_default account, got: %+v", cfg.Accounts)
+	}
+	if account.Auth.Method != "feishu.oauth_user" {
+		t.Fatalf("unexpected auth method: %+v", account)
+	}
+	rawScopes, ok := account.Auth.Public["scopes"].([]any)
+	if !ok {
+		t.Fatalf("expected scopes to be stored as a list, got: %+v", account.Auth.Public["scopes"])
+	}
+	if len(rawScopes) != 2 || rawScopes[0] != "offline_access" || rawScopes[1] != "docx:document" {
+		t.Fatalf("unexpected scopes: %+v", rawScopes)
+	}
+}
+
 func TestRunAccountUseSynchronizesSubject(t *testing.T) {
 	copyExampleConfig(t)
 
@@ -686,6 +768,45 @@ func TestRunAuthCheckReportsAuthorizationPending(t *testing.T) {
 	}
 }
 
+func TestRunAuthInspectUsesStableOutputShape(t *testing.T) {
+	copyExampleConfig(t)
+	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"auth", "inspect", "notion_public_workspace_a"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("auth inspect returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	var payload map[string]any
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &payload); decodeErr != nil {
+		t.Fatalf("failed to decode auth inspect output: %v", decodeErr)
+	}
+	data := payload["data"].(map[string]any)
+	if _, ok := data["inspection"]; ok {
+		t.Fatalf("expected flattened auth inspect payload, got nested inspection: %+v", data)
+	}
+	if data["status"] != "authorization_required" {
+		t.Fatalf("unexpected status: %+v", data)
+	}
+	if data["recommended_action"] != "auth.login" {
+		t.Fatalf("unexpected recommended_action: %+v", data)
+	}
+	if _, ok := data["next_actions"]; !ok {
+		t.Fatalf("expected next_actions in auth inspect output: %+v", data)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunAuthBeginNotionPublic(t *testing.T) {
 	copyExampleConfig(t)
 
@@ -1149,6 +1270,9 @@ func TestRunDoctor(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"next_steps"`)) {
 		t.Fatalf("expected next steps in doctor output, got: %s", stdout.String())
+	}
+	if bytes.Contains(stdout.Bytes(), []byte(`"auth":`)) {
+		t.Fatalf("expected doctor account items to expose flattened auth fields, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

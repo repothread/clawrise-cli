@@ -7,13 +7,25 @@ import (
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
+	authcache "github.com/clawrise/clawrise-cli/internal/auth"
 )
+
+// Identity describes the unified execution identity passed to one adapter call.
+type Identity struct {
+	AccountName   string
+	Platform      string
+	Subject       string
+	AuthMethod    string
+	Public        map[string]any
+	Secrets       map[string]string
+	Session       *authcache.Session
+	ExecutionAuth map[string]any
+}
 
 // Call describes one adapter invocation context.
 type Call struct {
 	AccountName    string
-	Profile        config.Profile
+	Identity       Identity
 	Input          map[string]any
 	IdempotencyKey string
 }

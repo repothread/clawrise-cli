@@ -9,7 +9,6 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 func TestRegisterOperationsAllowUserSubject(t *testing.T) {
@@ -445,11 +444,11 @@ func TestUserProfileCanCallFormerBotOnlyOperations(t *testing.T) {
 	}
 }
 
-func testUserProfile() config.Profile {
-	return config.Profile{
+func testUserProfile() ExecutionProfile {
+	return ExecutionProfile{
 		Platform: "feishu",
 		Subject:  "user",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type: "oauth_user",
 		},
 	}

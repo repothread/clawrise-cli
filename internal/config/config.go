@@ -1,7 +1,6 @@
 package config
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/paths"
@@ -10,23 +9,26 @@ import (
 
 // Config is the top-level structure of the main Clawrise config file.
 type Config struct {
-	Defaults    Defaults              `yaml:"defaults"`
-	Paths       PathsConfig           `yaml:"paths,omitempty"`
-	Auth        AuthConfig            `yaml:"auth,omitempty"`
-	Runtime     RuntimeConfig         `yaml:"runtime,omitempty"`
-	Accounts    map[string]Account    `yaml:"accounts,omitempty"`
+	Defaults Defaults           `yaml:"defaults"`
+	Paths    PathsConfig        `yaml:"paths,omitempty"`
+	Auth     AuthConfig         `yaml:"auth,omitempty"`
+	Runtime  RuntimeConfig      `yaml:"runtime,omitempty"`
+	Accounts map[string]Account `yaml:"accounts,omitempty"`
+	// Legacy-only input shim. New code should use Accounts.
 	Connections map[string]Connection `yaml:"-"`
-	Profiles    map[string]Profile    `yaml:"-"`
+	// Legacy-only input shim. New code should use Accounts.
+	Profiles map[string]Profile `yaml:"-"`
 }
 
 // Defaults stores the default platform and default execution connection.
 type Defaults struct {
-	Platform         string            `yaml:"platform,omitempty"`
+	Platform string `yaml:"platform,omitempty"`
+	// Legacy-only input shim. New code should use PlatformAccounts.
 	Connections      map[string]string `yaml:"-"`
 	PlatformAccounts map[string]string `yaml:"platform_accounts,omitempty"`
 	Account          string            `yaml:"account,omitempty"`
 
-	// These fields remain internal-only for the current adapter bridge.
+	// Subject is still user-visible, but Profile is a legacy input shim only.
 	Subject string `yaml:"subject,omitempty"`
 	Profile string `yaml:"-"`
 }
@@ -130,18 +132,10 @@ type GovernanceConfig struct {
 // Profile remains an internal alias for the resolved execution shape.
 type Profile = Connection
 
-// NamedProfile is a connection value paired with its config key.
-type NamedProfile struct {
-	Name    string
-	Profile Profile
-}
-
 // New returns an empty config.
 func New() *Config {
 	return &Config{
-		Accounts:    map[string]Account{},
-		Connections: map[string]Connection{},
-		Profiles:    map[string]Profile{},
+		Accounts: map[string]Account{},
 	}
 }
 
@@ -150,26 +144,15 @@ func (c *Config) Ensure() {
 	if c.Accounts == nil {
 		c.Accounts = map[string]Account{}
 	}
-	if c.Connections == nil {
-		c.Connections = map[string]Connection{}
-	}
 	if len(c.Accounts) == 0 && len(c.Connections) > 0 {
 		for name, connection := range c.Connections {
 			c.Accounts[name] = buildAccountFromConnection(name, connection)
 		}
 	}
-	if len(c.Connections) == 0 && len(c.Accounts) > 0 {
-		for name, account := range c.Accounts {
-			c.Connections[name] = buildConnectionFromAccount(name, account)
-		}
-	}
-	if len(c.Connections) == 0 && len(c.Profiles) > 0 {
+	if len(c.Accounts) == 0 && len(c.Profiles) > 0 {
 		for name, profile := range c.Profiles {
-			c.Connections[name] = profile
+			c.Accounts[name] = buildAccountFromConnection(name, profile)
 		}
-	}
-	if c.Defaults.Connections == nil {
-		c.Defaults.Connections = map[string]string{}
 	}
 	if c.Defaults.PlatformAccounts == nil {
 		c.Defaults.PlatformAccounts = map[string]string{}
@@ -177,61 +160,11 @@ func (c *Config) Ensure() {
 	if c.Defaults.Account == "" && strings.TrimSpace(c.Defaults.Profile) != "" {
 		c.Defaults.Account = strings.TrimSpace(c.Defaults.Profile)
 	}
-	if c.Defaults.Profile == "" && strings.TrimSpace(c.Defaults.Account) != "" {
-		c.Defaults.Profile = strings.TrimSpace(c.Defaults.Account)
-	}
 	if len(c.Defaults.PlatformAccounts) == 0 && len(c.Defaults.Connections) > 0 {
 		for platform, accountName := range c.Defaults.Connections {
 			c.Defaults.PlatformAccounts[platform] = accountName
 		}
 	}
-	if len(c.Defaults.Connections) == 0 && len(c.Defaults.PlatformAccounts) > 0 {
-		for platform, accountName := range c.Defaults.PlatformAccounts {
-			c.Defaults.Connections[platform] = accountName
-		}
-	}
-	for name, connection := range c.Connections {
-		connection = normalizeConnection(name, connection)
-		c.Connections[name] = connection
-		if _, ok := c.Accounts[name]; !ok {
-			c.Accounts[name] = buildAccountFromConnection(name, connection)
-		}
-	}
-	c.Profiles = c.Connections
-}
-
-// CandidateProfiles returns candidate profiles for a platform in a stable order.
-func (c *Config) CandidateProfiles(platform string) []NamedProfile {
-	return c.CandidateProfilesBySubject(platform, "")
-}
-
-// ResolvedAccount returns the resolved internal execution shape for an account.
-func (c *Config) ResolvedAccount(name string) Connection {
-	c.Ensure()
-	return c.Connections[strings.TrimSpace(name)]
-}
-
-// CandidateProfilesBySubject returns candidate profiles for a platform and,
-// when provided, filters them by subject.
-func (c *Config) CandidateProfilesBySubject(platform, subject string) []NamedProfile {
-	c.Ensure()
-
-	names := make([]string, 0, len(c.Connections))
-	for name, connection := range c.Connections {
-		if connection.Platform == platform && (subject == "" || connection.Subject == subject) {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-
-	result := make([]NamedProfile, 0, len(names))
-	for _, name := range names {
-		result = append(result, NamedProfile{
-			Name:    name,
-			Profile: c.Connections[name],
-		})
-	}
-	return result
 }
 
 // DefaultPath returns the default config file path.
@@ -248,12 +181,6 @@ func (c *Config) Marshal() ([]byte, error) {
 	cloned.Connections = nil
 	cloned.Defaults.Connections = nil
 	cloned.Defaults.Profile = ""
-	for name, connection := range c.Connections {
-		if _, ok := cloned.Accounts[name]; ok {
-			continue
-		}
-		cloned.Accounts[name] = buildAccountFromConnection(name, connection)
-	}
 	return yaml.Marshal(&cloned)
 }
 
@@ -575,11 +502,6 @@ func legacyGrantTypeForMethod(method string) string {
 	default:
 		return ""
 	}
-}
-
-// LegacyGrantTypeForMethod returns the legacy grant type for one auth method.
-func LegacyGrantTypeForMethod(method string) string {
-	return legacyGrantTypeForMethod(method)
 }
 
 // SecretRef encodes one secret-store field reference in the shared format.

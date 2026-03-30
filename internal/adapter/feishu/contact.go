@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 const (
@@ -25,7 +24,7 @@ type contactUserSearchCursor struct {
 }
 
 // GetUser reads one Feishu user profile.
-func (c *Client) GetUser(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetUser(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	userID, ok := asString(input["user_id"])
 	if !ok || strings.TrimSpace(userID) == "" {
 		return nil, apperr.New("INVALID_INPUT", "user_id is required")
@@ -68,7 +67,7 @@ func (c *Client) GetUser(ctx context.Context, profile config.Profile, input map[
 }
 
 // SearchUsers searches visible Feishu users by partial identity input.
-func (c *Client) SearchUsers(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) SearchUsers(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	query, ok := asString(input["query"])
 	if !ok || strings.TrimSpace(query) == "" {
 		return nil, apperr.New("INVALID_INPUT", "query is required")

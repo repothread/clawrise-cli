@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // GetDataSource reads data source metadata and schema.
-func (c *Client) GetDataSource(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetDataSource(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	dataSourceID, appErr := requireIDField(input, "data_source_id")
 	if appErr != nil {
 		return nil, appErr
@@ -49,7 +48,7 @@ func (c *Client) GetDataSource(ctx context.Context, profile config.Profile, inpu
 }
 
 // QueryDataSource queries pages or nested data sources under a data source.
-func (c *Client) QueryDataSource(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) QueryDataSource(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	dataSourceID, appErr := requireIDField(input, "data_source_id")
 	if appErr != nil {
 		return nil, appErr

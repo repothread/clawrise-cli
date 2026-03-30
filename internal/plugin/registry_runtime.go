@@ -162,10 +162,11 @@ func (r *registryRuntime) Execute(ctx context.Context, req ExecuteRequest) (Exec
 		}, nil
 	}
 
-	ctx = adapter.WithAccountName(ctx, req.AccountName)
+	identity := buildAdapterIdentityFromExecuteRequest(req)
+	ctx = adapter.WithAccountName(ctx, identity.AccountName)
 	data, appErr := definition.Handler(ctx, adapter.Call{
-		AccountName:    req.AccountName,
-		Profile:        req.Profile,
+		AccountName:    identity.AccountName,
+		Identity:       identity,
 		Input:          req.Input,
 		IdempotencyKey: req.IdempotencyKey,
 	})
@@ -173,6 +174,17 @@ func (r *registryRuntime) Execute(ctx context.Context, req ExecuteRequest) (Exec
 		Data:  data,
 		Error: appErr,
 	}, nil
+}
+
+func buildAdapterIdentityFromExecuteRequest(req ExecuteRequest) adapter.Identity {
+	identity := req.Identity
+	return adapter.Identity{
+		AccountName:   strings.TrimSpace(identity.AccountName),
+		Platform:      strings.TrimSpace(identity.Platform),
+		Subject:       strings.TrimSpace(identity.Subject),
+		AuthMethod:    strings.TrimSpace(identity.Auth.Method),
+		ExecutionAuth: cloneMap(identity.Auth.ExecutionAuth),
+	}
 }
 
 func (r *registryRuntime) Health(ctx context.Context) (HealthResult, error) {

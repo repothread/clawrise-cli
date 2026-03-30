@@ -10,11 +10,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // ListCalendars lists calendars visible to the current identity.
-func (c *Client) ListCalendars(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListCalendars(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -70,7 +69,7 @@ func (c *Client) ListCalendars(ctx context.Context, profile config.Profile, inpu
 }
 
 // ListCalendarEvents lists events in the given calendar and time window.
-func (c *Client) ListCalendarEvents(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListCalendarEvents(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	calendarID, ok := asString(input["calendar_id"])
 	if !ok || strings.TrimSpace(calendarID) == "" {
 		return nil, apperr.New("INVALID_INPUT", "calendar_id is required")
@@ -142,7 +141,7 @@ func (c *Client) ListCalendarEvents(ctx context.Context, profile config.Profile,
 }
 
 // GetCalendarEvent fetches one calendar event by id.
-func (c *Client) GetCalendarEvent(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetCalendarEvent(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	calendarID, eventID, appErr := requireCalendarEventIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -178,7 +177,7 @@ func (c *Client) GetCalendarEvent(ctx context.Context, profile config.Profile, i
 }
 
 // UpdateCalendarEvent updates one calendar event.
-func (c *Client) UpdateCalendarEvent(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) UpdateCalendarEvent(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	calendarID, eventID, appErr := requireCalendarEventIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -221,7 +220,7 @@ func (c *Client) UpdateCalendarEvent(ctx context.Context, profile config.Profile
 }
 
 // DeleteCalendarEvent deletes one calendar event.
-func (c *Client) DeleteCalendarEvent(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) DeleteCalendarEvent(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	calendarID, eventID, appErr := requireCalendarEventIdentity(input)
 	if appErr != nil {
 		return nil, appErr

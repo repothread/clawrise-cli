@@ -8,11 +8,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // ListBitableTables lists tables from one Feishu Bitable app.
-func (c *Client) ListBitableTables(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListBitableTables(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, ok := asString(input["app_token"])
 	if !ok || strings.TrimSpace(appToken) == "" {
 		return nil, apperr.New("INVALID_INPUT", "app_token is required")
@@ -66,7 +65,7 @@ func (c *Client) ListBitableTables(ctx context.Context, profile config.Profile, 
 }
 
 // ListBitableFields lists fields from one Feishu Bitable table.
-func (c *Client) ListBitableFields(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListBitableFields(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, appErr := requireBitableTableIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -120,7 +119,7 @@ func (c *Client) ListBitableFields(ctx context.Context, profile config.Profile, 
 }
 
 // ListBitableRecords lists records from one Feishu Bitable table.
-func (c *Client) ListBitableRecords(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListBitableRecords(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, appErr := requireBitableTableIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -182,7 +181,7 @@ func (c *Client) ListBitableRecords(ctx context.Context, profile config.Profile,
 }
 
 // GetBitableRecord fetches one Bitable record by id.
-func (c *Client) GetBitableRecord(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetBitableRecord(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, recordID, appErr := requireBitableRecordIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -222,7 +221,7 @@ func (c *Client) GetBitableRecord(ctx context.Context, profile config.Profile, i
 }
 
 // CreateBitableRecord creates one Bitable record.
-func (c *Client) CreateBitableRecord(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) CreateBitableRecord(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, fields, appErr := buildBitableRecordWriteRequest(input)
 	if appErr != nil {
 		return nil, appErr
@@ -266,7 +265,7 @@ func (c *Client) CreateBitableRecord(ctx context.Context, profile config.Profile
 }
 
 // UpdateBitableRecord updates one Bitable record.
-func (c *Client) UpdateBitableRecord(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) UpdateBitableRecord(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, recordID, appErr := requireBitableRecordIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -314,7 +313,7 @@ func (c *Client) UpdateBitableRecord(ctx context.Context, profile config.Profile
 }
 
 // DeleteBitableRecord deletes one Bitable record.
-func (c *Client) DeleteBitableRecord(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) DeleteBitableRecord(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, recordID, appErr := requireBitableRecordIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -351,7 +350,7 @@ func (c *Client) DeleteBitableRecord(ctx context.Context, profile config.Profile
 }
 
 // BatchCreateBitableRecords batch creates records in one Bitable table.
-func (c *Client) BatchCreateBitableRecords(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) BatchCreateBitableRecords(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, appErr := requireBitableTableIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -391,7 +390,7 @@ func (c *Client) BatchCreateBitableRecords(ctx context.Context, profile config.P
 }
 
 // BatchUpdateBitableRecords batch updates records in one Bitable table.
-func (c *Client) BatchUpdateBitableRecords(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) BatchUpdateBitableRecords(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, appErr := requireBitableTableIdentity(input)
 	if appErr != nil {
 		return nil, appErr
@@ -431,7 +430,7 @@ func (c *Client) BatchUpdateBitableRecords(ctx context.Context, profile config.P
 }
 
 // BatchDeleteBitableRecords batch deletes records in one Bitable table.
-func (c *Client) BatchDeleteBitableRecords(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) BatchDeleteBitableRecords(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	appToken, tableID, appErr := requireBitableTableIdentity(input)
 	if appErr != nil {
 		return nil, appErr

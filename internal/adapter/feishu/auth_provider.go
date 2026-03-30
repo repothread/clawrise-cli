@@ -11,7 +11,6 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
-	"github.com/clawrise/clawrise-cli/internal/config"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
@@ -302,8 +301,8 @@ func (p *authProvider) Resolve(ctx context.Context, params pluginruntime.AuthRes
 	}
 }
 
-func buildFeishuProfile(account pluginruntime.AuthAccount) config.Profile {
-	profile := config.Profile{
+func buildFeishuProfile(account pluginruntime.AuthAccount) ExecutionProfile {
+	profile := ExecutionProfile{
 		Platform: "feishu",
 		Subject:  account.Subject,
 		Method:   account.AuthMethod,
@@ -311,7 +310,7 @@ func buildFeishuProfile(account pluginruntime.AuthAccount) config.Profile {
 	switch account.AuthMethod {
 	case "feishu.app_credentials":
 		profile.Params.AppID = accountPublicString(account, "app_id")
-		profile.Grant = config.Grant{
+		profile.Grant = ExecutionGrant{
 			Type:      "client_credentials",
 			AppID:     profile.Params.AppID,
 			AppSecret: strings.TrimSpace(account.Secrets["app_secret"]),
@@ -320,13 +319,57 @@ func buildFeishuProfile(account pluginruntime.AuthAccount) config.Profile {
 		profile.Params.ClientID = accountPublicString(account, "client_id")
 		profile.Params.RedirectMode = accountPublicString(account, "redirect_mode")
 		profile.Params.Scopes = accountPublicStringSlice(account, "scopes")
-		profile.Grant = config.Grant{
+		profile.Grant = ExecutionGrant{
 			Type:         "oauth_user",
 			ClientID:     profile.Params.ClientID,
 			ClientSecret: strings.TrimSpace(account.Secrets["client_secret"]),
 			AccessToken:  strings.TrimSpace(account.Secrets["access_token"]),
 			RefreshToken: strings.TrimSpace(account.Secrets["refresh_token"]),
 		}
+	}
+	return profile
+}
+
+func executionProfileFromCall(call adapter.Call) ExecutionProfile {
+	return buildFeishuExecutionProfileFromIdentity(call.Identity)
+}
+
+func buildFeishuExecutionProfileFromIdentity(identity adapter.Identity) ExecutionProfile {
+	profile := ExecutionProfile{
+		Platform: strings.TrimSpace(identity.Platform),
+		Subject:  strings.TrimSpace(identity.Subject),
+		Method:   strings.TrimSpace(identity.AuthMethod),
+	}
+
+	if accessToken := executionAuthString(identity.ExecutionAuth, "access_token"); accessToken != "" {
+		profile.Grant = ExecutionGrant{
+			Type:        firstNonEmptyExecutionAuthType(identity.ExecutionAuth, "resolved_access_token"),
+			AccessToken: accessToken,
+		}
+		return profile
+	}
+
+	switch profile.Method {
+	case "feishu.app_credentials":
+		profile.Params.AppID = identityPublicString(identity, "app_id")
+		profile.Grant = ExecutionGrant{
+			Type:      "client_credentials",
+			AppID:     profile.Params.AppID,
+			AppSecret: identitySecretString(identity, "app_secret"),
+		}
+	case "feishu.oauth_user":
+		profile.Params.ClientID = identityPublicString(identity, "client_id")
+		profile.Params.RedirectMode = identityPublicString(identity, "redirect_mode")
+		profile.Params.Scopes = identityPublicStringSlice(identity, "scopes")
+		profile.Grant = ExecutionGrant{
+			Type:         "oauth_user",
+			ClientID:     profile.Params.ClientID,
+			ClientSecret: identitySecretString(identity, "client_secret"),
+			AccessToken:  identitySessionString(identity, "access_token"),
+			RefreshToken: firstNonEmpty(identitySessionString(identity, "refresh_token"), identitySecretString(identity, "refresh_token")),
+		}
+	default:
+		profile.Grant.Type = feishuGrantTypeForMethod(profile.Method)
 	}
 	return profile
 }
@@ -386,6 +429,105 @@ func accountPublicStringSlice(account pluginruntime.AuthAccount, field string) [
 		return items
 	default:
 		return nil
+	}
+}
+
+func identityPublicString(identity adapter.Identity, field string) string {
+	if identity.Public == nil {
+		return ""
+	}
+	value, ok := identity.Public[field]
+	if !ok {
+		return ""
+	}
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
+func identityPublicStringSlice(identity adapter.Identity, field string) []string {
+	if identity.Public == nil {
+		return nil
+	}
+	value, ok := identity.Public[field]
+	if !ok {
+		return nil
+	}
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		items := make([]string, 0, len(typed))
+		for _, raw := range typed {
+			text, ok := raw.(string)
+			if !ok {
+				continue
+			}
+			text = strings.TrimSpace(text)
+			if text == "" {
+				continue
+			}
+			items = append(items, text)
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
+func identitySecretString(identity adapter.Identity, field string) string {
+	if identity.Secrets == nil {
+		return ""
+	}
+	return strings.TrimSpace(identity.Secrets[field])
+}
+
+func identitySessionString(identity adapter.Identity, field string) string {
+	if identity.Session == nil {
+		return ""
+	}
+	switch strings.TrimSpace(field) {
+	case "access_token":
+		return strings.TrimSpace(identity.Session.AccessToken)
+	case "refresh_token":
+		return strings.TrimSpace(identity.Session.RefreshToken)
+	default:
+		return ""
+	}
+}
+
+func executionAuthString(values map[string]any, field string) string {
+	text, _ := values[field].(string)
+	return strings.TrimSpace(text)
+}
+
+func firstNonEmptyExecutionAuthType(values map[string]any, fallback string) string {
+	if value := executionAuthString(values, "type"); value != "" {
+		return value
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func feishuGrantTypeForMethod(method string) string {
+	switch strings.TrimSpace(method) {
+	case "feishu.app_credentials":
+		return "client_credentials"
+	case "feishu.oauth_user":
+		return "oauth_user"
+	default:
+		return ""
 	}
 }
 

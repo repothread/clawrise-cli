@@ -8,11 +8,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // Search looks up pages and data sources visible to the current integration.
-func (c *Client) Search(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) Search(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	payload, appErr := buildSearchPayload(input)
 	if appErr != nil {
 		return nil, appErr

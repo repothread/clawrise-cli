@@ -9,11 +9,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // GetPagePropertyItem 读取页面的单个属性项，并保留 Notion 原生响应结构。
-func (c *Client) GetPagePropertyItem(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) GetPagePropertyItem(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
 	if appErr != nil {
 		return nil, appErr

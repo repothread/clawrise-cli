@@ -93,6 +93,34 @@ func ValidateGrant(profile Profile) error {
 	return nil
 }
 
+// ValidateAccountShape validates account-level required structure.
+func ValidateAccountShape(accountName string, account Account) error {
+	_ = accountName
+	if strings.TrimSpace(account.Platform) == "" {
+		return fmt.Errorf("missing platform")
+	}
+	if strings.TrimSpace(account.Subject) == "" {
+		return fmt.Errorf("missing subject")
+	}
+	if strings.TrimSpace(account.Auth.Method) == "" {
+		return fmt.Errorf("missing auth method")
+	}
+	for field, ref := range account.Auth.SecretRefs {
+		if strings.TrimSpace(field) == "" {
+			return fmt.Errorf("secret_refs field must not be empty")
+		}
+		if strings.TrimSpace(ref) == "" {
+			return fmt.Errorf("secret_refs.%s must not be empty", field)
+		}
+	}
+	return nil
+}
+
+// ValidateAccount validates static auth materials required before execution.
+func ValidateAccount(accountName string, account Account) error {
+	return ValidateAccountShape(accountName, account)
+}
+
 func parseSecretReference(raw string) (string, string, error) {
 	parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(raw, "secret:")), ":", 2)
 	if len(parts) != 2 {

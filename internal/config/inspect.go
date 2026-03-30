@@ -180,15 +180,15 @@ func InspectProfile(name string, profile Profile) ProfileInspection {
 func SortedProfileInspections(cfg *Config) []ProfileInspection {
 	cfg.Ensure()
 
-	names := make([]string, 0, len(cfg.Connections))
-	for name := range cfg.Connections {
+	names := make([]string, 0, len(cfg.Accounts))
+	for name := range cfg.Accounts {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
 	items := make([]ProfileInspection, 0, len(names))
 	for _, name := range names {
-		items = append(items, InspectProfile(name, cfg.Connections[name]))
+		items = append(items, InspectProfile(name, buildConnectionFromAccount(name, cfg.Accounts[name])))
 	}
 	return items
 }

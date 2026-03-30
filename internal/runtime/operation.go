@@ -36,9 +36,6 @@ func ParseOperationWithPlatforms(raw, defaultPlatform string, knownPlatforms []s
 		knownPlatformSet[platform] = struct{}{}
 	}
 	isKnownPlatform := func(value string) bool {
-		if len(knownPlatformSet) == 0 {
-			return isKnownPlatformLegacy(value)
-		}
 		_, ok := knownPlatformSet[strings.TrimSpace(value)]
 		return ok
 	}
@@ -77,14 +74,5 @@ func ParseOperationWithPlatforms(raw, defaultPlatform string, knownPlatforms []s
 		}, nil
 	default:
 		return Operation{}, fmt.Errorf("invalid operation format; expected <platform>.<resource-path>.<action> or <resource-path>.<action> when a default platform is set")
-	}
-}
-
-func isKnownPlatformLegacy(value string) bool {
-	switch value {
-	case "feishu", "notion", "google":
-		return true
-	default:
-		return false
 	}
 }

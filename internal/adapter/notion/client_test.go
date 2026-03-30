@@ -13,7 +13,6 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 func TestCreatePageSuccess(t *testing.T) {
@@ -171,10 +170,10 @@ func TestCreatePageWithOAuthRefreshableProfile(t *testing.T) {
 	}
 
 	client := newTestClient(t, transport)
-	data, appErr := client.GetPage(context.Background(), config.Profile{
+	data, appErr := client.GetPage(context.Background(), ExecutionProfile{
 		Platform: "notion",
 		Subject:  "integration",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:         "oauth_refreshable",
 			ClientID:     "env:NOTION_CLIENT_ID",
 			ClientSecret: "env:NOTION_CLIENT_SECRET",
@@ -255,10 +254,10 @@ func TestGetPageWithOAuthRefreshableProfileUsesSessionCache(t *testing.T) {
 	}
 
 	ctx := adapter.WithAccountName(context.Background(), "notion_public_workspace_a")
-	profile := config.Profile{
+	profile := ExecutionProfile{
 		Platform: "notion",
 		Subject:  "integration",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:         "oauth_refreshable",
 			ClientID:     "env:NOTION_CLIENT_ID",
 			ClientSecret: "env:NOTION_CLIENT_SECRET",
@@ -314,10 +313,10 @@ func TestRequireAccessTokenRequiresInteractiveAuthorization(t *testing.T) {
 	client.sessionStore = authcache.NewFileStore(filepath.Join(t.TempDir(), "config.yaml"))
 
 	ctx := adapter.WithAccountName(context.Background(), "notion_public_workspace_a")
-	_, _, appErr := client.requireAccessToken(ctx, config.Profile{
+	_, _, appErr := client.requireAccessToken(ctx, ExecutionProfile{
 		Platform: "notion",
 		Subject:  "integration",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:         "oauth_refreshable",
 			ClientID:     "env:NOTION_CLIENT_ID",
 			ClientSecret: "env:NOTION_CLIENT_SECRET",
@@ -870,11 +869,11 @@ func newTestClient(t *testing.T, transport http.RoundTripper) *Client {
 	return client
 }
 
-func testStaticProfile() config.Profile {
-	return config.Profile{
+func testStaticProfile() ExecutionProfile {
+	return ExecutionProfile{
 		Platform: "notion",
 		Subject:  "integration",
-		Grant: config.Grant{
+		Grant: ExecutionGrant{
 			Type:  "static_token",
 			Token: "env:NOTION_ACCESS_TOKEN",
 		},

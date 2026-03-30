@@ -8,7 +8,6 @@ import (
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
@@ -57,10 +56,7 @@ type HandshakeResult struct {
 // ExecuteRequest describes one normalized provider execution request.
 type ExecuteRequest struct {
 	Operation      string
-	AccountName    string
-	Profile        config.Profile
-	AuthMethod     string
-	ExecutionAuth  map[string]any
+	Identity       ExecuteIdentity
 	Input          map[string]any
 	IdempotencyKey string
 }
@@ -142,10 +138,7 @@ func NewManagerWithOptions(ctx context.Context, runtimes []Runtime, options Mana
 			definition.Handler = func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 				result, err := runtimeRef.Execute(ctx, ExecuteRequest{
 					Operation:      operation,
-					AccountName:    call.AccountName,
-					Profile:        call.Profile,
-					AuthMethod:     strings.TrimSpace(call.Profile.Method),
-					ExecutionAuth:  buildResolvedAuthPayload(call.Profile),
+					Identity:       buildExecuteIdentityFromCall(call),
 					Input:          call.Input,
 					IdempotencyKey: call.IdempotencyKey,
 				})
@@ -218,6 +211,19 @@ func (m *Manager) RuntimeForPlatform(platform string) (Runtime, bool) {
 	}
 	runtime, ok := m.platformRuntimes[strings.TrimSpace(platform)]
 	return runtime, ok
+}
+
+func buildExecuteIdentityFromCall(call adapter.Call) ExecuteIdentity {
+	identity := call.Identity
+	return ExecuteIdentity{
+		Platform:    strings.TrimSpace(identity.Platform),
+		Subject:     strings.TrimSpace(identity.Subject),
+		AccountName: strings.TrimSpace(identity.AccountName),
+		Auth: ExecuteAuth{
+			Method:        strings.TrimSpace(identity.AuthMethod),
+			ExecutionAuth: cloneMap(identity.ExecutionAuth),
+		},
+	}
 }
 
 // AuthLaunchers returns all registered auth launcher descriptors.

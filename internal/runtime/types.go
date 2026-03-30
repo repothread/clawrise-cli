@@ -63,9 +63,9 @@ type IdempotencyState struct {
 
 // ExecutionProfile is the resolved execution identity at runtime.
 type ExecutionProfile struct {
-	Name     string         `json:"name"`
-	Account  string         `json:"account"`
-	Platform string         `json:"platform"`
-	Subject  string         `json:"subject"`
-	Grant    map[string]any `json:"grant"`
+	Name       string `json:"name"`
+	Account    string `json:"account"`
+	Platform   string `json:"platform"`
+	Subject    string `json:"subject"`
+	AuthMethod string `json:"auth_method,omitempty"`
 }

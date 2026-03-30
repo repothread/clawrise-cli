@@ -8,11 +8,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // ListDepartments 列出指定部门下的子部门，未传 department_id 时默认从根部门开始。
-func (c *Client) ListDepartments(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListDepartments(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
@@ -82,7 +81,7 @@ func (c *Client) ListDepartments(ctx context.Context, profile config.Profile, in
 }
 
 // ListDepartmentUsers 列出一个部门的直属用户。
-func (c *Client) ListDepartmentUsers(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) ListDepartmentUsers(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	departmentID, ok := asString(input["department_id"])
 	if !ok || strings.TrimSpace(departmentID) == "" {
 		return nil, apperr.New("INVALID_INPUT", "department_id is required")

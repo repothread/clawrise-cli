@@ -8,11 +8,10 @@ import (
 	"strings"
 
 	"github.com/clawrise/clawrise-cli/internal/apperr"
-	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 // CreateDocument creates an empty Feishu document shell.
-func (c *Client) CreateDocument(ctx context.Context, profile config.Profile, input map[string]any) (map[string]any, *apperr.AppError) {
+func (c *Client) CreateDocument(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	title, ok := asString(input["title"])
 	if !ok || strings.TrimSpace(title) == "" {
 		return nil, apperr.New("INVALID_INPUT", "title is required")
@@ -74,7 +73,7 @@ func (c *Client) CreateDocument(ctx context.Context, profile config.Profile, inp
 }
 
 // EditDocument applies task-oriented edit modes on a Feishu document.
-func (c *Client) EditDocument(ctx context.Context, profile config.Profile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
+func (c *Client) EditDocument(ctx context.Context, profile ExecutionProfile, input map[string]any, clientToken string) (map[string]any, *apperr.AppError) {
 	documentID, ok := asString(input["document_id"])
 	if !ok || strings.TrimSpace(documentID) == "" {
 		return nil, apperr.New("INVALID_INPUT", "document_id is required")
@@ -138,7 +137,7 @@ func buildDocumentEditBlocks(input map[string]any) ([]any, *apperr.AppError) {
 	return nil, apperr.New("INVALID_INPUT", "blocks or text is required")
 }
 
-func (c *Client) deleteAllDocumentChildren(ctx context.Context, profile config.Profile, documentID string, clientToken string) (int, *apperr.AppError) {
+func (c *Client) deleteAllDocumentChildren(ctx context.Context, profile ExecutionProfile, documentID string, clientToken string) (int, *apperr.AppError) {
 	items, appErr := c.listDirectDocumentChildren(ctx, profile, documentID)
 	if appErr != nil {
 		return 0, appErr
@@ -159,7 +158,7 @@ func (c *Client) deleteAllDocumentChildren(ctx context.Context, profile config.P
 	return len(items), nil
 }
 
-func (c *Client) listDirectDocumentChildren(ctx context.Context, profile config.Profile, documentID string) ([]map[string]any, *apperr.AppError) {
+func (c *Client) listDirectDocumentChildren(ctx context.Context, profile ExecutionProfile, documentID string) ([]map[string]any, *apperr.AppError) {
 	accessToken, appErr := c.requireFeishuAccessToken(ctx, profile)
 	if appErr != nil {
 		return nil, appErr
