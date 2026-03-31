@@ -15,7 +15,7 @@ const skillsRoot = path.join(repoRoot, 'skills');
 const npmScope = normalizeScope(process.env.CLAWRISE_NPM_SCOPE || '');
 const packagePrefix = normalizePackagePrefix(process.env.CLAWRISE_NPM_PACKAGE_PREFIX || 'clawrise-cli');
 const distTag = resolveDistTag(version, process.env.CLAWRISE_NPM_DIST_TAG || '');
-const aiInstallGuideURL = String(process.env.CLAWRISE_AI_INSTALL_GUIDE_URL || 'https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md').trim();
+const aiInstallGuideURL = String(process.env.CLAWRISE_AI_INSTALL_GUIDE_URL || 'https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md').trim();
 
 const platforms = [
   { npmOS: 'darwin', npmCPU: 'arm64' },

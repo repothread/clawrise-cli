@@ -7,7 +7,7 @@ Use this guide when an AI assistant needs to install the `clawrise` command and 
 Send this prompt to the AI assistant:
 
 ```text
-Access https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
+Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
 ```
 
 ## For AI Assistants
@@ -15,7 +15,7 @@ Access https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-i
 Use the raw file directly:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md
+curl -fsSL https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md
 ```
 
 Do not rely on rendered GitHub pages when executing the installation flow.

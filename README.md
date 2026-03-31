@@ -20,7 +20,7 @@ Current built-in platforms:
 Send the following prompt to the AI assistant as-is:
 
 ```text
-Access https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
+Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
 ```
 
 ## Human Setup
