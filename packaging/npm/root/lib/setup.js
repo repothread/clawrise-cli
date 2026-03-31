@@ -4,6 +4,7 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const readlinePromises = require('readline/promises');
 
 const supportedClients = ['codex', 'claude-code', 'openclaw', 'opencode'];
 const supportedPlatforms = ['feishu', 'notion'];
@@ -12,17 +13,27 @@ const platformSkillMap = {
   notion: 'clawrise-notion',
 };
 
-function handleSetupCommand(rawArgs) {
+async function handleSetupCommand(rawArgs) {
   const parsed = parseSetupArgs(rawArgs);
-  ensureValidClient(parsed.client);
-  ensureValidPlatforms(parsed.platforms);
+  ensureValidSetupSelection(parsed);
   ensureCLICommandInstalled(parsed);
 
-  const targetRootDir = resolveClientSkillsDir(parsed);
-  const selectedSkills = resolveRequestedSkillNames(parsed.platforms);
-  const targetName = displayClientName(parsed.client);
+  if (parsed.client !== '') {
+    const targetRootDir = resolveClientSkillsDir(parsed);
+    const selectedSkills = resolveRequestedSkillNames(parsed.platforms);
+    const targetName = displayClientName(parsed.client);
+    installBundledSkillsInto(selectedSkills, targetRootDir, targetName);
+  }
 
-  installBundledSkillsInto(selectedSkills, targetRootDir, targetName);
+  if (parsed.skipAuth || parsed.platforms.length === 0) {
+    return 0;
+  }
+
+  for (const platform of parsed.platforms) {
+    await setupPlatformAccount(platform, parsed);
+  }
+
+  console.log('Setup 已完成，账号和凭证已写入本地配置。');
   return 0;
 }
 
@@ -36,8 +47,15 @@ function parseSetupArgs(args) {
     opencodeConfigHome: '',
     skillsDir: '',
     skipCliInstall: false,
+    account: '',
+    skipAuth: false,
+    token: '',
+    appID: '',
+    appSecret: '',
+    allowInsecureCLISecret: false,
   };
 
+  const positionalArgs = [];
   for (let index = 0; index < args.length; index += 1) {
     const token = String(args[index] || '').trim();
     if (token === '') {
@@ -74,8 +92,42 @@ function parseSetupArgs(args) {
       continue;
     }
 
+    if (token === '--account') {
+      result.account = readFlagValue(args, index, '--account');
+      index += 1;
+      continue;
+    }
+
+    if (token === '--token') {
+      result.token = readFlagValue(args, index, '--token');
+      index += 1;
+      continue;
+    }
+
+    if (token === '--app-id') {
+      result.appID = readFlagValue(args, index, '--app-id');
+      index += 1;
+      continue;
+    }
+
+    if (token === '--app-secret') {
+      result.appSecret = readFlagValue(args, index, '--app-secret');
+      index += 1;
+      continue;
+    }
+
     if (token === '--skip-cli-install') {
       result.skipCliInstall = true;
+      continue;
+    }
+
+    if (token === '--skip-auth') {
+      result.skipAuth = true;
+      continue;
+    }
+
+    if (token === '--allow-insecure-cli-secret') {
+      result.allowInsecureCLISecret = true;
       continue;
     }
 
@@ -85,65 +137,122 @@ function parseSetupArgs(args) {
     }
 
     if (token.startsWith('-')) {
-      throw new Error(`Unsupported argument: ${token}`);
+      throw new Error(`不支持的参数: ${token}`);
     }
 
-    if (result.client === '') {
-      result.client = token;
-      continue;
-    }
-
-    result.platforms.push(token);
+    positionalArgs.push(token);
   }
 
-  if (result.client === '') {
+  if (positionalArgs.length === 0) {
     printSetupHelp();
     process.exit(0);
   }
 
+  const firstTarget = positionalArgs[0];
+  if (supportedClients.includes(firstTarget)) {
+    result.client = firstTarget;
+    result.platforms = positionalArgs.slice(1);
+    return result;
+  }
+
+  result.platforms = positionalArgs;
   return result;
 }
 
 function readFlagValue(args, index, flagName) {
   const value = String(args[index + 1] || '').trim();
   if (value === '') {
-    throw new Error(`${flagName} requires a directory argument.`);
+    throw new Error(`${flagName} 需要一个非空参数。`);
   }
   return value;
 }
 
-function ensureValidClient(client) {
-  if (supportedClients.includes(client)) {
-    return;
+function ensureValidSetupSelection(parsed) {
+  if (parsed.client !== '' && !supportedClients.includes(parsed.client)) {
+    throw new Error(`不支持的客户端: ${parsed.client}`);
   }
-  throw new Error(`Unsupported client: ${client}. Supported clients: ${supportedClients.join(', ')}`);
+
+  if (parsed.platforms.length === 0 && parsed.client === '') {
+    throw new Error('setup 至少需要指定一个 client 或 platform。');
+  }
+
+  const invalidPlatforms = parsed.platforms.filter((platform) => !supportedPlatforms.includes(platform));
+  if (invalidPlatforms.length > 0) {
+    throw new Error(`不支持的平台: ${invalidPlatforms.join(', ')}`);
+  }
+
+  if (parsed.account !== '' && parsed.platforms.length !== 1) {
+    throw new Error('--account 只允许在单平台 setup 中使用。');
+  }
+
+  if (parsed.account !== '') {
+    const platform = parsed.platforms[0];
+    if (!isValidSetupAccountName(platform, parsed.account)) {
+      throw new Error(`账号名不合法: ${parsed.account}`);
+    }
+  }
+
+  if (parsed.token !== '' && !parsed.allowInsecureCLISecret) {
+    throw new Error('--token 需要配合 --allow-insecure-cli-secret 使用。');
+  }
+
+  if (parsed.appSecret !== '' && !parsed.allowInsecureCLISecret) {
+    throw new Error('--app-secret 需要配合 --allow-insecure-cli-secret 使用。');
+  }
+
+  if (parsed.token !== '' && !parsed.platforms.includes('notion')) {
+    throw new Error('--token 只能用于 notion setup。');
+  }
+
+  if ((parsed.appID !== '' || parsed.appSecret !== '') && !parsed.platforms.includes('feishu')) {
+    throw new Error('--app-id 和 --app-secret 只能用于 feishu setup。');
+  }
 }
 
-function ensureValidPlatforms(platforms) {
-  const invalidPlatforms = platforms.filter((platform) => !supportedPlatforms.includes(platform));
-  if (invalidPlatforms.length === 0) {
-    return;
+function isValidSetupAccountName(platform, accountName) {
+  const normalizedName = String(accountName || '').trim();
+  if (normalizedName === '') {
+    return false;
   }
-  throw new Error(`Unsupported platform: ${invalidPlatforms.join(', ')}. Supported platforms: ${supportedPlatforms.join(', ')}`);
+
+  switch (platform) {
+    case 'notion':
+      return /^notion_bot(?:_[a-z0-9]{4})?$/.test(normalizedName);
+    case 'feishu':
+      return /^feishu_bot(?:_[a-z0-9]{4})?$/.test(normalizedName);
+    default:
+      return false;
+  }
+}
+
+function defaultSetupAccountName(platform) {
+  switch (platform) {
+    case 'notion':
+      return 'notion_bot';
+    case 'feishu':
+      return 'feishu_bot';
+    default:
+      throw new Error(`不支持的平台: ${platform}`);
+  }
 }
 
 function ensureCLICommandInstalled(parsed) {
   if (parsed.skipCliInstall) {
-    console.log('Skipping global CLI installation because --skip-cli-install was set.');
+    console.log('已跳过全局 CLI 安装。');
     return;
   }
 
   if (!shouldInstallCLI()) {
-    console.log('The clawrise command is already available. Skipping global CLI installation.');
+    console.log('检测到 clawrise 命令已可用，跳过全局安装。');
     return;
   }
 
   if (!isCommandAvailable('npm')) {
-    throw new Error('npm is required to install the clawrise command globally.');
+    throw new Error('缺少 npm，无法安装 clawrise 命令。');
   }
 
   const packageName = resolveCurrentPackageName();
-  console.log(`Installing the clawrise command globally from npm package: ${packageName}`);
+  console.log(`正在全局安装 ${packageName} ...`);
 
   const result = childProcess.spawnSync('npm', ['install', '-g', packageName], {
     stdio: 'inherit',
@@ -153,7 +262,7 @@ function ensureCLICommandInstalled(parsed) {
     throw result.error;
   }
   if (typeof result.status === 'number' && result.status !== 0) {
-    throw new Error(`Global CLI installation failed with exit code ${result.status}.`);
+    throw new Error(`全局安装 clawrise 失败，退出码: ${result.status}`);
   }
 }
 
@@ -223,12 +332,12 @@ function installBundledSkillsInto(selectedSkills, targetRootDir, targetName) {
   const packagedSkills = listSkillDirectories(skillsDir);
 
   if (packagedSkills.length === 0) {
-    throw new Error('No bundled skills were found in the current npm package.');
+    throw new Error('当前 npm 包中没有可安装的 skills。');
   }
 
   const invalidSkills = selectedSkills.filter((name) => !packagedSkills.includes(name));
   if (invalidSkills.length > 0) {
-    throw new Error(`The following skills are not bundled in the current npm package: ${invalidSkills.join(', ')}`);
+    throw new Error(`当前 npm 包中缺少以下 skills: ${invalidSkills.join(', ')}`);
   }
 
   fs.mkdirSync(targetRootDir, { recursive: true });
@@ -238,10 +347,10 @@ function installBundledSkillsInto(selectedSkills, targetRootDir, targetName) {
     const targetDir = path.join(targetRootDir, skillName);
     fs.rmSync(targetDir, { recursive: true, force: true });
     copyTree(sourceDir, targetDir);
-    console.log(`Installed skill: ${skillName} -> ${targetDir}`);
+    console.log(`已安装 skill: ${skillName} -> ${targetDir}`);
   }
 
-  console.log(`Setup completed for ${targetName}. Start a new session or restart the client to load the new skills.`);
+  console.log(`${targetName} 的 skills 安装完成，请重新打开会话或重启客户端。`);
 }
 
 function resolveBundledSkillsDir() {
@@ -263,7 +372,7 @@ function resolveClientSkillsDir(parsed) {
     case 'opencode':
       return path.join(resolveOpenCodeConfigHome(parsed.opencodeConfigHome), 'skills');
     default:
-      throw new Error(`Unsupported client: ${parsed.client}`);
+      throw new Error(`不支持的客户端: ${parsed.client}`);
   }
 }
 
@@ -334,7 +443,7 @@ function listSkillDirectories(rootDir) {
 function copyTree(sourceDir, targetDir) {
   const sourceStat = fs.statSync(sourceDir);
   if (!sourceStat.isDirectory()) {
-    throw new Error(`Skill source directory does not exist or is not a directory: ${sourceDir}`);
+    throw new Error(`skill 源目录不存在或不是目录: ${sourceDir}`);
   }
 
   fs.mkdirSync(targetDir, { recursive: true });
@@ -357,20 +466,227 @@ function copyTree(sourceDir, targetDir) {
   }
 }
 
+async function setupPlatformAccount(platform, parsed) {
+  const accountName = parsed.account || defaultSetupAccountName(platform);
+
+  switch (platform) {
+    case 'notion':
+      await setupNotionAccount(accountName, parsed);
+      return;
+    case 'feishu':
+      await setupFeishuAccount(accountName, parsed);
+      return;
+    default:
+      throw new Error(`不支持的平台: ${platform}`);
+  }
+}
+
+async function setupNotionAccount(accountName, parsed) {
+  const token = await resolveSecretInput({
+    envName: 'NOTION_INTERNAL_TOKEN',
+    explicitValue: parsed.token,
+    promptText: '请输入 Notion Internal Integration Token: ',
+    missingMessage: '缺少 Notion token，请设置 NOTION_INTERNAL_TOKEN，或使用 --token，或在交互终端中输入。',
+  });
+
+  runCurrentClawriseCommand([
+    'account', 'ensure', accountName,
+    '--platform', 'notion',
+    '--preset', 'internal_token',
+    '--use',
+  ]);
+  runCurrentClawriseCommand([
+    'auth', 'secret', 'set', accountName, 'token', '--stdin',
+  ], { input: `${token}\n` });
+  runCurrentClawriseCommand(['auth', 'check', accountName]);
+  console.log(`Notion 接入完成，账号名: ${accountName}`);
+}
+
+async function setupFeishuAccount(accountName, parsed) {
+  const appID = await resolveTextInput({
+    envName: 'FEISHU_APP_ID',
+    explicitValue: parsed.appID,
+    promptText: '请输入 Feishu App ID: ',
+    missingMessage: '缺少 Feishu App ID，请设置 FEISHU_APP_ID，或使用 --app-id，或在交互终端中输入。',
+  });
+  const appSecret = await resolveSecretInput({
+    envName: 'FEISHU_APP_SECRET',
+    explicitValue: parsed.appSecret,
+    promptText: '请输入 Feishu App Secret: ',
+    missingMessage: '缺少 Feishu App Secret，请设置 FEISHU_APP_SECRET，或使用 --app-secret，或在交互终端中输入。',
+  });
+
+  runCurrentClawriseCommand([
+    'account', 'ensure', accountName,
+    '--platform', 'feishu',
+    '--preset', 'bot',
+    '--use',
+    '--public', `app_id=${appID}`,
+  ]);
+  runCurrentClawriseCommand([
+    'auth', 'secret', 'set', accountName, 'app_secret', '--stdin',
+  ], { input: `${appSecret}\n` });
+  runCurrentClawriseCommand(['auth', 'check', accountName]);
+  console.log(`Feishu 接入完成，账号名: ${accountName}`);
+}
+
+async function resolveTextInput(options) {
+  const explicitValue = String(options.explicitValue || '').trim();
+  if (explicitValue !== '') {
+    return explicitValue;
+  }
+
+  const envValue = String(process.env[options.envName] || '').trim();
+  if (envValue !== '') {
+    return envValue;
+  }
+
+  if (!canPromptInteractively()) {
+    throw new Error(options.missingMessage);
+  }
+
+  const promptedValue = String(await promptVisible(options.promptText)).trim();
+  if (promptedValue === '') {
+    throw new Error(options.missingMessage);
+  }
+  return promptedValue;
+}
+
+async function resolveSecretInput(options) {
+  const explicitValue = String(options.explicitValue || '').trim();
+  if (explicitValue !== '') {
+    return explicitValue;
+  }
+
+  const envValue = String(process.env[options.envName] || '').trim();
+  if (envValue !== '') {
+    return envValue;
+  }
+
+  if (!canPromptInteractively()) {
+    throw new Error(options.missingMessage);
+  }
+
+  const promptedValue = String(await promptSecret(options.promptText)).trim();
+  if (promptedValue === '') {
+    throw new Error(options.missingMessage);
+  }
+  return promptedValue;
+}
+
+function canPromptInteractively() {
+  return Boolean(process.stdin && process.stdin.isTTY && process.stdout && process.stdout.isTTY);
+}
+
+async function promptVisible(message) {
+  const rl = readlinePromises.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  try {
+    return await rl.question(message);
+  } finally {
+    rl.close();
+  }
+}
+
+function promptSecret(message) {
+  if (!canPromptInteractively()) {
+    return Promise.resolve('');
+  }
+
+  return new Promise((resolve, reject) => {
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+    let value = '';
+
+    stdout.write(message);
+    stdin.setEncoding('utf8');
+    if (typeof stdin.setRawMode === 'function') {
+      stdin.setRawMode(true);
+    }
+    stdin.resume();
+
+    const cleanup = () => {
+      stdin.removeListener('data', onData);
+      if (typeof stdin.setRawMode === 'function') {
+        stdin.setRawMode(false);
+      }
+      stdin.pause();
+    };
+
+    const onData = (chunk) => {
+      for (const char of String(chunk)) {
+        if (char === '\u0003') {
+          cleanup();
+          reject(new Error('用户取消了 setup。'));
+          return;
+        }
+        if (char === '\r' || char === '\n') {
+          stdout.write(os.EOL);
+          cleanup();
+          resolve(value);
+          return;
+        }
+        if (char === '\u007f' || char === '\b') {
+          value = value.slice(0, -1);
+          continue;
+        }
+        value += char;
+      }
+    };
+
+    stdin.on('data', onData);
+  });
+}
+
+function runCurrentClawriseCommand(args, options) {
+  const config = options || {};
+  const commandArgs = [resolveCurrentCLIBinPath(), ...args];
+  const result = childProcess.spawnSync(process.execPath, commandArgs, {
+    cwd: process.cwd(),
+    env: { ...process.env, ...(config.env || {}) },
+    input: config.input,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (typeof result.status === 'number' && result.status !== 0) {
+    const message = [result.stdout, result.stderr]
+      .map((value) => String(value || '').trim())
+      .filter((value) => value !== '')
+      .join('\n');
+    throw new Error(message || `clawrise ${args.join(' ')} 执行失败，退出码: ${result.status}`);
+  }
+  return String(result.stdout || '');
+}
+
+function resolveCurrentCLIBinPath() {
+  return path.join(resolvePackageRootDir(), 'bin', 'clawrise.js');
+}
+
 function printSetupHelp() {
-  console.log('Usage: clawrise setup <client> [platform...]');
+  console.log('用法: clawrise setup <client> [platform...]');
+  console.log('      clawrise setup <platform>');
   console.log('');
-  console.log('Supported clients: codex, claude-code, openclaw, opencode');
-  console.log('Supported platforms: feishu, notion');
+  console.log('支持的客户端: codex, claude-code, openclaw, opencode');
+  console.log('支持的平台: feishu, notion');
   console.log('');
-  console.log('Examples:');
+  console.log('常用示例:');
   console.log('  clawrise setup codex');
+  console.log('  clawrise setup codex notion');
   console.log('  clawrise setup codex feishu');
-  console.log('  clawrise setup claude-code notion --skills-dir ./.claude/skills');
-  console.log('  clawrise setup openclaw feishu --skills-dir ./skills');
-  console.log('  clawrise setup opencode notion --skills-dir ./.opencode/skills');
+  console.log('  clawrise setup notion');
+  console.log('  clawrise setup feishu');
 }
 
 module.exports = {
+  ensureValidSetupSelection,
+  defaultSetupAccountName,
   handleSetupCommand,
+  isValidSetupAccountName,
+  parseSetupArgs,
 };

@@ -11,13 +11,25 @@ This skill assumes that the current client has already been prepared with:
 
 ```bash
 clawrise setup <client> feishu
+clawrise setup feishu
 ```
 
 or:
 
 ```bash
 npx @clawrise/clawrise-cli setup <client> feishu
+npx @clawrise/clawrise-cli setup feishu
 ```
+
+Preferred setup example:
+
+```bash
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
+```
+
+Default account name:
+
+- `feishu_bot`
 
 ## Usage
 

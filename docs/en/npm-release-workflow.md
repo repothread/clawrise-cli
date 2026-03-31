@@ -218,6 +218,15 @@ Release notes are generated from:
 - `packaging/release/release-notes.md.tmpl`
 - `scripts/release/generate-release-notes.sh`
 
+The generated body follows a sectioned release format similar to OpenClaw:
+
+- `Install`
+- optional `Breaking`
+- `Changes`
+- `Contributors`
+
+Contributor avatars are intentionally not rendered in the release body to keep the Markdown stable on GitHub release pages.
+
 Generate them with:
 
 ```bash

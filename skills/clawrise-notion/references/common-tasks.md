@@ -6,6 +6,13 @@ If the user still needs Notion support installed, run:
 
 ```bash
 clawrise setup <client> notion
+clawrise setup notion
+```
+
+Preferred one-line setup:
+
+```bash
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
 ```
 
 ## Auth Methods
@@ -24,6 +31,7 @@ Check first:
 
 ```bash
 clawrise auth methods --platform notion
+clawrise auth check notion_bot
 ```
 
 ## High-Signal Tasks

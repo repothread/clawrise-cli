@@ -30,9 +30,9 @@ Account 是用户显式选择或默认选中的具体执行身份。
 
 示例：
 
-- `feishu_bot_ops`
+- `feishu_bot`
 - `feishu_user_alice`
-- `notion_team_docs`
+- `notion_bot`
 
 ### Subject
 
@@ -111,7 +111,7 @@ Account 管理：
 
 ```bash
 clawrise account add --platform feishu --preset bot
-clawrise account use feishu_bot_ops
+clawrise account use feishu_bot
 clawrise account current
 clawrise account list
 ```
@@ -119,8 +119,8 @@ clawrise account list
 单次调用覆盖：
 
 ```bash
-clawrise feishu.calendar.event.create --account feishu_bot_ops
-clawrise notion.page.create --account notion_team_docs
+clawrise feishu.calendar.event.create --account feishu_bot
+clawrise notion.page.create --account notion_bot
 ```
 
 关键规则：
@@ -136,13 +136,13 @@ clawrise notion.page.create --account notion_team_docs
 ```yaml
 defaults:
   platform: feishu
-  account: feishu_bot_ops
+  account: feishu_bot
   platform_accounts:
-    feishu: feishu_bot_ops
-    notion: notion_team_docs
+    feishu: feishu_bot
+    notion: notion_bot
 
 accounts:
-  feishu_bot_ops:
+  feishu_bot:
     platform: feishu
     subject: bot
     auth:
@@ -150,9 +150,9 @@ accounts:
       public:
         app_id: cli_xxx
       secret_refs:
-        app_secret: secret:feishu_bot_ops:app_secret
+        app_secret: secret:feishu_bot:app_secret
 
-  notion_team_docs:
+  notion_bot:
     platform: notion
     subject: integration
     auth:
@@ -160,7 +160,7 @@ accounts:
       public:
         notion_version: "2026-03-11"
       secret_refs:
-        token: secret:notion_team_docs:token
+        token: secret:notion_bot:token
 ```
 
 核心点：
@@ -180,7 +180,7 @@ Bot / app style account：
 
 ```yaml
 accounts:
-  feishu_bot_ops:
+  feishu_bot:
     platform: feishu
     subject: bot
     auth:
@@ -188,7 +188,7 @@ accounts:
       public:
         app_id: cli_xxx
       secret_refs:
-        app_secret: secret:feishu_bot_ops:app_secret
+        app_secret: secret:feishu_bot:app_secret
 ```
 
 用户态 account：
@@ -222,7 +222,7 @@ internal integration：
 
 ```yaml
 accounts:
-  notion_team_docs:
+  notion_bot:
     platform: notion
     subject: integration
     auth:
@@ -230,7 +230,7 @@ accounts:
       public:
         notion_version: "2026-03-11"
       secret_refs:
-        token: secret:notion_team_docs:token
+        token: secret:notion_bot:token
 ```
 
 public integration：

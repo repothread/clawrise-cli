@@ -43,6 +43,7 @@ npx @clawrise/clawrise-cli ...
 ```bash
 clawrise setup <client>
 clawrise setup <client> <platform>
+clawrise setup <platform>
 ```
 
 or:
@@ -50,7 +51,20 @@ or:
 ```bash
 npx @clawrise/clawrise-cli setup <client>
 npx @clawrise/clawrise-cli setup <client> <platform>
+npx @clawrise/clawrise-cli setup <platform>
 ```
+
+When platform setup is requested, prefer environment variables for credentials:
+
+```bash
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
+```
+
+Default setup-created account names are:
+
+- `notion_bot`
+- `feishu_bot`
 
 4. If `clawrise` is not in `PATH`, but the current workspace is this repository, fall back to:
 

@@ -218,6 +218,15 @@ release notes 通过模板文件生成：
 - `packaging/release/release-notes.md.tmpl`
 - `scripts/release/generate-release-notes.sh`
 
+生成后的正文会采用接近 OpenClaw 的分节格式：
+
+- `Install`
+- 可选的 `Breaking`
+- `Changes`
+- `Contributors`
+
+为避免 GitHub Release 页面上的 Markdown 渲染不稳定，release body 中不会再渲染 contributor 头像。
+
 生成方式：
 
 ```bash

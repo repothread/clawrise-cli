@@ -24,23 +24,177 @@ install_package="$(
   node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.root_package.package_name);" "${metadata_path}"
 )"
 
-archives_dir="${repo_root}/dist/release/archives"
-mapfile -t archives < <(find "${archives_dir}" -maxdepth 1 -type f -name '*.tar.gz' -exec basename {} \; | sort)
-if [[ "${#archives[@]}" -eq 0 ]]; then
-  echo "未找到 release 归档文件，请先执行 build-npm-bundles.sh。" >&2
-  exit 1
-fi
-
-release_download_base="https://github.com/${repository}/releases/download/v${version}"
-asset_lines=()
-for archive_name in "${archives[@]}"; do
-  asset_lines+=("- [\`${archive_name}\`](${release_download_base}/${archive_name})")
-done
-asset_lines+=("- [\`SHA256SUMS\`](${release_download_base}/SHA256SUMS)")
-asset_list="$(printf '%s\n' "${asset_lines[@]}")"
-
 resolve_previous_tag() {
   git -C "${repo_root}" describe --tags --abbrev=0 "${git_sha}^" 2>/dev/null || true
+}
+
+build_changelog_sections() {
+  local previous_tag="$1"
+  local revision_range="${git_sha}"
+
+  if [[ -n "${previous_tag}" ]]; then
+    revision_range="${previous_tag}..${git_sha}"
+  fi
+
+  CLAWRISE_RELEASE_REPO_ROOT="${repo_root}" \
+    CLAWRISE_RELEASE_REVISION_RANGE="${revision_range}" \
+    node <<'EOF'
+const { execFileSync } = require('node:child_process');
+
+const repoRoot = process.env.CLAWRISE_RELEASE_REPO_ROOT || '';
+const revisionRange = process.env.CLAWRISE_RELEASE_REVISION_RANGE || '';
+
+if (!repoRoot || !revisionRange) {
+  process.exit(1);
+}
+
+function parseConventionalSubject(subject) {
+  const trimmed = String(subject || '').trim();
+  const match = trimmed.match(/^([a-z0-9_-]+)(?:\(([^)]+)\))?(!)?:\s*(.+)$/i);
+  if (!match) {
+    return {
+      type: '',
+      scope: '',
+      breaking: false,
+      description: trimmed,
+    };
+  }
+  return {
+    type: String(match[1] || '').toLowerCase(),
+    scope: String(match[2] || '').trim(),
+    breaking: Boolean(match[3]),
+    description: String(match[4] || '').trim(),
+  };
+}
+
+function normalizeBulletText(record) {
+  const description = record.description || record.subject;
+  let text = record.scope ? `${record.scope}: ${description}` : description;
+  text = text.trim();
+  if (text === '') {
+    text = record.subject.trim();
+  }
+  if (text !== '' && !/[.!?]$/.test(text)) {
+    text += '.';
+  }
+  return text;
+}
+
+function typePriority(type) {
+  switch (type) {
+    case 'feat':
+      return 0;
+    case 'fix':
+      return 1;
+    case 'refactor':
+      return 2;
+    case 'perf':
+      return 3;
+    case 'docs':
+      return 4;
+    case 'test':
+      return 5;
+    case 'build':
+    case 'ci':
+    case 'chore':
+      return 6;
+    default:
+      return 7;
+  }
+}
+
+// 按提交信息生成接近 openclaw 风格的分节说明，避免在 release body 中渲染头像。
+function collectSections() {
+  const rawLog = execFileSync(
+    'git',
+    ['-C', repoRoot, 'log', '--format=%H%x00%s%x00%b%x1e', revisionRange],
+    { encoding: 'utf8' }
+  );
+
+  const commits = rawLog
+    .split('\x1e')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry, index) => {
+      const fields = entry.split('\x00');
+      const subject = String(fields[1] || '').trim();
+      const body = String(fields.slice(2).join('\x00') || '').trim();
+      const parsed = parseConventionalSubject(subject);
+      return {
+        index,
+        subject,
+        body,
+        type: parsed.type,
+        scope: parsed.scope,
+        description: parsed.description || subject,
+        breaking: parsed.breaking || /\bBREAKING CHANGE\b/i.test(body),
+      };
+    })
+    .filter((entry) => entry.subject !== '');
+
+  if (commits.length === 0) {
+    return [
+      '### Changes',
+      '',
+      '- No user-facing changes were detected in this release.',
+    ].join('\n');
+  }
+
+  const breaking = [];
+  const changes = [];
+
+  for (const commit of commits) {
+    const item = {
+      index: commit.index,
+      priority: typePriority(commit.type),
+      text: normalizeBulletText(commit),
+    };
+    if (commit.breaking) {
+      breaking.push(item);
+      continue;
+    }
+    changes.push(item);
+  }
+
+  changes.sort((left, right) => {
+    if (left.priority !== right.priority) {
+      return left.priority - right.priority;
+    }
+    return left.index - right.index;
+  });
+
+  const sections = [];
+  if (breaking.length > 0) {
+    sections.push(
+      [
+        '### Breaking',
+        '',
+        ...breaking.map((item) => `- ${item.text}`),
+      ].join('\n')
+    );
+  }
+
+  sections.push(
+    [
+      '### Changes',
+      '',
+      ...(
+        changes.length > 0
+          ? changes.map((item) => `- ${item.text}`)
+          : ['- No non-breaking user-facing changes were detected in this release.']
+      ),
+    ].join('\n')
+  );
+
+  return sections.join('\n\n');
+}
+
+try {
+  process.stdout.write(collectSections());
+} catch {
+  process.exit(1);
+}
+EOF
 }
 
 build_contributor_list_from_github() {
@@ -63,13 +217,6 @@ const githubToken = process.env.CLAWRISE_RELEASE_GITHUB_TOKEN || '';
 
 if (!repository || !baseTag || !headSha || !githubToken) {
   process.exit(1);
-}
-
-function avatarWithSize(url, size) {
-  if (!url) {
-    return '';
-  }
-  return url.includes('?') ? `${url}&s=${size}` : `${url}?s=${size}`;
 }
 
 async function main() {
@@ -97,14 +244,10 @@ async function main() {
 
     const current = contributorMap.get(author.login) || {
       count: 0,
-      avatarURL: author.avatar_url || '',
       profileURL: author.html_url || `https://github.com/${author.login}`,
     };
 
     current.count += 1;
-    if (!current.avatarURL && author.avatar_url) {
-      current.avatarURL = author.avatar_url;
-    }
     if (!current.profileURL && author.html_url) {
       current.profileURL = author.html_url;
     }
@@ -126,11 +269,8 @@ async function main() {
     })
     .map(([login, info]) => {
       const profileURL = info.profileURL || `https://github.com/${login}`;
-      const avatarMarkdown = info.avatarURL
-        ? `[![@${login}](${avatarWithSize(info.avatarURL, 40)})](${profileURL})`
-        : '';
       const suffix = info.count === 1 ? 'commit' : 'commits';
-      return `- ${avatarMarkdown} [@${login}](${profileURL}) (${info.count} ${suffix})`.trim();
+      return `- [@${login}](${profileURL}) (${info.count} ${suffix})`;
     });
 
   process.stdout.write(lines.join('\n'));
@@ -175,6 +315,9 @@ build_contributor_list() {
 
 previous_tag="$(resolve_previous_tag || true)"
 github_token="${CLAWRISE_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
+changelog_sections="$(
+  build_changelog_sections "${previous_tag}"
+)"
 contributor_list="$(
   build_contributor_list_from_github "${previous_tag}" "${github_token}" ||
     build_contributor_list "${previous_tag}"
@@ -183,9 +326,8 @@ contributor_list="$(
 rendered="$(cat "${template_path}")"
 rendered="${rendered//\{\{VERSION\}\}/${version}}"
 rendered="${rendered//\{\{INSTALL_PACKAGE\}\}/${install_package}}"
-rendered="${rendered//\{\{GIT_SHA\}\}/${git_sha}}"
+rendered="${rendered//\{\{CHANGELOG_SECTIONS\}\}/${changelog_sections}}"
 rendered="${rendered//\{\{CONTRIBUTOR_LIST\}\}/${contributor_list}}"
-rendered="${rendered//\{\{ASSET_LIST\}\}/${asset_list}}"
 
 mkdir -p "$(dirname "${output_path}")"
 printf '%s\n' "${rendered}" > "${output_path}"

@@ -7,7 +7,7 @@ Use this guide when an AI assistant needs to install the `clawrise` command and 
 Send this prompt to the AI assistant:
 
 ```text
-Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
+Access https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
 ```
 
 ## For AI Assistants
@@ -15,7 +15,7 @@ Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai
 Use the raw file directly:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md
+curl -fsSL https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md
 ```
 
 Do not rely on rendered GitHub pages when executing the installation flow.
@@ -56,6 +56,12 @@ Setup is responsible for:
 - ensuring the `clawrise` command is installed on the host
 - installing `clawrise-core`
 - installing any requested platform skills
+- configuring default platform accounts when credentials are available
+
+Default account names:
+
+- `notion_bot`
+- `feishu_bot`
 
 If no platform is specified, setup installs only `clawrise-core`.
 
@@ -74,6 +80,15 @@ If `clawrise` is not installed yet:
 npx @clawrise/clawrise-cli setup codex
 npx @clawrise/clawrise-cli setup codex feishu
 ```
+
+For platform auth, prefer environment variables:
+
+```bash
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
+```
+
+If the environment variables are missing and the shell is interactive, `setup` can prompt for the required credentials directly.
 
 Client-specific examples:
 
@@ -100,6 +115,13 @@ Verify the CLI:
 clawrise version
 clawrise doctor
 clawrise spec list
+```
+
+If platform setup was requested, also verify the default account:
+
+```bash
+clawrise auth check notion_bot
+clawrise auth check feishu_bot
 ```
 
 Also verify that the installed skill directories exist in the target location.

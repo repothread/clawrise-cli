@@ -6,6 +6,13 @@ If the user still needs Feishu support installed, run:
 
 ```bash
 clawrise setup <client> feishu
+clawrise setup feishu
+```
+
+Preferred one-line setup:
+
+```bash
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
 ```
 
 ## Auth Methods
@@ -24,6 +31,7 @@ Check first:
 
 ```bash
 clawrise auth methods --platform feishu
+clawrise auth check feishu_bot
 ```
 
 ## High-Signal Tasks

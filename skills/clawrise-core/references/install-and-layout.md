@@ -33,12 +33,14 @@ The exact target is selected by:
 
 ```bash
 clawrise setup <client> [platform...]
+clawrise setup <platform>
 ```
 
 or:
 
 ```bash
 npx @clawrise/clawrise-cli setup <client> [platform...]
+npx @clawrise/clawrise-cli setup <platform>
 ```
 
 ## 3. Default Clawrise Runtime Paths
@@ -98,6 +100,7 @@ For npm distribution, prefer setup commands such as:
 
 ```bash
 clawrise setup codex
+clawrise setup notion
 clawrise setup codex feishu
 clawrise setup claude-code notion --skills-dir ./.claude/skills
 ```

@@ -11,13 +11,25 @@ This skill assumes that the current client has already been prepared with:
 
 ```bash
 clawrise setup <client> notion
+clawrise setup notion
 ```
 
 or:
 
 ```bash
 npx @clawrise/clawrise-cli setup <client> notion
+npx @clawrise/clawrise-cli setup notion
 ```
+
+Preferred setup example:
+
+```bash
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
+```
+
+Default account name:
+
+- `notion_bot`
 
 ## Usage
 

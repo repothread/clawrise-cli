@@ -7,6 +7,7 @@ If the user is on a fresh machine or the current client has not been prepared ye
 ```bash
 clawrise setup <client>
 clawrise setup <client> <platform>
+clawrise setup <platform>
 ```
 
 or:
@@ -14,6 +15,7 @@ or:
 ```bash
 npx @clawrise/clawrise-cli setup <client>
 npx @clawrise/clawrise-cli setup <client> <platform>
+npx @clawrise/clawrise-cli setup <platform>
 ```
 
 Use platform setup only when the user actually needs that platform.
@@ -22,7 +24,18 @@ Examples:
 
 - `setup codex`
 - `setup codex feishu`
+- `setup notion`
 - `setup openclaw notion`
+
+Preferred credential flow:
+
+- `NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion`
+- `FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu`
+
+When setup completes successfully, the default account names are:
+
+- `notion_bot`
+- `feishu_bot`
 
 ## 2. Inspect The Environment First
 
