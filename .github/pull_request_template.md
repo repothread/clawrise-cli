@@ -1,15 +1,13 @@
-## Summary / 变更概述
+## Summary
 
 Describe what changed and why.
 
-请说明本次改动内容及原因。
-
-## Related Issues / 关联 Issue
+## Related Issues
 
 - Closes #
 - Related to #
 
-## Change Type / 变更类型
+## Change Type
 
 - [ ] Bug fix
 - [ ] New feature
@@ -17,7 +15,7 @@ Describe what changed and why.
 - [ ] Documentation
 - [ ] Test only
 
-## Validation / 验证方式
+## Validation
 
 - [ ] `go test ./...`
 - [ ] `go build ./...`
@@ -29,11 +27,11 @@ List key commands or checks you ran:
 # paste commands here
 ```
 
-## Notes for Reviewers / 给评审者的说明
+## Notes for Reviewers
 
 Call out any tradeoffs, follow-up work, or review focus areas.
 
-## Checklist / 提交检查
+## Checklist
 
 - [ ] I updated docs when behavior changed.
 - [ ] I sanitized logs, payloads, and examples.
