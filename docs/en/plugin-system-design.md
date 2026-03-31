@@ -288,7 +288,7 @@ Request:
     "identity": {
       "platform": "feishu",
       "subject": "bot",
-      "profile_name": "feishu_bot_ops",
+      "profile_name": "feishu_bot",
       "auth": {
         "type": "client_credentials",
         "app_id": "resolved-app-id",

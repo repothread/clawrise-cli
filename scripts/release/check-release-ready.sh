@@ -21,7 +21,7 @@ npm_with_cache() {
 require_command() {
   local command_name="$1"
   if ! command -v "${command_name}" >/dev/null 2>&1; then
-    echo "缺少必要命令: ${command_name}" >&2
+    echo "Missing required command: ${command_name}" >&2
     exit 1
   fi
 }
@@ -32,16 +32,16 @@ check_git_state() {
 
   if [[ -z "${current_branch}" ]]; then
     if [[ "${allow_detached}" != "1" ]]; then
-      echo "当前处于 detached HEAD。标准发版前检查应在 ${release_branch} 分支执行；如确需跳过，请设置 CLAWRISE_RELEASE_ALLOW_DETACHED=1。" >&2
+      echo "The repository is currently in detached HEAD state. Standard release checks must run on ${release_branch}; set CLAWRISE_RELEASE_ALLOW_DETACHED=1 only if you intentionally want to bypass this." >&2
       exit 1
     fi
   elif [[ "${current_branch}" != "${release_branch}" ]]; then
-    echo "标准发版前检查应在 ${release_branch} 分支执行，当前分支为 ${current_branch}。" >&2
+    echo "Standard release checks must run on ${release_branch}; the current branch is ${current_branch}." >&2
     exit 1
   fi
 
   if [[ "${allow_dirty}" != "1" ]] && ! git -C "${repo_root}" diff --quiet --ignore-submodules HEAD --; then
-    echo "当前工作区存在未提交修改，发布前检查中止。可设置 CLAWRISE_RELEASE_ALLOW_DIRTY=1 跳过。" >&2
+    echo "The working tree has uncommitted changes. Release checks stopped. Set CLAWRISE_RELEASE_ALLOW_DIRTY=1 only if you intentionally want to bypass this." >&2
     exit 1
   fi
 }
@@ -50,13 +50,13 @@ check_tag_state() {
   local tag_name="v${version}"
 
   if git -C "${repo_root}" rev-parse -q --verify "refs/tags/${tag_name}" >/dev/null 2>&1; then
-    echo "本地已存在同名 tag: ${tag_name}" >&2
+    echo "A local tag with the same name already exists: ${tag_name}" >&2
     exit 1
   fi
 
   if [[ "${check_remote}" == "1" ]]; then
     if git -C "${repo_root}" ls-remote --tags "${release_remote}" "refs/tags/${tag_name}" | grep -q .; then
-      echo "远端 ${release_remote} 已存在同名 tag: ${tag_name}" >&2
+      echo "A remote tag with the same name already exists on ${release_remote}: ${tag_name}" >&2
       exit 1
     fi
   fi
@@ -69,7 +69,7 @@ check_release_outputs() {
 
   for path in "${metadata_path}" "${notes_path}" "${checksum_path}"; do
     if [[ ! -f "${path}" ]]; then
-      echo "缺少预期产物: ${path}" >&2
+      echo "Missing expected release artifact: ${path}" >&2
       exit 1
     fi
   done
@@ -91,11 +91,18 @@ verify_npm_packs() {
   rm -rf "${pack_verify_root}"
   mkdir -p "${pack_verify_root}"
 
-  echo "校验 npm 根包打包: ${root_dir}"
+  echo "Verifying npm root package pack output: ${root_dir}"
   npm_with_cache pack "${repo_root}/dist/release/npm/${root_dir}" --pack-destination "${pack_verify_root}" >/dev/null
 
-  echo "校验当前平台包打包: ${current_platform_dir}"
+  echo "Verifying current platform package pack output: ${current_platform_dir}"
   npm_with_cache pack "${repo_root}/dist/release/npm/${current_platform_dir}" --pack-destination "${pack_verify_root}" >/dev/null
+}
+
+verify_npm_runtime() {
+  echo "Verifying platform package resolution after npm installation"
+  CLAWRISE_PACK_VERIFY_ROOT="${pack_verify_root}" \
+    CLAWRISE_NPM_CACHE_DIR="${npm_cache_dir}" \
+    node "${repo_root}/scripts/release/verify-npm-runtime.mjs"
 }
 
 check_remote_auth() {
@@ -106,22 +113,22 @@ check_remote_auth() {
   require_command gh
 
   if ! gh auth status >/dev/null 2>&1; then
-    echo "未通过 gh 完成 GitHub 认证，无法执行远端发布检查。" >&2
+    echo "GitHub authentication is not available through gh; remote release checks cannot continue." >&2
     exit 1
   fi
 
   if [[ -z "${NODE_AUTH_TOKEN:-${NPM_TOKEN:-}}" ]]; then
-    echo "未设置 NODE_AUTH_TOKEN 或 NPM_TOKEN；Trusted Publishing 依赖 GitHub Actions OIDC，本地无法直接校验 npm 发布认证，跳过 npm 认证检查。"
+    echo "NODE_AUTH_TOKEN or NPM_TOKEN is not set. npm publish authentication is skipped locally because Trusted Publishing depends on GitHub Actions OIDC."
     return 0
   fi
 
   if ! npm_with_cache whoami >/dev/null 2>&1; then
-    echo "npm 认证检查失败，请确认 token 可用。" >&2
+    echo "npm authentication check failed. Confirm that the token is valid." >&2
     exit 1
   fi
 }
 
-echo "开始执行发布前检查: version=${version}"
+echo "Starting release readiness checks: version=${version}"
 
 require_command git
 require_command go
@@ -131,20 +138,21 @@ require_command npm
 check_git_state
 check_tag_state
 
-echo "运行单元测试"
+echo "Running unit tests"
 go test ./...
 
-echo "构建多平台发布 bundle"
+echo "Building multi-platform release bundles"
 "${repo_root}/scripts/release/build-npm-bundles.sh" "${version}"
 
-echo "生成 npm 发布目录"
+echo "Preparing npm release directories"
 node "${repo_root}/scripts/release/prepare-npm-packages.mjs" "${version}"
 
-echo "生成 release notes"
+echo "Generating release notes"
 "${repo_root}/scripts/release/generate-release-notes.sh" "${version}"
 
 check_release_outputs
 verify_npm_packs
+verify_npm_runtime
 check_remote_auth
 
-echo "发布前检查通过。"
+echo "Release readiness checks passed."

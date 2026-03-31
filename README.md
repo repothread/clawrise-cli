@@ -1,110 +1,101 @@
 # Clawrise
 
-[![CI](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/clawrise/clawrise-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/clawrise/clawrise-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 English · [简体中文](README.zh.md)
 
-Clawrise is a CLI for calling third-party services through stable operations. Current built-in platforms:
+Clawrise is an AI-oriented CLI that calls third-party platforms through stable operations. It fits two main workflows:
+
+- connect `clawrise` to AI clients such as Codex, Claude Code, OpenClaw, and OpenCode, then let the AI use platform skills
+- run `clawrise` directly in your terminal
+
+Current built-in platforms:
 
 - `notion`
 - `feishu`
 
-## Install
+## AI Setup
+
+Send the following prompt to the AI assistant as-is:
+
+```text
+Access https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
+```
+
+## Human Setup
+
+### 1. Install
 
 ```bash
 npm install -g @clawrise/clawrise-cli
+```
+
+### 2. Connect Notion
+
+1. Open the [Notion integrations page](https://www.notion.so/profile/integrations) and create or choose an integration
+2. Copy the integration `Internal Integration Token`
+3. If you want an AI client to load the matching skills directly, run any of these:
+
+```bash
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup claude-code notion
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup openclaw notion
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup opencode notion
+```
+
+If you do not want to pass the token through an environment variable, you can also run:
+
+```bash
+clawrise setup codex notion
+clawrise setup claude-code notion
+clawrise setup openclaw notion
+clawrise setup opencode notion
+```
+
+Then enter the `Internal Integration Token` when prompted. In an interactive terminal, commands such as `clawrise setup codex notion` will enter interactive input mode automatically.
+
+After setup completes, you can verify that the current default account is usable:
+
+```bash
+clawrise auth check
 clawrise doctor
 ```
 
-## Notion Quick Start
+### 3. Connect Feishu
 
-Prerequisites:
-
-- create a Notion integration
-- share the target page or data source with that integration
-
-Create an account:
+1. Open the [Feishu developer app console](https://open.feishu.cn/app) and create or choose an app
+2. Record the app `App ID` and `App Secret`
+3. If you want an AI client to load the matching skills directly, run any of these:
 
 ```bash
-clawrise account add notion_docs --platform notion
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup claude-code feishu
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup openclaw feishu
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup opencode feishu
 ```
 
-Store the token and check the account:
+If you do not want to pass credentials through environment variables, you can also run:
 
 ```bash
-export NOTION_TOKEN='secret_xxx'
-clawrise auth secret set notion_docs token --from-env NOTION_TOKEN
-
-# Check whether the account configuration is complete
-clawrise auth inspect notion_docs
-# Confirm that the account is ready to execute operations
-clawrise auth check notion_docs
+clawrise setup codex feishu
+clawrise setup claude-code feishu
+clawrise setup openclaw feishu
+clawrise setup opencode feishu
 ```
 
-Run a simple query:
+Then enter `App ID` and `App Secret` when prompted.
+
+After setup completes, you can verify that the current default account is usable:
 
 ```bash
-clawrise notion.search.query --json '{"query":"Demo","page_size":10}'
-```
-
-If you want to validate a write operation first, use dry-run:
-
-```bash
-clawrise notion.page.create --dry-run --json '{"parent":{"page_id":"page_demo"},"properties":{"title":[{"text":{"content":"Demo Page"}}]}}'
-```
-
-## Feishu Quick Start
-
-Prerequisites:
-
-- create a Feishu app
-- get `app_id` and `app_secret`
-
-Create an account:
-
-```bash
-clawrise account add feishu_bot --platform feishu
-```
-
-Then set `accounts.feishu_bot.auth.public.app_id` in the config file.
-
-Store the secret and check the account:
-
-```bash
-export FEISHU_APP_SECRET='your_feishu_app_secret'
-clawrise auth secret set feishu_bot app_secret --from-env FEISHU_APP_SECRET
-
-# Check whether the account configuration is complete
-clawrise auth inspect feishu_bot
-# Confirm that the account is ready to execute operations
-clawrise auth check feishu_bot
-```
-
-Validate one write call with dry-run:
-
-```bash
-clawrise feishu.calendar.event.create --dry-run --json '{"calendar_id":"cal_demo","summary":"Demo Event","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}'
-```
-
-## Common Commands
-
-```bash
+clawrise auth check
 clawrise doctor
-clawrise auth methods --platform notion
-clawrise auth methods --platform feishu
-clawrise auth inspect <account>
-clawrise auth check <account>
-clawrise spec get <operation>
 ```
 
-## More
+## Related Docs
 
-- [Notion Page Update Playbook](docs/playbooks/en/notion-page-update.md)
-- [Notion Data Source Query Playbook](docs/playbooks/en/notion-data-source-query.md)
-- [Feishu User Auth Setup](docs/en/feishu-user-auth-setup.md)
-- [Example Config](examples/config.example.yaml)
-- [Support](SUPPORT.md)
+- [AI Installation Guide](docs/en/ai-install.md)
 
 ## License
 

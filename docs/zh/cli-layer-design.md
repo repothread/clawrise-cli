@@ -178,7 +178,7 @@ operation 路径格式：
   "context": {
     "platform": "notion",
     "subject": "integration",
-    "account": "notion_team_docs"
+    "account": "notion_bot"
   },
   "data": {},
   "error": null,
@@ -301,10 +301,10 @@ operation 元信息建议覆盖：
 defaults:
   platform: feishu
   subject: bot
-  account: feishu_bot_ops
+  account: feishu_bot
 
 accounts:
-  feishu_bot_ops:
+  feishu_bot:
     platform: feishu
     subject: bot
     auth:
@@ -312,9 +312,9 @@ accounts:
       public:
         app_id: cli_xxx
       secret_refs:
-        app_secret: secret:feishu_bot_ops:app_secret
+        app_secret: secret:feishu_bot:app_secret
 
-  notion_team_docs:
+  notion_bot:
     platform: notion
     subject: integration
     auth:
@@ -322,7 +322,7 @@ accounts:
       public:
         notion_version: "2026-03-11"
       secret_refs:
-        token: secret:notion_team_docs:token
+        token: secret:notion_bot:token
 ```
 
 ## 9. OpenAPI 与生成策略

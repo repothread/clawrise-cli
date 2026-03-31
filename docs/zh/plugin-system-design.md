@@ -286,7 +286,7 @@ plugin 不应直接读取 core 的主配置文件，也不应自己解释 `env:`
     "identity": {
       "platform": "feishu",
       "subject": "bot",
-      "profile_name": "feishu_bot_ops",
+      "profile_name": "feishu_bot",
       "auth": {
         "type": "client_credentials",
         "app_id": "resolved-app-id",

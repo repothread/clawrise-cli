@@ -143,7 +143,7 @@ Success envelope:
   "context": {
     "platform": "notion",
     "subject": "integration",
-    "account": "notion_team_docs"
+    "account": "notion_bot"
   },
   "data": {},
   "error": null,
@@ -266,13 +266,13 @@ Recommended config shape:
 defaults:
   platform: feishu
   subject: bot
-  account: feishu_bot_ops
+  account: feishu_bot
   platform_accounts:
-    feishu: feishu_bot_ops
-    notion: notion_team_docs
+    feishu: feishu_bot
+    notion: notion_bot
 
 accounts:
-  feishu_bot_ops:
+  feishu_bot:
     platform: feishu
     subject: bot
     auth:
@@ -280,9 +280,9 @@ accounts:
       public:
         app_id: cli_xxx
       secret_refs:
-        app_secret: secret:feishu_bot_ops:app_secret
+        app_secret: secret:feishu_bot:app_secret
 
-  notion_team_docs:
+  notion_bot:
     platform: notion
     subject: integration
     auth:
@@ -290,7 +290,7 @@ accounts:
       public:
         notion_version: "2026-03-11"
       secret_refs:
-        token: secret:notion_team_docs:token
+        token: secret:notion_bot:token
 ```
       notion_version: "2026-03-11"
 ```

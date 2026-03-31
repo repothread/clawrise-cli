@@ -11,9 +11,11 @@ const version = resolveVersion(process.argv[2], process.env.CLAWRISE_RELEASE_VER
 const bundlesRoot = path.join(repoRoot, 'dist', 'release', 'bundles');
 const npmRoot = path.join(repoRoot, 'dist', 'release', 'npm');
 const templateRoot = path.join(repoRoot, 'packaging', 'npm', 'root');
+const skillsRoot = path.join(repoRoot, 'skills');
 const npmScope = normalizeScope(process.env.CLAWRISE_NPM_SCOPE || '');
 const packagePrefix = normalizePackagePrefix(process.env.CLAWRISE_NPM_PACKAGE_PREFIX || 'clawrise-cli');
 const distTag = resolveDistTag(version, process.env.CLAWRISE_NPM_DIST_TAG || '');
+const aiInstallGuideURL = String(process.env.CLAWRISE_AI_INSTALL_GUIDE_URL || 'https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md').trim();
 
 const platforms = [
   { npmOS: 'darwin', npmCPU: 'arm64' },
@@ -38,7 +40,7 @@ for (const platform of platformPackages) {
 }
 writeReleaseMetadata();
 
-console.log(`已生成 npm 发布目录: ${npmRoot}`);
+console.log(`Generated npm release directory: ${npmRoot}`);
 
 function prepareRootPackage() {
   const targetDir = path.join(npmRoot, rootPackageBaseName);
@@ -46,6 +48,8 @@ function prepareRootPackage() {
 
   copyFile(path.join(templateRoot, 'bin', 'clawrise.js'), path.join(targetDir, 'bin', 'clawrise.js'));
   copyFile(path.join(templateRoot, 'lib', 'platform.js'), path.join(targetDir, 'lib', 'platform.js'));
+  copyFile(path.join(templateRoot, 'lib', 'setup.js'), path.join(targetDir, 'lib', 'setup.js'));
+  copyDir(skillsRoot, path.join(targetDir, 'skills'));
   writeFile(path.join(targetDir, 'README.md'), buildRootReadme());
 
   const optionalDependencies = {};
@@ -56,7 +60,7 @@ function prepareRootPackage() {
   const rootPackageJSON = {
     name: rootPackageName,
     version,
-    description: 'Clawrise CLI with bundled first-party provider plugins.',
+    description: 'Clawrise CLI with bundled first-party provider plugins and setup flows for AI client skills.',
     license: 'MIT',
     repository: {
       type: 'git',
@@ -72,7 +76,17 @@ function prepareRootPackage() {
     files: [
       'bin',
       'lib',
+      'skills',
       'README.md',
+    ],
+    keywords: [
+      'clawrise',
+      'cli',
+      'feishu',
+      'notion',
+      'codex',
+      'skills',
+      'setup',
     ],
     optionalDependencies,
   };
@@ -86,25 +100,19 @@ function buildRootReadme() {
     '',
     'Clawrise CLI root package distributed through npm.',
     '',
-    'Clawrise CLI 的 npm 根包。',
+    '## Install Globally',
     '',
     '```bash',
     `npm install -g ${rootPackageName}`,
     '```',
     '',
-    'It automatically resolves the prebuilt binary for the current platform and bundles the first-party `feishu` and `notion` provider plugins.',
+    '## For AI',
     '',
-    '## 中文说明',
+    'Send the following prompt to the AI assistant:',
     '',
-    '这是 Clawrise CLI 的 npm 根包。',
-    '',
-    '安装命令：',
-    '',
-    '```bash',
-    `npm install -g ${rootPackageName}`,
+    '```text',
+    `Access ${aiInstallGuideURL} and follow the steps there to install the \`clawrise\` command and run setup for the current client.`,
     '```',
-    '',
-    '安装后会自动选择当前平台对应的预编译二进制，并携带第一方 `feishu` / `notion` provider plugin。',
     '',
   ].join('\n');
 }
@@ -112,7 +120,7 @@ function buildRootReadme() {
 function preparePlatformPackage(platform) {
   const bundleDir = path.join(bundlesRoot, `${platform.npmOS}-${platform.npmCPU}`);
   if (!fs.existsSync(bundleDir)) {
-    throw new Error(`缺少平台 bundle: ${bundleDir}`);
+    throw new Error(`Missing platform bundle: ${bundleDir}`);
   }
 
   const targetDir = path.join(npmRoot, platform.packageBaseName);
@@ -156,16 +164,7 @@ function buildPlatformReadme(platform) {
     `npm install -g ${rootPackageName}`,
     '```',
     '',
-    '## 中文说明',
-    '',
-    '这是 Clawrise CLI 的平台二进制分发包。',
-    `目标平台：${displayPlatform}`,
-    '',
-    '通常不需要直接安装这个包，请安装根包：',
-    '',
-    '```bash',
-    `npm install -g ${rootPackageName}`,
-    '```',
+    `This package only contains the ${displayPlatform} binary bundle. The root package also includes the first-party provider plugins and the bundled Clawrise skills.`,
     '',
   ].join('\n');
 }
@@ -205,7 +204,7 @@ function writeReleaseMetadata() {
 function resolveVersion(cliArg, envVersion, refName) {
   const raw = firstNonEmpty(cliArg, envVersion, refName);
   if (!raw) {
-    throw new Error('未提供发布版本，请传入参数、设置 CLAWRISE_RELEASE_VERSION，或提供 GITHUB_REF_NAME。');
+    throw new Error('Missing release version. Pass it as an argument, set CLAWRISE_RELEASE_VERSION, or provide GITHUB_REF_NAME.');
   }
 
   const normalized = raw
@@ -216,7 +215,7 @@ function resolveVersion(cliArg, envVersion, refName) {
     .replace(/^v/, '');
 
   if (!/^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$/.test(normalized)) {
-    throw new Error(`无效的发布版本: ${normalized}`);
+    throw new Error(`Invalid release version: ${normalized}`);
   }
   return normalized;
 }
@@ -243,10 +242,10 @@ function normalizeScope(scope) {
 function normalizePackagePrefix(prefix) {
   const trimmed = String(prefix || '').trim();
   if (trimmed === '') {
-    throw new Error('npm 包名前缀不能为空。');
+    throw new Error('The npm package prefix must not be empty.');
   }
   if (trimmed.includes('/')) {
-    throw new Error(`npm 包名前缀不能包含 /: ${trimmed}`);
+    throw new Error(`The npm package prefix must not contain '/': ${trimmed}`);
   }
   return trimmed;
 }

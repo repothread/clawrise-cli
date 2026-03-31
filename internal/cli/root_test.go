@@ -327,6 +327,100 @@ func TestRunAccountAddChoosesBotPresetForFeishuByDefault(t *testing.T) {
 	}
 }
 
+func TestRunAccountEnsureCreatesNotionAccount(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"account", "ensure", "notion_bot", "--platform", "notion", "--preset", "internal_token", "--use"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	account, ok := cfg.Accounts["notion_bot"]
+	if !ok {
+		t.Fatalf("expected notion_bot account, got: %+v", cfg.Accounts)
+	}
+	if account.Auth.Method != "notion.internal_token" {
+		t.Fatalf("unexpected auth method: %+v", account)
+	}
+	if got := account.Auth.SecretRefs["token"]; got != "secret:notion_bot:token" {
+		t.Fatalf("unexpected token secret ref: %q", got)
+	}
+	if cfg.Defaults.Account != "notion_bot" || cfg.Defaults.Platform != "notion" {
+		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"action": "created"`)) {
+		t.Fatalf("expected created action in output, got: %s", stdout.String())
+	}
+}
+
+func TestRunAccountEnsureUpdatesExistingFeishuAccount(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	cfg := config.New()
+	cfg.Accounts["feishu_bot"] = config.Account{
+		Title:    "旧账号标题",
+		Platform: "feishu",
+		Subject:  "bot",
+		Auth: config.AccountAuth{
+			Method: "feishu.app_credentials",
+			Public: map[string]any{
+				"app_id": "old-app-id",
+			},
+			SecretRefs: map[string]string{
+				"app_secret": "secret:feishu_bot:app_secret",
+			},
+		},
+	}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"account", "ensure", "feishu_bot", "--platform", "feishu", "--preset", "bot", "--public", "app_id=new-app-id", "--use"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	updatedCfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load updated config: %v", err)
+	}
+	account := updatedCfg.Accounts["feishu_bot"]
+	if got := account.Auth.Public["app_id"]; got != "new-app-id" {
+		t.Fatalf("unexpected app_id after ensure: %+v", account.Auth.Public)
+	}
+	if account.Title != "旧账号标题" {
+		t.Fatalf("expected title to be preserved, got: %+v", account)
+	}
+	if got := account.Auth.SecretRefs["app_secret"]; got != "secret:feishu_bot:app_secret" {
+		t.Fatalf("unexpected app_secret ref: %q", got)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"action": "updated"`)) {
+		t.Fatalf("expected updated action in output, got: %s", stdout.String())
+	}
+}
+
 func TestRunAccountUseSynchronizesSubject(t *testing.T) {
 	copyExampleConfig(t)
 
@@ -368,7 +462,7 @@ func TestRunAccountUseUsesAccountCommandBehavior(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err := Run([]string{"account", "use", "notion_team_docs"}, Dependencies{
+	err := Run([]string{"account", "use", "notion_bot"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -377,7 +471,7 @@ func TestRunAccountUseUsesAccountCommandBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"name": "notion_team_docs"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"name": "notion_bot"`)) {
 		t.Fatalf("expected account response payload, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"account"`)) {
@@ -388,7 +482,7 @@ func TestRunAccountUseUsesAccountCommandBehavior(t *testing.T) {
 func TestRunAccountUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
-	t.Setenv("NOTION_TEAM_DOCS_TOKEN", "notion-token")
+	t.Setenv("NOTION_BOT_TOKEN", "notion-token")
 
 	configBytes, err := os.ReadFile("../../examples/config.example.yaml")
 	if err != nil {
@@ -402,7 +496,7 @@ func TestRunAccountUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err = Run([]string{"account", "use", "notion_team_docs"}, Dependencies{
+	err = Run([]string{"account", "use", "notion_bot"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -428,7 +522,7 @@ func TestRunAccountUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte(`"normalized": "notion.page.get"`)) {
 		t.Fatalf("expected bare operation to resolve with notion platform, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "notion_team_docs"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "notion_bot"`)) {
 		t.Fatalf("expected notion account in output, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "integration"`)) {
@@ -945,7 +1039,7 @@ func TestRunConfigInit(t *testing.T) {
 		"init",
 		"--platform", "notion",
 		"--subject", "integration",
-		"--account", "notion_team_docs",
+		"--account", "notion_bot",
 	}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
@@ -956,7 +1050,7 @@ func TestRunConfigInit(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "notion_team_docs"`)) {
+	if !bytes.Contains(stdout.Bytes(), []byte(`"account": "notion_bot"`)) {
 		t.Fatalf("expected account name in output, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"method": "notion.internal_token"`)) {
@@ -969,12 +1063,12 @@ func TestRunConfigInit(t *testing.T) {
 
 func TestRunAuthCheck(t *testing.T) {
 	copyExampleConfig(t)
-	runSecretSet(t, "feishu_bot_ops", "app_secret", "app-secret")
+	runSecretSet(t, "feishu_bot", "app_secret", "app-secret")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err := Run([]string{"auth", "check", "feishu_bot_ops"}, Dependencies{
+	err := Run([]string{"auth", "check", "feishu_bot"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -1483,7 +1577,7 @@ func TestRunAuthSecretSetFromEnv(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err = Run([]string{"auth", "secret", "set", "notion_team_docs", "token", "--from-env", "TEST_SECRET_VALUE"}, Dependencies{
+	err = Run([]string{"auth", "secret", "set", "notion_bot", "token", "--from-env", "TEST_SECRET_VALUE"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,
@@ -1501,7 +1595,7 @@ func TestRunAuthSecretSetFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open secret store: %v", err)
 	}
-	value, err := secretStore.Get("notion_team_docs", "token")
+	value, err := secretStore.Get("notion_bot", "token")
 	if err != nil {
 		t.Fatalf("failed to read stored secret: %v", err)
 	}
@@ -1516,7 +1610,7 @@ func TestRunAuthSecretSetValueRequiresExplicitInsecureFlag(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run([]string{"auth", "secret", "set", "notion_team_docs", "token", "--value", "plain-secret"}, Dependencies{
+	err := Run([]string{"auth", "secret", "set", "notion_bot", "token", "--value", "plain-secret"}, Dependencies{
 		Version:       "test",
 		Stdout:        &stdout,
 		Stderr:        &stderr,

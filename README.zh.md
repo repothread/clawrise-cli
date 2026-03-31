@@ -1,110 +1,101 @@
 # Clawrise
 
-[![CI](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/clawrise/clawrise-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/clawrise/clawrise-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 简体中文 · [English](README.md)。
 
-Clawrise 是一个命令行工具，用来访问第三方服务并执行稳定的操作命令。当前开箱即用的平台包括：
+Clawrise 是一个面向 AI 的命令行工具，用稳定的 operation 调用第三方平台。它适合两种使用方式：
+
+- 先把 `clawrise` 接入 Codex、Claude Code、OpenClaw、OpenCode 这类 AI 客户端，再让 AI 通过 skills 调用第三方平台
+- 人类直接在终端里执行 `clawrise` 命令
+
+当前开箱即用的平台包括：
 
 - `notion`
 - `feishu`
 
-## 安装
+## AI 接入
+
+把下面这段 prompt 原样发给 AI 助手：
+
+```text
+Access https://raw.githubusercontent.com/clawrise/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
+```
+
+## 人类接入
+
+### 1. 安装
 
 ```bash
 npm install -g @clawrise/clawrise-cli
+```
+
+### 2. 接入 Notion
+
+1. 打开 [Notion 开发集成页面](https://www.notion.so/profile/integrations)并创建或选择一个 integration
+2. 复制这个 integration 的 `Internal Integration Token`
+3. 如果你要让 AI 客户端直接加载对应 skills，可以执行下面任意一种：
+
+```bash
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup claude-code notion
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup openclaw notion
+NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup opencode notion
+```
+
+如果你不想通过环境变量传值，也可以运行：
+
+```bash
+clawrise setup codex notion
+clawrise setup claude-code notion
+clawrise setup openclaw notion
+clawrise setup opencode notion
+```
+
+然后按提示输入 `Internal Integration Token`。交互式终端下，`clawrise setup codex notion` 这类命令会直接进入交互式输入状态。
+
+设置完成后，可以执行下面的命令验证当前默认账号是否可用：
+
+```bash
+clawrise auth check
 clawrise doctor
 ```
 
-## Notion 最小接入
+### 3. 接入 Feishu
 
-前提：
-
-- 在 Notion 中创建一个 integration
-- 把你要访问的 page 或 data source 分享给这个 integration
-
-生成账号骨架：
+1. 打开[飞书开发者后台应用中心](https://open.feishu.cn/app)并创建或选择一个应用
+2. 记下这个应用的 `App ID` 和 `App Secret`
+3. 如果你要让 AI 客户端直接加载对应 skills，可以执行下面任意一种：
 
 ```bash
-clawrise account add notion_docs --platform notion
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup claude-code feishu
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup openclaw feishu
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup opencode feishu
 ```
 
-写入 token 并检查状态：
+如果你不想通过环境变量传值，也可以运行：
 
 ```bash
-export NOTION_TOKEN='secret_xxx'
-clawrise auth secret set notion_docs token --from-env NOTION_TOKEN
-
-# 检查账号配置是否完整
-clawrise auth inspect notion_docs
-# 确认这个账号是否已经可以执行操作
-clawrise auth check notion_docs
+clawrise setup codex feishu
+clawrise setup claude-code feishu
+clawrise setup openclaw feishu
+clawrise setup opencode feishu
 ```
 
-先跑一条查询：
+然后按提示输入 `App ID` 和 `App Secret`。
+
+设置完成后，可以执行下面的命令验证当前默认账号是否可用：
 
 ```bash
-clawrise notion.search.query --json '{"query":"Demo","page_size":10}'
-```
-
-如果你要先验证写操作，可以用 dry-run：
-
-```bash
-clawrise notion.page.create --dry-run --json '{"parent":{"page_id":"page_demo"},"properties":{"title":[{"text":{"content":"Demo Page"}}]}}'
-```
-
-## Feishu 最小接入
-
-前提：
-
-- 创建一个飞书应用
-- 拿到 `app_id` 和 `app_secret`
-
-生成账号骨架：
-
-```bash
-clawrise account add feishu_bot --platform feishu
-```
-
-然后在配置文件里补上 `accounts.feishu_bot.auth.public.app_id`。
-
-写入 secret 并检查状态：
-
-```bash
-export FEISHU_APP_SECRET='你的飞书应用密钥'
-clawrise auth secret set feishu_bot app_secret --from-env FEISHU_APP_SECRET
-
-# 检查账号配置是否完整
-clawrise auth inspect feishu_bot
-# 确认这个账号是否已经可以执行操作
-clawrise auth check feishu_bot
-```
-
-先跑一条 dry-run：
-
-```bash
-clawrise feishu.calendar.event.create --dry-run --json '{"calendar_id":"cal_demo","summary":"Demo Event","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}'
-```
-
-## 常用命令
-
-```bash
+clawrise auth check
 clawrise doctor
-clawrise auth methods --platform notion
-clawrise auth methods --platform feishu
-clawrise auth inspect <account>
-clawrise auth check <account>
-clawrise spec get <operation>
 ```
 
-## 更多说明
+## 相关文档
 
-- [Notion 页面更新 Playbook](docs/playbooks/zh/notion-page-update.md)
-- [Notion Data Source 查询 Playbook](docs/playbooks/zh/notion-data-source-query.md)
-- [飞书用户授权说明](docs/zh/feishu-user-auth-setup.md)
-- [示例配置](examples/config.example.yaml)
-- [支持说明](SUPPORT.zh.md)
+- [AI 安装引导](docs/en/ai-install.md)
 
 ## 许可证
 
