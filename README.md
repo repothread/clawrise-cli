@@ -21,7 +21,7 @@ npm install -g @clawrise/clawrise-cli
 Send the following prompt to the AI assistant:
 
 ```text
-Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and the skills for the current client.
+Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
 ```
 
 ## License

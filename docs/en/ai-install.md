@@ -1,13 +1,13 @@
 # Clawrise AI Install Guide
 
-Use this guide when an AI assistant needs to install the `clawrise` command and the related skills.
+Use this guide when an AI assistant needs to install the `clawrise` command and run setup for the current client.
 
 ## For Humans
 
 Send this prompt to the AI assistant:
 
 ```text
-Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and the skills for the current client.
+Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
 ```
 
 ## For AI Assistants
@@ -29,8 +29,10 @@ Before installing anything, confirm these points with the user:
    - Claude Code
    - OpenClaw
    - OpenCode
-2. Should skills be installed globally for that client, or only for the current project/workspace?
-3. Is a global npm install allowed on this machine, or should `npx` be used instead?
+2. Which platforms are needed right now?
+   - `feishu`
+   - `notion`
+3. Should the skills be installed into the default shared directory for that client, or a project-local skills directory?
 
 ### Step 1: Run Preflight Checks
 
@@ -39,92 +41,55 @@ Check whether the required commands are available:
 ```bash
 command -v npm
 command -v npx
-command -v clawrise
 ```
 
 If `npm` is missing, stop and ask the user to install Node.js and npm first.
 
-### Step 2: Install Or Reuse The CLI
+### Step 2: Choose The Setup Command
 
-If `clawrise` is already installed and usable, keep using it:
+Use `clawrise setup ...` if the command is already installed.
+
+Otherwise use `npx @clawrise/clawrise-cli setup ...`.
+
+Setup is responsible for:
+
+- ensuring the `clawrise` command is installed on the host
+- installing `clawrise-core`
+- installing any requested platform skills
+
+If no platform is specified, setup installs only `clawrise-core`.
+
+### Step 3: Run Setup
+
+If `clawrise` is already installed and usable:
 
 ```bash
-clawrise version
+clawrise setup codex
+clawrise setup codex feishu
 ```
 
-If `clawrise` is not installed and global npm installs are allowed:
+If `clawrise` is not installed yet:
 
 ```bash
-npm install -g @clawrise/clawrise-cli
-clawrise version
+npx @clawrise/clawrise-cli setup codex
+npx @clawrise/clawrise-cli setup codex feishu
 ```
 
-If global npm installs are not appropriate, use `npx`:
+Client-specific examples:
 
 ```bash
-npx @clawrise/clawrise-cli version
+clawrise setup codex
+clawrise setup claude-code notion
+clawrise setup openclaw feishu
+clawrise setup opencode notion
 ```
 
-### Step 3: Install Skills For The Target Client
-
-Choose the command that matches the current client.
-
-If `clawrise` is globally installed, use `clawrise ...`.
-
-If the user wants to avoid a global install, replace `clawrise` with:
+Project-local examples:
 
 ```bash
-npx @clawrise/clawrise-cli
-```
-
-#### Codex
-
-Global/shared install:
-
-```bash
-clawrise skills install-codex
-```
-
-#### Claude Code
-
-Global/shared install:
-
-```bash
-clawrise skills install-claude-code
-```
-
-Project-local install:
-
-```bash
-clawrise skills install-claude-code --skills-dir ./.claude/skills
-```
-
-#### OpenClaw
-
-Global/shared install:
-
-```bash
-clawrise skills install-openclaw
-```
-
-Workspace-local install:
-
-```bash
-clawrise skills install-openclaw --skills-dir ./skills
-```
-
-#### OpenCode
-
-Global/shared install:
-
-```bash
-clawrise skills install-opencode
-```
-
-Project-local install:
-
-```bash
-clawrise skills install-opencode --skills-dir ./.opencode/skills
+clawrise setup claude-code notion --skills-dir ./.claude/skills
+clawrise setup openclaw feishu --skills-dir ./skills
+clawrise setup opencode notion --skills-dir ./.opencode/skills
 ```
 
 ### Step 4: Verify The Installation
@@ -132,6 +97,7 @@ clawrise skills install-opencode --skills-dir ./.opencode/skills
 Verify the CLI:
 
 ```bash
+clawrise version
 clawrise doctor
 clawrise spec list
 ```
@@ -146,23 +112,18 @@ Expected skill names:
 
 ### Step 5: Handle Common Issues
 
-If installation fails because the user does not want a global install:
-
-- use `npx @clawrise/clawrise-cli ...`
-- prefer project-local skill directories such as `./skills`, `./.claude/skills`, or `./.opencode/skills`
-
 If installation fails because of write permissions:
 
 - switch from a shared install path to a project-local install path
 
 If the user only wants one platform skill:
 
-- install only the required skill names, for example:
+- rerun setup with only the required platform names, for example:
 
 ```bash
-clawrise skills install-claude-code clawrise-core clawrise-feishu
+clawrise setup claude-code feishu
 ```
 
 ### Step 6: Reload The Client
 
-After installing skills, start a new session or restart the client so the skills are reloaded.
+After setup completes, start a new session or restart the client so the new skills are loaded.

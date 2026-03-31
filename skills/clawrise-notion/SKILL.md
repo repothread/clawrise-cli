@@ -7,10 +7,23 @@ description: Use when the task is to access Notion through Clawrise, including N
 
 This skill adds Notion-specific guidance. Use `clawrise-core` for the common execution workflow.
 
+This skill assumes that the current client has already been prepared with:
+
+```bash
+clawrise setup <client> notion
+```
+
+or:
+
+```bash
+npx @clawrise/clawrise-cli setup <client> notion
+```
+
 ## Usage
 
 1. Start with the `clawrise-core` workflow to inspect the local environment and specs.
-2. Add this skill when the task is Notion-specific.
+2. Add this skill only when the task is Notion-specific.
+3. Do not use this skill to explain generic client setup unless the user is explicitly setting up Notion support.
 
 ## Check These First
 

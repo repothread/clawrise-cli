@@ -21,7 +21,7 @@ npm install -g @clawrise/clawrise-cli
 将如下 prompt 发送给 AI 助手：
 
 ```text
-Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and the skills for the current client.
+Access https://raw.githubusercontent.com/repothread/clawrise-cli/main/docs/en/ai-install.md and follow the steps there to install the `clawrise` command and run setup for the current client.
 ```
 
 ## 许可证

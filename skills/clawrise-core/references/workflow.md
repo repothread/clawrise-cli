@@ -1,6 +1,30 @@
 # Clawrise General Workflow
 
-## 1. Inspect The Environment First
+## 1. Ensure Setup Has Been Run
+
+If the user is on a fresh machine or the current client has not been prepared yet, start with:
+
+```bash
+clawrise setup <client>
+clawrise setup <client> <platform>
+```
+
+or:
+
+```bash
+npx @clawrise/clawrise-cli setup <client>
+npx @clawrise/clawrise-cli setup <client> <platform>
+```
+
+Use platform setup only when the user actually needs that platform.
+
+Examples:
+
+- `setup codex`
+- `setup codex feishu`
+- `setup openclaw notion`
+
+## 2. Inspect The Environment First
 
 Start with:
 
@@ -22,7 +46,7 @@ Do not assume any of these before checking `doctor`:
 - a default account exists
 - local config is already complete
 
-## 2. Discover Before Building Input
+## 3. Discover Before Building Input
 
 Preferred sequence:
 
@@ -42,7 +66,7 @@ clawrise docs generate <path> --out-dir <dir>
 
 `spec get` is the most important fact source when you need to build one concrete call.
 
-## 3. Inspect Auth And Accounts
+## 4. Inspect Auth And Accounts
 
 Useful commands:
 
@@ -56,7 +80,7 @@ clawrise account inspect <name>
 
 If the user does not explicitly provide an account, do not assume the default account is valid. Check `doctor` or `account current` first.
 
-## 4. Execution Rules
+## 5. Execution Rules
 
 Recommended order:
 
@@ -76,7 +100,7 @@ Common flags include:
 - `--idempotency-key`
 - `--quiet`
 
-## 5. Output Shape
+## 6. Output Shape
 
 Execution output is a normalized JSON envelope. Key fields include:
 
@@ -90,7 +114,7 @@ Execution output is a normalized JSON envelope. Key fields include:
 
 If a downstream step only needs the success payload, use `--quiet`.
 
-## 6. Architectural Boundary
+## 7. Architectural Boundary
 
 Clawrise unifies the execution layer, not the business resource model.
 
@@ -99,3 +123,8 @@ That means:
 - Build Feishu inputs with Feishu-native fields
 - Build Notion inputs with Notion-native fields
 - Do not compress calendars, pages, documents, or records into one invented JSON schema
+
+If the user needs platform-specific auth or task guidance, switch to the matching platform skill after setup:
+
+- `clawrise-feishu`
+- `clawrise-notion`

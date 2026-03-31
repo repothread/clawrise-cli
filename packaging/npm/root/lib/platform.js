@@ -16,14 +16,14 @@ function resolvePlatformPackage() {
   const packageName = packageMap[platformKey];
 
   if (!packageName) {
-    throw new Error(`当前平台暂不支持: ${process.platform}/${process.arch}`);
+    throw new Error(`The current platform is not supported: ${process.platform}/${process.arch}`);
   }
 
   let packageJSONPath;
   try {
     packageJSONPath = require.resolve(`${packageName}/package.json`);
   } catch (error) {
-    throw new Error(`未找到当前平台对应的二进制包 ${packageName}，请重新执行 npm install clawrise-cli。`);
+    throw new Error(`The platform binary package ${packageName} was not found. Re-run npm install for the root package.`);
   }
 
   const packageDir = path.dirname(packageJSONPath);

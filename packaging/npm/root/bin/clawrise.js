@@ -5,13 +5,13 @@
 const childProcess = require('child_process');
 const path = require('path');
 const { resolvePlatformPackage } = require('../lib/platform');
-const { handleSkillsCommand } = require('../lib/skills');
+const { handleSetupCommand } = require('../lib/setup');
 
 const rawArgs = process.argv.slice(2);
 
-if (rawArgs[0] === 'skills') {
+if (rawArgs[0] === 'setup') {
   try {
-    const handledExitCode = handleSkillsCommand(rawArgs.slice(1));
+    const handledExitCode = handleSetupCommand(rawArgs.slice(1));
     if (typeof handledExitCode === 'number') {
       process.exit(handledExitCode);
     }

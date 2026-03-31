@@ -1,5 +1,13 @@
 # Notion Common Tasks
 
+This reference assumes that `clawrise-core` and `clawrise-notion` have already been installed for the current client.
+
+If the user still needs Notion support installed, run:
+
+```bash
+clawrise setup <client> notion
+```
+
 ## Auth Methods
 
 Current Notion auth methods include:

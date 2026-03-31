@@ -1,6 +1,6 @@
 # Installation And Layout
 
-## 1. Codex Skill Location
+## 1. Repository Skill Source
 
 The source directories inside this repository are:
 
@@ -10,19 +10,38 @@ skills/clawrise-feishu
 skills/clawrise-notion
 ```
 
-The install target should be:
+## 2. Client Skill Locations
 
-```text
-$CODEX_HOME/skills/<skill-name>
-```
-
-If `CODEX_HOME` is not set, the default is usually:
+Default shared install targets are:
 
 ```text
 ~/.codex/skills/<skill-name>
+~/.claude/skills/<skill-name>
+~/.openclaw/skills/<skill-name>
+~/.config/opencode/skills/<skill-name>
 ```
 
-## 2. Default Clawrise Runtime Paths
+Project-local installs may use client-specific directories such as:
+
+```text
+./.claude/skills/<skill-name>
+./skills/<skill-name>
+./.opencode/skills/<skill-name>
+```
+
+The exact target is selected by:
+
+```bash
+clawrise setup <client> [platform...]
+```
+
+or:
+
+```bash
+npx @clawrise/clawrise-cli setup <client> [platform...]
+```
+
+## 3. Default Clawrise Runtime Paths
 
 In this project, `clawrise doctor` exposes these default paths:
 
@@ -34,7 +53,7 @@ In this project, `clawrise doctor` exposes these default paths:
 
 Always trust the live `clawrise doctor` output over static assumptions.
 
-## 3. Plugin Install Sources
+## 4. Plugin Install Sources
 
 Clawrise currently supports:
 
@@ -50,19 +69,19 @@ clawrise plugin install <source>
 clawrise plugin verify --all
 ```
 
-## 4. Repository Install Script
+## 5. Repository Install Script
 
 This repository provides:
 
 ```bash
-./scripts/skills/install-codex-skills.sh
+./scripts/skills/setup-local-codex.sh
 ```
 
-It copies the repository skills into the local Codex skill directory.
+It copies the repository skills into a local Codex skill directory for repository-level testing.
 
 Restart Codex after installation so the new skills are loaded.
 
-## 5. No-Clone Distribution Options
+## 6. No-Clone Distribution Options
 
 Recommended non-clone channels are:
 
@@ -75,10 +94,12 @@ For website distribution, publish:
 - versioned archives such as `<version>/<skill-name>.tar.gz`
 - one install script that downloads and expands skills into `~/.codex/skills`
 
-For npm distribution, prefer an explicit install entry such as:
+For npm distribution, prefer setup commands such as:
 
 ```bash
-clawrise skills install-codex
+clawrise setup codex
+clawrise setup codex feishu
+clawrise setup claude-code notion --skills-dir ./.claude/skills
 ```
 
 Do not use automatic `postinstall` hooks to write into the user's Codex directory.

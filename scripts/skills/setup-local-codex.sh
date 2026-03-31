@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# Install repository-bundled Codex skills into the local skills directory.
+# Install repository-bundled skills into the local Codex skills directory.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"

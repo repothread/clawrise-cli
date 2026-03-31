@@ -1,5 +1,13 @@
 # Feishu Common Tasks
 
+This reference assumes that `clawrise-core` and `clawrise-feishu` have already been installed for the current client.
+
+If the user still needs Feishu support installed, run:
+
+```bash
+clawrise setup <client> feishu
+```
+
 ## Auth Methods
 
 Current Feishu auth methods include:

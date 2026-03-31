@@ -48,7 +48,7 @@ function prepareRootPackage() {
 
   copyFile(path.join(templateRoot, 'bin', 'clawrise.js'), path.join(targetDir, 'bin', 'clawrise.js'));
   copyFile(path.join(templateRoot, 'lib', 'platform.js'), path.join(targetDir, 'lib', 'platform.js'));
-  copyFile(path.join(templateRoot, 'lib', 'skills.js'), path.join(targetDir, 'lib', 'skills.js'));
+  copyFile(path.join(templateRoot, 'lib', 'setup.js'), path.join(targetDir, 'lib', 'setup.js'));
   copyDir(skillsRoot, path.join(targetDir, 'skills'));
   writeFile(path.join(targetDir, 'README.md'), buildRootReadme());
 
@@ -60,7 +60,7 @@ function prepareRootPackage() {
   const rootPackageJSON = {
     name: rootPackageName,
     version,
-    description: 'Clawrise CLI with bundled first-party provider plugins and Codex skills.',
+    description: 'Clawrise CLI with bundled first-party provider plugins and setup flows for AI client skills.',
     license: 'MIT',
     repository: {
       type: 'git',
@@ -86,6 +86,7 @@ function prepareRootPackage() {
       'notion',
       'codex',
       'skills',
+      'setup',
     ],
     optionalDependencies,
   };
@@ -110,7 +111,7 @@ function buildRootReadme() {
     'Send the following prompt to the AI assistant:',
     '',
     '```text',
-    `Access ${aiInstallGuideURL} and follow the steps there to install the \`clawrise\` command and the skills for the current client.`,
+    `Access ${aiInstallGuideURL} and follow the steps there to install the \`clawrise\` command and run setup for the current client.`,
     '```',
     '',
   ].join('\n');
@@ -163,7 +164,7 @@ function buildPlatformReadme(platform) {
     `npm install -g ${rootPackageName}`,
     '```',
     '',
-    `This package only contains the ${displayPlatform} binary bundle. The root package also includes the first-party provider plugins and the bundled Codex skills.`,
+    `This package only contains the ${displayPlatform} binary bundle. The root package also includes the first-party provider plugins and the bundled Clawrise skills.`,
     '',
   ].join('\n');
 }
