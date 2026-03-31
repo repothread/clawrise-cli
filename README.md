@@ -1,6 +1,6 @@
 # Clawrise
 
-[![CI](https://github.com/clawrise/clawrise-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/clawrise/clawrise-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/repothread/clawrise-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 English · [简体中文](README.zh.md)
