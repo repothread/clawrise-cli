@@ -1,0 +1,21 @@
+title: "[General] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use General for topics that do not fit Q&A, Ideas, Show and tell, or Announcements.
+  - type: textarea
+    id: topic
+    attributes:
+      label: Topic
+      description: Start the discussion with a clear topic or question.
+      placeholder: I want to discuss ...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Add background, links, screenshots, or examples that help others respond.
+    validations:
+      required: false

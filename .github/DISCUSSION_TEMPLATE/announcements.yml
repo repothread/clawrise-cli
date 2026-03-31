@@ -1,0 +1,29 @@
+title: "[Announcement] "
+labels:
+  - announcement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use Announcements for release notes, roadmap shifts, policy changes, and other maintainer-led updates.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: State the announcement clearly and concisely.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Explain what contributors or users should do differently, if anything.
+    validations:
+      required: false
+  - type: textarea
+    id: follow_up
+    attributes:
+      label: Follow-up links
+      description: Add changelogs, docs, issues, or pull requests that provide more detail.
+    validations:
+      required: false

@@ -1,0 +1,105 @@
+name: Bug report
+description: Report a reproducible bug or regression
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        Please keep the report focused, reproducible, and sanitized. If you need usage help instead of bug triage, use Discussions.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues, docs, and discussions first.
+          required: true
+        - label: I removed secrets, tokens, and private tenant data from this report.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Clawrise is affected?
+      options:
+        - Runtime execution
+        - Config or auth
+        - Notion
+        - Feishu
+        - Plugin authoring
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command or operation
+      description: Share the command, operation name, or plugin involved.
+      placeholder: clawrise notion.search.query
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the bug in one or two sentences.
+      placeholder: The command exits with an auth error even though auth check passes.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the shortest reliable reproduction you can.
+      placeholder: |
+        1. Configure account ...
+        2. Run ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The operation should return a successful response.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: The command exits with ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Share the versions that help maintainers reproduce the issue.
+      value: |
+        - OS:
+        - Go version:
+        - Clawrise version or commit:
+        - Provider or plugin:
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Paste sanitized logs, command output, or payload samples when relevant.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add links, screenshots, or related issues if they help.
+    validations:
+      required: false

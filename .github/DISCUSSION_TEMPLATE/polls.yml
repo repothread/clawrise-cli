@@ -1,0 +1,21 @@
+title: "[Poll] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use Polls when you want structured community input on a narrow decision.
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Poll prompt
+      description: State the question or decision you want people to vote on.
+      placeholder: Which plugin install flow should we optimize first?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Explain why this decision matters and what tradeoffs voters should keep in mind.
+    validations:
+      required: true

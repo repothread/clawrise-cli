@@ -1,0 +1,56 @@
+title: "[Q&A] "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use Q&A for usage help, workflow guidance, or clarification about current behavior.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Clawrise is this about?
+      options:
+        - CLI usage
+        - Config or auth
+        - Runtime execution
+        - Notion
+        - Feishu
+        - Plugin authoring
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Ask the question as clearly as you can.
+      placeholder: What are you trying to do, and where are you blocked?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you already tried
+      description: Share the commands, docs, or examples you already checked.
+    validations:
+      required: false
+  - type: textarea
+    id: details
+    attributes:
+      label: Commands, payloads, or output
+      description: Paste sanitized commands, JSON, logs, or screenshots when relevant.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before posting
+      options:
+        - label: I checked the README, docs, and existing discussions first.
+          required: true
+        - label: I removed secrets and private tenant data.
+          required: true

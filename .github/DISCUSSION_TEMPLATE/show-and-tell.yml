@@ -1,0 +1,37 @@
+title: "[Show and tell] "
+labels:
+  - showcase
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use Show and tell to share a real workflow, plugin, integration, or demo built with Clawrise.
+  - type: input
+    id: project
+    attributes:
+      label: Project or workflow name
+      placeholder: Daily Notion sync for product notes
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What you built
+      description: Explain the workflow, goal, and why it is useful.
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands or implementation details
+      description: Share sample commands, payloads, or repository links if they are public.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: lessons
+    attributes:
+      label: Lessons learned
+      description: What worked well, and what would you improve next?
+    validations:
+      required: false

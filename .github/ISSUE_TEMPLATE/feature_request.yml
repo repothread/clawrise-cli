@@ -1,0 +1,74 @@
+name: Feature request
+description: Propose an improvement, workflow, or new capability
+title: "[feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an improvement.
+
+        Strong requests usually explain the workflow gap, expected user value, and why the change fits Clawrise's direction.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the roadmap, docs, and existing issues first.
+          required: true
+        - label: This request is about a concrete user or automation need, not only command count.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which area would this request affect most?
+      options:
+        - Runtime execution
+        - Config or auth
+        - Notion
+        - Feishu
+        - Plugin authoring
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What is missing or painful today?
+      placeholder: I can do X manually, but the current CLI path makes Y hard because ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the command, operation, metadata, or workflow you want.
+      placeholder: Add a command or operation that ...
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: User impact
+      description: Who benefits from this change, and how?
+      placeholder: This would help plugin authors validate compatibility before release.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe current workarounds or other options you evaluated.
+    validations:
+      required: false
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples or references
+      description: Share sample CLI usage, payloads, links, or design notes when useful.
+    validations:
+      required: false
