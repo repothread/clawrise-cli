@@ -7,19 +7,19 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '发布版本，例如 1.2.3；手动补发时使用'
+        description: 'Release version, for example 1.2.3; used for manual republishing'
         required: false
         type: string
       npm_scope:
-        description: 'npm scope，例如 @clawrise；官方发布必填'
+        description: 'npm scope, for example @clawrise; required for official releases'
         required: false
         type: string
       npm_package_prefix:
-        description: 'npm 根包名前缀，默认 clawrise-cli'
+        description: 'npm root package prefix; defaults to clawrise-cli'
         required: false
         type: string
       npm_dist_tag:
-        description: 'npm dist-tag，例如 latest、next、beta；留空时自动推导'
+        description: 'npm dist-tag, for example latest, next, or beta; inferred automatically when empty'
         required: false
         type: string
 
@@ -67,14 +67,14 @@ jobs:
         run: |
           version="$(./scripts/release/resolve-version.sh "${{ github.event.inputs.version || '' }}")"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "发布版本: ${version}"
+          echo "Release version: ${version}"
 
       - name: Resolve npm publish config
         id: npm
         run: |
           npm_scope="${{ github.event.inputs.npm_scope || vars.CLAWRISE_NPM_SCOPE }}"
           if [[ -z "${npm_scope}" ]]; then
-            echo "官方发布必须配置 npm scope，请通过 workflow_dispatch 输入或 cicd environment 变量 CLAWRISE_NPM_SCOPE 提供。" >&2
+            echo "Official releases must configure an npm scope. Provide it through the workflow_dispatch input or the cicd environment variable CLAWRISE_NPM_SCOPE." >&2
             exit 1
           fi
           npm_package_prefix="${{ github.event.inputs.npm_package_prefix || vars.CLAWRISE_NPM_PACKAGE_PREFIX }}"
@@ -108,6 +108,9 @@ jobs:
           CLAWRISE_NPM_PACKAGE_PREFIX: ${{ steps.npm.outputs.package_prefix }}
           CLAWRISE_NPM_DIST_TAG: ${{ steps.npm.outputs.dist_tag }}
         run: node ./scripts/release/prepare-npm-packages.mjs "${{ steps.version.outputs.version }}"
+
+      - name: Verify npm runtime wiring
+        run: node ./scripts/release/verify-npm-runtime.mjs
 
       - name: Upload release archives
         uses: actions/upload-artifact@v4
