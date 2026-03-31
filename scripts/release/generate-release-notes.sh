@@ -43,6 +43,107 @@ resolve_previous_tag() {
   git -C "${repo_root}" describe --tags --abbrev=0 "${git_sha}^" 2>/dev/null || true
 }
 
+build_contributor_list_from_github() {
+  local previous_tag="$1"
+  local github_token="$2"
+
+  if [[ -z "${previous_tag}" || -z "${github_token}" ]]; then
+    return 1
+  fi
+
+  CLAWRISE_RELEASE_REPOSITORY="${repository}" \
+    CLAWRISE_RELEASE_BASE_TAG="${previous_tag}" \
+    CLAWRISE_RELEASE_HEAD_SHA="${git_sha}" \
+    CLAWRISE_RELEASE_GITHUB_TOKEN="${github_token}" \
+    node <<'EOF'
+const repository = process.env.CLAWRISE_RELEASE_REPOSITORY || '';
+const baseTag = process.env.CLAWRISE_RELEASE_BASE_TAG || '';
+const headSha = process.env.CLAWRISE_RELEASE_HEAD_SHA || '';
+const githubToken = process.env.CLAWRISE_RELEASE_GITHUB_TOKEN || '';
+
+if (!repository || !baseTag || !headSha || !githubToken) {
+  process.exit(1);
+}
+
+function avatarWithSize(url, size) {
+  if (!url) {
+    return '';
+  }
+  return url.includes('?') ? `${url}&s=${size}` : `${url}?s=${size}`;
+}
+
+async function main() {
+  const compareURL = `https://api.github.com/repos/${repository}/compare/${encodeURIComponent(baseTag)}...${encodeURIComponent(headSha)}`;
+  const response = await fetch(compareURL, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${githubToken}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+
+  if (!response.ok) {
+    process.exit(1);
+  }
+
+  const payload = await response.json();
+  const contributorMap = new Map();
+
+  for (const commit of payload.commits || []) {
+    const author = commit?.author;
+    if (!author?.login) {
+      continue;
+    }
+
+    const current = contributorMap.get(author.login) || {
+      count: 0,
+      avatarURL: author.avatar_url || '',
+      profileURL: author.html_url || `https://github.com/${author.login}`,
+    };
+
+    current.count += 1;
+    if (!current.avatarURL && author.avatar_url) {
+      current.avatarURL = author.avatar_url;
+    }
+    if (!current.profileURL && author.html_url) {
+      current.profileURL = author.html_url;
+    }
+
+    contributorMap.set(author.login, current);
+  }
+
+  if (contributorMap.size === 0) {
+    process.exit(1);
+  }
+
+  const lines = [...contributorMap.entries()]
+    .sort((left, right) => {
+      const countDiff = right[1].count - left[1].count;
+      if (countDiff !== 0) {
+        return countDiff;
+      }
+      return left[0].localeCompare(right[0]);
+    })
+    .map(([login, info]) => {
+      const profileURL = info.profileURL || `https://github.com/${login}`;
+      const avatarMarkdown = info.avatarURL
+        ? `[![@${login}](${avatarWithSize(info.avatarURL, 40)})](${profileURL})`
+        : '';
+      const suffix = info.count === 1 ? 'commit' : 'commits';
+      return `- ${avatarMarkdown} [@${login}](${profileURL}) (${info.count} ${suffix})`.trim();
+    });
+
+  process.stdout.write(lines.join('\n'));
+}
+
+try {
+  await main();
+} catch {
+  process.exit(1);
+}
+EOF
+}
+
 build_contributor_list() {
   local previous_tag="$1"
   local revision_range="${git_sha}"
@@ -73,7 +174,11 @@ build_contributor_list() {
 }
 
 previous_tag="$(resolve_previous_tag || true)"
-contributor_list="$(build_contributor_list "${previous_tag}")"
+github_token="${CLAWRISE_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
+contributor_list="$(
+  build_contributor_list_from_github "${previous_tag}" "${github_token}" ||
+    build_contributor_list "${previous_tag}"
+)"
 
 rendered="$(cat "${template_path}")"
 rendered="${rendered//\{\{VERSION\}\}/${version}}"

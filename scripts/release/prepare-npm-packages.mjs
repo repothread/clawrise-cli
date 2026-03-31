@@ -84,9 +84,21 @@ function buildRootReadme() {
   return [
     `# ${rootPackageName}`,
     '',
-    '通过 npm 分发的 Clawrise CLI 根包。',
+    'Clawrise CLI root package distributed through npm.',
     '',
-    '用户安装方式：',
+    'Clawrise CLI 的 npm 根包。',
+    '',
+    '```bash',
+    `npm install -g ${rootPackageName}`,
+    '```',
+    '',
+    'It automatically resolves the prebuilt binary for the current platform and bundles the first-party `feishu` and `notion` provider plugins.',
+    '',
+    '## 中文说明',
+    '',
+    '这是 Clawrise CLI 的 npm 根包。',
+    '',
+    '安装命令：',
     '',
     '```bash',
     `npm install -g ${rootPackageName}`,
@@ -131,11 +143,23 @@ function preparePlatformPackage(platform) {
 }
 
 function buildPlatformReadme(platform) {
+  const displayPlatform = buildPlatformDisplayName(platform);
+
   return [
     `# ${platform.packageName}`,
     '',
+    `Prebuilt Clawrise CLI binary package for ${displayPlatform}.`,
+    '',
+    'You usually do not need to install this package directly. Install the root package instead:',
+    '',
+    '```bash',
+    `npm install -g ${rootPackageName}`,
+    '```',
+    '',
+    '## 中文说明',
+    '',
     '这是 Clawrise CLI 的平台二进制分发包。',
-    `目标平台：${platform.npmOS}-${platform.npmCPU}`,
+    `目标平台：${displayPlatform}`,
     '',
     '通常不需要直接安装这个包，请安装根包：',
     '',
@@ -144,6 +168,17 @@ function buildPlatformReadme(platform) {
     '```',
     '',
   ].join('\n');
+}
+
+function buildPlatformDisplayName(platform) {
+  const osNameMap = {
+    darwin: 'macOS',
+    linux: 'Linux',
+    win32: 'Windows',
+  };
+
+  const osName = osNameMap[platform.npmOS] || platform.npmOS;
+  return `${osName} ${platform.npmCPU}`;
 }
 
 function writeReleaseMetadata() {
