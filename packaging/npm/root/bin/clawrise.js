@@ -5,6 +5,21 @@
 const childProcess = require('child_process');
 const path = require('path');
 const { resolvePlatformPackage } = require('../lib/platform');
+const { handleSkillsCommand } = require('../lib/skills');
+
+const rawArgs = process.argv.slice(2);
+
+if (rawArgs[0] === 'skills') {
+  try {
+    const handledExitCode = handleSkillsCommand(rawArgs.slice(1));
+    if (typeof handledExitCode === 'number') {
+      process.exit(handledExitCode);
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+}
 
 const platformPackage = resolvePlatformPackage();
 const pluginPath = path.join(platformPackage.dir, 'plugins');
@@ -14,7 +29,7 @@ nextEnv.CLAWRISE_PLUGIN_PATHS = nextEnv.CLAWRISE_PLUGIN_PATHS
   ? `${pluginPath}${path.delimiter}${nextEnv.CLAWRISE_PLUGIN_PATHS}`
   : pluginPath;
 
-const result = childProcess.spawnSync(platformPackage.binaryPath, process.argv.slice(2), {
+const result = childProcess.spawnSync(platformPackage.binaryPath, rawArgs, {
   stdio: 'inherit',
   env: nextEnv,
 });
