@@ -188,11 +188,17 @@ func runAccountAdd(args []string, cfg *config.Config, store *config.Store, stdou
 
 	var platform string
 	var presetID string
+	var subject string
+	var method string
+	var scopes []string
 	var title string
 	var useAsDefault bool
 
 	flags.StringVar(&platform, "platform", "", "set the platform for the new account")
 	flags.StringVar(&presetID, "preset", "", "select the account preset id")
+	flags.StringVar(&subject, "subject", "", "set the subject for the new account")
+	flags.StringVar(&method, "method", "", "override the auth method")
+	flags.StringSliceVar(&scopes, "scope", nil, "append auth scopes for interactive OAuth")
 	flags.StringVar(&title, "title", "", "set the account title")
 	flags.BoolVar(&useAsDefault, "use", false, "set the new account as default")
 
@@ -203,43 +209,36 @@ func runAccountAdd(args []string, cfg *config.Config, store *config.Store, stdou
 		return err
 	}
 	if len(flags.Args()) > 1 {
-		return fmt.Errorf("usage: clawrise account add [name] --platform <name> --preset <id>")
+		return fmt.Errorf("usage: clawrise account add [name] --platform <name> [--preset <id>] [--subject <name>] [--method <name>] [--scope <name>] [--use]")
 	}
 	if strings.TrimSpace(platform) == "" {
 		return fmt.Errorf("account platform is required")
 	}
-	if strings.TrimSpace(presetID) == "" {
-		return fmt.Errorf("account preset is required")
-	}
 	if manager == nil {
 		return fmt.Errorf("plugin manager is required for account add")
-	}
-
-	presets, err := manager.ListAuthPresets(context.Background(), platform)
-	if err != nil {
-		return err
-	}
-
-	var preset *pluginruntime.AuthPresetDescriptor
-	for index := range presets {
-		if strings.TrimSpace(presets[index].ID) == strings.TrimSpace(presetID) {
-			preset = &presets[index]
-			break
-		}
-	}
-	if preset == nil {
-		return writeCLIError(stdout, "ACCOUNT_PRESET_NOT_FOUND", "the selected account preset does not exist")
 	}
 
 	accountName := ""
 	if len(flags.Args()) == 1 {
 		accountName = strings.TrimSpace(flags.Args()[0])
 	}
-	if accountName == "" {
-		accountName = strings.TrimSpace(preset.DefaultAccountName)
+
+	initResult, err := buildInitConfigFromMetadata(context.Background(), manager, initConfigOptions{
+		Platform: strings.TrimSpace(platform),
+		PresetID: strings.TrimSpace(presetID),
+		Subject:  strings.TrimSpace(subject),
+		Account:  accountName,
+		Method:   strings.TrimSpace(method),
+		Scopes:   scopes,
+	})
+	if err != nil {
+		return err
 	}
-	if accountName == "" {
-		return fmt.Errorf("account name is required")
+
+	accountName = initResult.AccountName
+	account := initResult.Config.Accounts[accountName]
+	if strings.TrimSpace(title) != "" {
+		account.Title = strings.TrimSpace(title)
 	}
 
 	cfg.Ensure()
@@ -247,29 +246,16 @@ func runAccountAdd(args []string, cfg *config.Config, store *config.Store, stdou
 		return writeCLIError(stdout, "ACCOUNT_ALREADY_EXISTS", "the selected account name already exists")
 	}
 
-	account := config.Account{
-		Title:    strings.TrimSpace(title),
-		Platform: preset.Platform,
-		Subject:  preset.Subject,
-		Auth: config.AccountAuth{
-			Method:     preset.AuthMethod,
-			Public:     cloneAnyMap(preset.Public),
-			SecretRefs: map[string]string{},
-		},
-	}
-	if account.Title == "" {
-		account.Title = preset.DisplayName
-	}
-	for _, field := range preset.SecretFields {
-		account.Auth.SecretRefs[field] = config.SecretRef(accountName, field)
-	}
-
+	applyBootstrapDefaults(cfg)
 	cfg.Accounts[accountName] = account
-	cfg.Ensure()
 
-	if useAsDefault {
+	shouldUseAsDefault := useAsDefault || len(cfg.Accounts) == 1 || strings.TrimSpace(cfg.Defaults.Account) == ""
+	if shouldUseAsDefault {
 		cfg.Defaults.Account = accountName
 		cfg.Defaults.Platform = account.Platform
+		cfg.Defaults.Subject = account.Subject
+		cfg.Defaults.PlatformAccounts[account.Platform] = accountName
+	} else if strings.TrimSpace(cfg.Defaults.PlatformAccounts[account.Platform]) == "" {
 		cfg.Defaults.PlatformAccounts[account.Platform] = accountName
 	}
 
@@ -280,12 +266,13 @@ func runAccountAdd(args []string, cfg *config.Config, store *config.Store, stdou
 	return output.WriteJSON(stdout, map[string]any{
 		"ok": true,
 		"data": map[string]any{
-			"name":          accountName,
-			"platform":      account.Platform,
-			"subject":       account.Subject,
-			"auth_method":   account.Auth.Method,
-			"secret_fields": preset.SecretFields,
-			"public":        account.Auth.Public,
+			"name":            accountName,
+			"platform":        account.Platform,
+			"subject":         account.Subject,
+			"auth_method":     account.Auth.Method,
+			"secret_fields":   initResult.SecretFields,
+			"public":          account.Auth.Public,
+			"used_as_default": shouldUseAsDefault,
 		},
 	})
 }

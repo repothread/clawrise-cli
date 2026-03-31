@@ -159,6 +159,74 @@ done
 	}
 }
 
+func TestEncryptedFileStoreGeneratesLocalKeyAndPersistsSecrets(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	store, err := Open(Options{
+		ConfigPath: configPath,
+		Backend:    "encrypted_file",
+	})
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+
+	if err := store.Set("demo_account", "token", "demo-secret"); err != nil {
+		t.Fatalf("Set returned error: %v", err)
+	}
+	value, err := store.Get("demo_account", "token")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if value != "demo-secret" {
+		t.Fatalf("unexpected secret value: %s", value)
+	}
+
+	stateDir := filepath.Join(filepath.Dir(configPath), "state", "auth")
+	if _, err := os.Stat(filepath.Join(stateDir, "secrets.v1.enc")); err != nil {
+		t.Fatalf("expected encrypted secret file to exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "secrets.v1.key")); err != nil {
+		t.Fatalf("expected local secret key file to exist: %v", err)
+	}
+}
+
+func TestEncryptedFileStoreMigratesFromEnvMasterKeyToLocalKeyFile(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+
+	store, err := Open(Options{
+		ConfigPath: configPath,
+		Backend:    "encrypted_file",
+	})
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	if err := store.Set("demo_account", "token", "demo-secret"); err != nil {
+		t.Fatalf("Set returned error: %v", err)
+	}
+
+	keyPath := filepath.Join(filepath.Dir(configPath), "state", "auth", "secrets.v1.key")
+	if _, err := os.Stat(keyPath); err != nil {
+		t.Fatalf("expected migrated local key file to exist: %v", err)
+	}
+
+	t.Setenv("CLAWRISE_MASTER_KEY", "")
+	store, err = Open(Options{
+		ConfigPath: configPath,
+		Backend:    "encrypted_file",
+	})
+	if err != nil {
+		t.Fatalf("Open returned error after env removal: %v", err)
+	}
+	value, err := store.Get("demo_account", "token")
+	if err != nil {
+		t.Fatalf("Get returned error after env removal: %v", err)
+	}
+	if value != "demo-secret" {
+		t.Fatalf("unexpected secret value after env removal: %s", value)
+	}
+}
+
 func sanitizeTestName(name string) string {
 	name = strings.TrimSpace(strings.ToLower(name))
 	replacer := strings.NewReplacer("/", "_", " ", "_", "-", "_")

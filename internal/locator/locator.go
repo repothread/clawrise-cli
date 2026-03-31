@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const appDirName = "Clawrise"
+const appDirName = ".clawrise"
 
 // PathResolution 描述一个路径的最终值和解析来源。
 type PathResolution struct {
@@ -60,20 +60,7 @@ func defaultConfigDirWithSource() (string, string, error) {
 		return "", "", fmt.Errorf("failed to resolve user home directory: %w", err)
 	}
 
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(homeDir, "Library", "Application Support", appDirName), "default", nil
-	case "windows":
-		if appData := strings.TrimSpace(os.Getenv("APPDATA")); appData != "" {
-			return filepath.Join(appData, appDirName), "env.APPDATA", nil
-		}
-		return filepath.Join(homeDir, "AppData", "Roaming", appDirName), "default", nil
-	default:
-		if xdgConfig := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdgConfig != "" {
-			return filepath.Join(xdgConfig, "clawrise"), "env.XDG_CONFIG_HOME", nil
-		}
-		return filepath.Join(homeDir, ".config", "clawrise"), "default", nil
-	}
+	return filepath.Join(homeDir, appDirName), "default", nil
 }
 
 // ResolveStateDir returns the runtime state directory.
@@ -185,35 +172,10 @@ func defaultStateDirResolution() (PathResolution, error) {
 		return PathResolution{}, fmt.Errorf("failed to resolve user home directory: %w", err)
 	}
 
-	switch runtime.GOOS {
-	case "darwin":
-		return PathResolution{
-			Path:   filepath.Join(homeDir, "Library", "Application Support", appDirName, "state"),
-			Source: "default",
-		}, nil
-	case "windows":
-		if localAppData := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); localAppData != "" {
-			return PathResolution{
-				Path:   filepath.Join(localAppData, appDirName, "State"),
-				Source: "env.LOCALAPPDATA",
-			}, nil
-		}
-		return PathResolution{
-			Path:   filepath.Join(homeDir, "AppData", "Local", appDirName, "State"),
-			Source: "default",
-		}, nil
-	default:
-		if xdgState := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); xdgState != "" {
-			return PathResolution{
-				Path:   filepath.Join(xdgState, "clawrise"),
-				Source: "env.XDG_STATE_HOME",
-			}, nil
-		}
-		return PathResolution{
-			Path:   filepath.Join(homeDir, ".local", "state", "clawrise"),
-			Source: "default",
-		}, nil
-	}
+	return PathResolution{
+		Path:   filepath.Join(homeDir, appDirName, "state"),
+		Source: "default",
+	}, nil
 }
 
 func samePath(left string, right string) bool {

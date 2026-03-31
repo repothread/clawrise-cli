@@ -6,13 +6,10 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"strings"
 )
 
 type encryptedPayload struct {
@@ -21,12 +18,7 @@ type encryptedPayload struct {
 	Ciphertext string `json:"ciphertext"`
 }
 
-func encryptSecretPayload(plainData []byte) ([]byte, error) {
-	key, err := resolveEncryptionKey()
-	if err != nil {
-		return nil, err
-	}
-
+func encryptSecretPayload(plainData []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AES cipher: %w", err)
@@ -54,12 +46,7 @@ func encryptSecretPayload(plainData []byte) ([]byte, error) {
 	return encoded, nil
 }
 
-func decryptSecretPayload(data []byte) ([]byte, error) {
-	key, err := resolveEncryptionKey()
-	if err != nil {
-		return nil, err
-	}
-
+func decryptSecretPayload(data []byte, key []byte) ([]byte, error) {
 	var payload encryptedPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, fmt.Errorf("failed to decode encrypted payload: %w", err)
@@ -91,15 +78,4 @@ func decryptSecretPayload(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to decrypt secret payload: %w", err)
 	}
 	return plainData, nil
-}
-
-func resolveEncryptionKey() ([]byte, error) {
-	// Linux 无图形 keyring 或用户显式选择 encrypted_file 时，允许通过环境变量提供 vault 主密钥。
-	masterKey := strings.TrimSpace(os.Getenv("CLAWRISE_MASTER_KEY"))
-	if masterKey == "" {
-		return nil, fmt.Errorf("CLAWRISE_MASTER_KEY is required for encrypted_file secret store")
-	}
-
-	hash := sha256.Sum256([]byte(masterKey))
-	return hash[:], nil
 }

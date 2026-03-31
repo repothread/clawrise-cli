@@ -25,6 +25,8 @@ func runConfig(args []string, store *config.Store, stdout io.Writer, manager *pl
 	switch args[0] {
 	case "init":
 		return runConfigInit(args[1:], store, stdout, manager)
+	case "secret-store":
+		return runConfigSecretStore(args[1:], store, stdout)
 	default:
 		return fmt.Errorf("unknown config command: %s", args[0])
 	}
@@ -106,6 +108,77 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer, manager
 
 func printConfigHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init --platform <name> [--preset <id>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config secret-store use <backend> [--fallback-backend <backend>]")
+}
+
+func runConfigSecretStore(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printConfigSecretStoreHelp(stdout)
+		return nil
+	}
+
+	switch strings.TrimSpace(args[0]) {
+	case "use":
+		return runConfigSecretStoreUse(args[1:], store, stdout)
+	default:
+		return fmt.Errorf("unknown config secret-store command: %s", args[0])
+	}
+}
+
+func runConfigSecretStoreUse(args []string, store *config.Store, stdout io.Writer) error {
+	flags := pflag.NewFlagSet("clawrise config secret-store use", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var fallbackBackend string
+	flags.StringVar(&fallbackBackend, "fallback-backend", "", "set the fallback backend used only when backend=auto")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 1 {
+		return fmt.Errorf("usage: clawrise config secret-store use <backend> [--fallback-backend <backend>]")
+	}
+
+	backend := strings.TrimSpace(flags.Args()[0])
+	if backend == "" {
+		return fmt.Errorf("secret store backend must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+
+	cfg.Auth.SecretStore.Backend = backend
+	if backend == "auto" {
+		fallbackBackend = strings.TrimSpace(fallbackBackend)
+		if fallbackBackend == "" {
+			fallbackBackend = "encrypted_file"
+		}
+		cfg.Auth.SecretStore.FallbackBackend = fallbackBackend
+	} else {
+		cfg.Auth.SecretStore.FallbackBackend = ""
+	}
+
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path":      store.Path(),
+			"secret_backend":   cfg.Auth.SecretStore.Backend,
+			"fallback_backend": cfg.Auth.SecretStore.FallbackBackend,
+		},
+	})
+}
+
+func printConfigSecretStoreHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config secret-store use <backend> [--fallback-backend <backend>]")
 }
 
 type initConfigOptions struct {
@@ -179,22 +252,7 @@ func buildInitConfigFromMetadata(ctx context.Context, manager *pluginruntime.Man
 	cfg.Defaults.Subject = account.Subject
 	cfg.Defaults.Account = accountName
 	cfg.Defaults.PlatformAccounts[account.Platform] = accountName
-	cfg.Auth = config.AuthConfig{
-		SecretStore: config.SecretStoreConfig{
-			Backend:         "auto",
-			FallbackBackend: "encrypted_file",
-		},
-		SessionStore: config.SessionStoreConfig{
-			Backend: "file",
-		},
-	}
-	cfg.Runtime = config.RuntimeConfig{
-		Retry: config.RetryConfig{
-			MaxAttempts: 1,
-			BaseDelayMS: 200,
-			MaxDelayMS:  1000,
-		},
-	}
+	applyBootstrapDefaults(cfg)
 	cfg.Accounts[accountName] = account
 
 	secretFields := append([]string(nil), preset.SecretFields...)
@@ -209,6 +267,26 @@ func buildInitConfigFromMetadata(ctx context.Context, manager *pluginruntime.Man
 		SessionBackend: cfg.Auth.SessionStore.Backend,
 		SecretBackend:  cfg.Auth.SecretStore.Backend,
 	}, nil
+}
+
+func applyBootstrapDefaults(cfg *config.Config) {
+	cfg.Ensure()
+
+	if strings.TrimSpace(cfg.Auth.SecretStore.Backend) == "" {
+		cfg.Auth.SecretStore.Backend = "encrypted_file"
+	}
+	if strings.TrimSpace(cfg.Auth.SessionStore.Backend) == "" {
+		cfg.Auth.SessionStore.Backend = "file"
+	}
+	if cfg.Runtime.Retry.MaxAttempts == 0 {
+		cfg.Runtime.Retry.MaxAttempts = 1
+	}
+	if cfg.Runtime.Retry.BaseDelayMS == 0 {
+		cfg.Runtime.Retry.BaseDelayMS = 200
+	}
+	if cfg.Runtime.Retry.MaxDelayMS == 0 {
+		cfg.Runtime.Retry.MaxDelayMS = 1000
+	}
 }
 
 func selectInitPreset(presets []pluginruntime.AuthPresetDescriptor, methodIndex map[string]pluginruntime.AuthMethodDescriptor, opts initConfigOptions) (pluginruntime.AuthPresetDescriptor, error) {

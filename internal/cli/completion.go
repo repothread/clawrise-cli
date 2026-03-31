@@ -28,7 +28,7 @@ var (
 	subjectCompletionCommands    = []string{"use", "current", "unset", "list"}
 	authCompletionCommands       = []string{"list", "methods", "presets", "inspect", "check", "login", "complete", "logout", "secret"}
 	authSecretCompletionCommands = []string{"set", "put", "delete"}
-	configCompletionCommands     = []string{"init"}
+	configCompletionCommands     = []string{"init", "secret-store"}
 	pluginCompletionCommands     = []string{"list", "install", "info", "remove", "verify"}
 	specCompletionCommands       = []string{"list", "get", "status", "export"}
 	docsCompletionCommands       = []string{"generate"}

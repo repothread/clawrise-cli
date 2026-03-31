@@ -170,6 +170,9 @@ func TestRunConfigInitSelectsMachinePresetByDefault(t *testing.T) {
 	if account.Auth.Method != "notion.internal_token" {
 		t.Fatalf("unexpected auth method: %+v", account)
 	}
+	if cfg.Auth.SecretStore.Backend != "encrypted_file" {
+		t.Fatalf("unexpected default secret backend: %+v", cfg.Auth.SecretStore)
+	}
 	if cfg.Defaults.Account != "notion_integration_default" || cfg.Defaults.Platform != "notion" {
 		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
 	}
@@ -218,6 +221,109 @@ func TestRunConfigInitUsesInteractivePresetScopes(t *testing.T) {
 	}
 	if len(rawScopes) != 2 || rawScopes[0] != "offline_access" || rawScopes[1] != "docx:document" {
 		t.Fatalf("unexpected scopes: %+v", rawScopes)
+	}
+}
+
+func TestRunConfigSecretStoreUseUpdatesBackend(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "secret-store", "use", "keychain"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if cfg.Auth.SecretStore.Backend != "keychain" {
+		t.Fatalf("unexpected secret backend: %+v", cfg.Auth.SecretStore)
+	}
+	if cfg.Auth.SecretStore.FallbackBackend != "" {
+		t.Fatalf("unexpected fallback backend: %+v", cfg.Auth.SecretStore)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"secret_backend": "keychain"`)) {
+		t.Fatalf("expected config command output to include keychain backend, got: %s", stdout.String())
+	}
+}
+
+func TestRunAccountAddBootstrapsConfigByDefaultForNotion(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"account", "add", "notion_docs", "--platform", "notion"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	account, ok := cfg.Accounts["notion_docs"]
+	if !ok {
+		t.Fatalf("expected notion_docs account, got: %+v", cfg.Accounts)
+	}
+	if account.Auth.Method != "notion.internal_token" {
+		t.Fatalf("unexpected auth method: %+v", account)
+	}
+	if cfg.Auth.SecretStore.Backend != "encrypted_file" {
+		t.Fatalf("unexpected secret backend: %+v", cfg.Auth.SecretStore)
+	}
+	if cfg.Defaults.Account != "notion_docs" || cfg.Defaults.Platform != "notion" || cfg.Defaults.Subject != "integration" {
+		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"used_as_default": true`)) {
+		t.Fatalf("expected account add output to mark first account as default, got: %s", stdout.String())
+	}
+}
+
+func TestRunAccountAddChoosesBotPresetForFeishuByDefault(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"account", "add", "feishu_bot", "--platform", "feishu"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	account, ok := cfg.Accounts["feishu_bot"]
+	if !ok {
+		t.Fatalf("expected feishu_bot account, got: %+v", cfg.Accounts)
+	}
+	if account.Auth.Method != "feishu.app_credentials" {
+		t.Fatalf("unexpected auth method: %+v", account)
+	}
+	if account.Subject != "bot" {
+		t.Fatalf("unexpected subject: %+v", account)
 	}
 }
 

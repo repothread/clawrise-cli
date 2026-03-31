@@ -12,7 +12,7 @@ import (
 func openCLISecretStore(cfg *config.Config, store *config.Store) (secretstore.Store, error) {
 	backend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
 	if backend == "" {
-		backend = "auto"
+		backend = "encrypted_file"
 	}
 	return secretstore.Open(secretstore.Options{
 		ConfigPath:      store.Path(),

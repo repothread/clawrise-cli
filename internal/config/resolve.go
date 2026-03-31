@@ -38,7 +38,7 @@ func ResolveSecret(raw string) (string, error) {
 			return "", err
 		}
 
-		backend := "auto"
+		backend := "encrypted_file"
 		fallbackBackend := ""
 		cfgStore := NewStore(configPath)
 		if cfg, loadErr := cfgStore.Load(); loadErr == nil {

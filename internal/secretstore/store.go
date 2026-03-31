@@ -2,6 +2,8 @@ package secretstore
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -298,7 +300,7 @@ func (s *encryptedFileStore) Status() Status {
 		}
 	}
 
-	_, err := resolveEncryptionKey()
+	_, err := s.resolveEncryptionKey()
 	switch {
 	case err == nil:
 		return Status{
@@ -361,13 +363,83 @@ func (s *encryptedFileStore) vaultPath() string {
 	return filepath.Join(s.rootDir, "secrets.v1.enc")
 }
 
+func (s *encryptedFileStore) keyPath() string {
+	return filepath.Join(s.rootDir, "secrets.v1.key")
+}
+
+func (s *encryptedFileStore) resolveEncryptionKey() ([]byte, error) {
+	if s.backend == "windows_dpapi_file" {
+		return nil, nil
+	}
+
+	if masterKey := strings.TrimSpace(os.Getenv("CLAWRISE_MASTER_KEY")); masterKey != "" {
+		hash := sha256.Sum256([]byte(masterKey))
+		key := hash[:]
+		if _, err := os.Stat(s.keyPath()); errors.Is(err, os.ErrNotExist) {
+			if err := s.writeKeyFile(key); err != nil {
+				return nil, err
+			}
+		}
+		return key, nil
+	}
+
+	return s.loadOrCreateLocalKey()
+}
+
+func (s *encryptedFileStore) loadOrCreateLocalKey() ([]byte, error) {
+	data, err := os.ReadFile(s.keyPath())
+	if err == nil {
+		if len(data) != 32 {
+			return nil, fmt.Errorf("invalid secret store key file: expected 32 bytes, got %d", len(data))
+		}
+		return data, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("failed to read secret store key file: %w", err)
+	}
+
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("failed to generate secret store key: %w", err)
+	}
+	if err := s.writeKeyFile(key); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+func (s *encryptedFileStore) writeKeyFile(key []byte) error {
+	if len(key) != 32 {
+		return fmt.Errorf("invalid secret store key length: %d", len(key))
+	}
+	if err := os.MkdirAll(s.rootDir, 0o700); err != nil {
+		return fmt.Errorf("failed to create secret store directory: %w", err)
+	}
+
+	targetPath := s.keyPath()
+	tempPath := targetPath + ".tmp"
+	if err := os.WriteFile(tempPath, key, 0o600); err != nil {
+		return fmt.Errorf("failed to write secret store key temp file: %w", err)
+	}
+	if err := os.Rename(tempPath, targetPath); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("failed to move secret store key file into place: %w", err)
+	}
+	return nil
+}
+
 func (s *encryptedFileStore) loadVault() (map[string]string, error) {
 	data, err := os.ReadFile(s.vaultPath())
 	if err != nil {
 		return nil, err
 	}
 
-	plainData, err := decryptSecretPayload(data)
+	key, err := s.resolveEncryptionKey()
+	if err != nil {
+		return nil, err
+	}
+
+	plainData, err := decryptSecretPayload(data, key)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +460,12 @@ func (s *encryptedFileStore) saveVault(vault map[string]string) error {
 		return fmt.Errorf("failed to encode encrypted secret file: %w", err)
 	}
 
-	encrypted, err := encryptSecretPayload(encoded)
+	key, err := s.resolveEncryptionKey()
+	if err != nil {
+		return err
+	}
+
+	encrypted, err := encryptSecretPayload(encoded, key)
 	if err != nil {
 		return err
 	}

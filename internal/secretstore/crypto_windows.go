@@ -21,16 +21,14 @@ type dataBlob struct {
 	pbData *byte
 }
 
-func encryptSecretPayload(plainData []byte) ([]byte, error) {
+func encryptSecretPayload(plainData []byte, key []byte) ([]byte, error) {
+	_ = key
 	return protectData(plainData)
 }
 
-func decryptSecretPayload(data []byte) ([]byte, error) {
+func decryptSecretPayload(data []byte, key []byte) ([]byte, error) {
+	_ = key
 	return unprotectData(data)
-}
-
-func resolveEncryptionKey() ([]byte, error) {
-	return nil, nil
 }
 
 func protectData(plainData []byte) ([]byte, error) {

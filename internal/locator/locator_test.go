@@ -63,7 +63,6 @@ func TestResolveConfigPathResolutionUsesConfigEnv(t *testing.T) {
 func TestResolveRuntimeDirResolutionUsesDefaultStateDirForDefaultConfigPath(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config-home"))
 	t.Setenv("CLAWRISE_STATE_HOME", filepath.Join(homeDir, ".state-home"))
 
 	configPath, err := ResolveConfigPath()
@@ -81,5 +80,38 @@ func TestResolveRuntimeDirResolutionUsesDefaultStateDirForDefaultConfigPath(t *t
 	}
 	if resolution.Source != "env.CLAWRISE_STATE_HOME" {
 		t.Fatalf("unexpected runtime dir source: %+v", resolution)
+	}
+}
+
+func TestResolveConfigPathUsesUnifiedDotClawriseDirByDefault(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	configPath, err := ResolveConfigPath()
+	if err != nil {
+		t.Fatalf("ResolveConfigPath returned error: %v", err)
+	}
+
+	expected := filepath.Join(homeDir, ".clawrise", "config.yaml")
+	if configPath != expected {
+		t.Fatalf("unexpected config path: got=%s want=%s", configPath, expected)
+	}
+}
+
+func TestResolveStateDirUsesUnifiedDotClawriseDirByDefault(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	resolution, err := ResolveStateDirResolution("")
+	if err != nil {
+		t.Fatalf("ResolveStateDirResolution returned error: %v", err)
+	}
+
+	expected := filepath.Join(homeDir, ".clawrise", "state")
+	if resolution.Path != expected {
+		t.Fatalf("unexpected state dir: got=%s want=%s", resolution.Path, expected)
+	}
+	if resolution.Source != "default" {
+		t.Fatalf("unexpected state dir source: %+v", resolution)
 	}
 }

@@ -7,8 +7,7 @@ defaults:
 
 auth:
   secret_store:
-    backend: auto
-    fallback_backend: encrypted_file
+    backend: encrypted_file
   session_store:
     backend: file
 

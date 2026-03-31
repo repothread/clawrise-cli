@@ -22,7 +22,7 @@ func runAuthSecret(args []string, cfg *config.Config, store *config.Store, stdou
 
 	secretBackend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
 	if secretBackend == "" {
-		secretBackend = "auto"
+		secretBackend = "encrypted_file"
 	}
 	secretStore, err := secretstore.Open(secretstore.Options{
 		ConfigPath:      store.Path(),
