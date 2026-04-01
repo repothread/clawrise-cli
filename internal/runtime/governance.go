@@ -113,9 +113,10 @@ func newRuntimeGovernance(configPath string, cfg *config.Config, now func() time
 	}
 	paths := resolveRuntimePaths(configPath)
 	binding := config.ResolveStorageBinding(cfg, "governance")
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
 	return &runtimeGovernance{
 		paths: paths,
-		store: openGovernanceStore(paths, binding),
+		store: openGovernanceStore(paths, binding, enabledPlugins),
 		retry: resolveRetryPolicy(cfg.Runtime),
 		now:   now,
 	}
@@ -369,7 +370,7 @@ func atomicWriteJSONFile(path string, value any, perm os.FileMode) error {
 	return os.Rename(tempPath, path)
 }
 
-func openGovernanceStore(paths runtimePaths, binding config.StoragePluginBinding) governanceStore {
+func openGovernanceStore(paths runtimePaths, binding config.StoragePluginBinding, enabledPlugins map[string]string) governanceStore {
 	backend := strings.TrimSpace(strings.ToLower(binding.Backend))
 	pluginName := strings.TrimSpace(binding.Plugin)
 	if backend == "" || backend == "auto" {
@@ -377,7 +378,7 @@ func openGovernanceStore(paths runtimePaths, binding config.StoragePluginBinding
 	}
 
 	if pluginName != "" && pluginName != "builtin" {
-		store, ok, err := openPluginGovernanceStore(backend, pluginName)
+		store, ok, err := openPluginGovernanceStore(backend, pluginName, enabledPlugins)
 		if err != nil {
 			return &errorGovernanceStore{err: err}
 		}
@@ -391,7 +392,7 @@ func openGovernanceStore(paths runtimePaths, binding config.StoragePluginBinding
 		return factory(paths)
 	}
 
-	if store, ok, err := openPluginGovernanceStore(backend, pluginName); err == nil && ok {
+	if store, ok, err := openPluginGovernanceStore(backend, pluginName, enabledPlugins); err == nil && ok {
 		return store
 	}
 	return governanceStoreFactories["file"](paths)
@@ -463,11 +464,12 @@ func buildRetryAbortError(err error) *apperr.AppError {
 	return apperr.New("RETRY_ABORTED", err.Error()).WithRetryable(false)
 }
 
-func openPluginGovernanceStore(backend string, pluginName string) (governanceStore, bool, error) {
+func openPluginGovernanceStore(backend string, pluginName string, enabledPlugins map[string]string) (governanceStore, bool, error) {
 	manifest, found, err := pluginruntime.FindStorageBackendManifest(pluginruntime.StorageBackendLookup{
-		Target:  "governance",
-		Backend: backend,
-		Plugin:  pluginName,
+		Target:         "governance",
+		Backend:        backend,
+		Plugin:         pluginName,
+		EnabledPlugins: enabledPlugins,
 	})
 	if err != nil {
 		return nil, false, err

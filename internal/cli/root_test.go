@@ -304,6 +304,62 @@ func TestRunConfigProviderUseUpdatesBinding(t *testing.T) {
 	}
 }
 
+func TestRunConfigProviderUseRejectsDisabledPlugin(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Enabled["demo-provider"] = "disabled"
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	pluginDir := filepath.Join(pluginRoot, "demo-provider", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo-provider",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-provider"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "provider", "use", "demo", "demo-provider"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err == nil {
+		t.Fatalf("expected disabled provider use command to fail, stdout=%s", stdout.String())
+	}
+	if err.Error() != "plugin demo-provider supports platform demo, but it is disabled by plugins.enabled" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	updatedCfg, loadErr := config.NewStore(configPath).Load()
+	if loadErr != nil {
+		t.Fatalf("failed to reload config: %v", loadErr)
+	}
+	if _, exists := updatedCfg.Plugins.Bindings.Providers["demo"]; exists {
+		t.Fatalf("expected provider binding to remain unset, got: %+v", updatedCfg.Plugins.Bindings.Providers)
+	}
+}
+
 func TestRunConfigProviderUnsetRemovesBinding(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
@@ -1736,6 +1792,72 @@ func TestRunDoctor(t *testing.T) {
 	}
 	if bytes.Contains(stdout.Bytes(), []byte(`"auth":`)) {
 		t.Fatalf("expected doctor account items to expose flattened auth fields, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunDoctorReportsDisabledPluginBinding(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Enabled["demo-provider"] = "disabled"
+	cfg.Plugins.Bindings.Providers["demo"] = config.ProviderPluginBinding{
+		Plugin: "demo-provider",
+	}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	pluginDir := filepath.Join(pluginRoot, "demo-provider", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "demo-provider.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to write plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo-provider",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-provider.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"enabled": false`)) {
+		t.Fatalf("expected doctor output to mark plugin as disabled, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"selected": false`)) {
+		t.Fatalf("expected doctor output to mark plugin as unselected, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`disabled by plugins.enabled`)) {
+		t.Fatalf("expected disabled binding warning, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

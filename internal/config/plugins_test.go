@@ -33,3 +33,22 @@ func TestResolveStorageBindingFallsBackToLegacyFields(t *testing.T) {
 		t.Fatalf("unexpected plugin: %+v", binding)
 	}
 }
+
+func TestResolveEnabledPluginsNormalizesConfig(t *testing.T) {
+	cfg := New()
+	cfg.Ensure()
+	cfg.Plugins.Enabled[" demo-provider "] = " ^0.4.0 "
+	cfg.Plugins.Enabled["disabled-provider"] = " disabled "
+	cfg.Plugins.Enabled["   "] = "ignored"
+
+	rules := ResolveEnabledPlugins(cfg)
+	if len(rules) != 2 {
+		t.Fatalf("unexpected enabled rules: %+v", rules)
+	}
+	if rules["demo-provider"] != "^0.4.0" {
+		t.Fatalf("unexpected normalized rule: %+v", rules)
+	}
+	if rules["disabled-provider"] != "disabled" {
+		t.Fatalf("unexpected disabled rule: %+v", rules)
+	}
+}

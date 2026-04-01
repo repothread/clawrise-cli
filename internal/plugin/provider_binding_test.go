@@ -34,3 +34,34 @@ func TestValidateProviderBindingsFromCandidatesAcceptsMatchingBinding(t *testing
 		t.Fatalf("expected binding to be valid, got: %v", err)
 	}
 }
+
+func TestValidateProviderBindingsWithEnabledRulesRejectsDisabledPlugin(t *testing.T) {
+	manifests := []Manifest{
+		{
+			Name: "demo-a",
+			Capabilities: []CapabilityDescriptor{{
+				Type:      CapabilityTypeProvider,
+				Platforms: []string{"demo"},
+			}},
+		},
+		{
+			Name: "demo-b",
+			Capabilities: []CapabilityDescriptor{{
+				Type:      CapabilityTypeProvider,
+				Platforms: []string{"demo"},
+			}},
+		},
+	}
+
+	err := ValidateProviderBindingsWithEnabledRules(manifests, map[string]string{
+		"demo": "demo-a",
+	}, map[string]string{
+		"demo-a": "disabled",
+	})
+	if err == nil {
+		t.Fatal("expected disabled plugin binding error")
+	}
+	if err.Error() != "provider binding for platform demo points to demo-a, but the plugin is disabled by plugins.enabled" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

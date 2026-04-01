@@ -16,9 +16,10 @@ func init() {
 
 func resolvePluginSessionStore(options authcache.StoreOptions) (authcache.Store, bool, error) {
 	manifest, found, err := FindStorageBackendManifest(StorageBackendLookup{
-		Target:  "session_store",
-		Backend: strings.TrimSpace(options.Backend),
-		Plugin:  strings.TrimSpace(options.Plugin),
+		Target:         "session_store",
+		Backend:        strings.TrimSpace(options.Backend),
+		Plugin:         strings.TrimSpace(options.Plugin),
+		EnabledPlugins: options.EnabledPlugins,
 	})
 	if err != nil {
 		return nil, false, err
@@ -33,9 +34,10 @@ func resolvePluginSessionStore(options authcache.StoreOptions) (authcache.Store,
 
 func resolvePluginAuthFlowStore(options authflow.StoreOptions) (authflow.Store, bool, error) {
 	manifest, found, err := FindStorageBackendManifest(StorageBackendLookup{
-		Target:  "authflow_store",
-		Backend: strings.TrimSpace(options.Backend),
-		Plugin:  strings.TrimSpace(options.Plugin),
+		Target:         "authflow_store",
+		Backend:        strings.TrimSpace(options.Backend),
+		Plugin:         strings.TrimSpace(options.Plugin),
+		EnabledPlugins: options.EnabledPlugins,
 	})
 	if err != nil {
 		return nil, false, err

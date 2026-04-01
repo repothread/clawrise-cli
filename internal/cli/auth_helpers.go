@@ -20,6 +20,7 @@ func openCLISecretStore(cfg *config.Config, store *config.Store) (secretstore.St
 		Backend:         backend,
 		FallbackBackend: binding.FallbackBackend,
 		Plugin:          binding.Plugin,
+		EnabledPlugins:  config.ResolveEnabledPlugins(cfg),
 	})
 }
 
@@ -30,9 +31,10 @@ func openCLISessionStore(cfg *config.Config, store *config.Store) (authcache.Sto
 		backend = "file"
 	}
 	return authcache.OpenStoreWithOptions(authcache.StoreOptions{
-		ConfigPath: store.Path(),
-		Backend:    backend,
-		Plugin:     binding.Plugin,
+		ConfigPath:     store.Path(),
+		Backend:        backend,
+		Plugin:         binding.Plugin,
+		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
 	})
 }
 
@@ -43,8 +45,9 @@ func openCLIAuthFlowStore(cfg *config.Config, store *config.Store) (authflow.Sto
 		backend = "file"
 	}
 	return authflow.OpenStoreWithOptions(authflow.StoreOptions{
-		ConfigPath: store.Path(),
-		Backend:    backend,
-		Plugin:     binding.Plugin,
+		ConfigPath:     store.Path(),
+		Backend:        backend,
+		Plugin:         binding.Plugin,
+		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
 	})
 }

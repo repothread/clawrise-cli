@@ -31,6 +31,10 @@ type DiscoveredPluginInspection struct {
 	Command         []string                `json:"command,omitempty"`
 	CommandPath     string                  `json:"command_path,omitempty"`
 	CommandExists   bool                    `json:"command_exists"`
+	Enabled         bool                    `json:"enabled"`
+	EnableRule      string                  `json:"enable_rule,omitempty"`
+	Selected        bool                    `json:"selected"`
+	SelectionReason string                  `json:"selection_reason,omitempty"`
 	Install         *InstallMetadata        `json:"install,omitempty"`
 	Handshake       *HandshakeResult        `json:"handshake,omitempty"`
 	OperationCount  int                     `json:"operation_count"`
@@ -48,6 +52,11 @@ type DiscoveryInspection struct {
 
 // InspectDiscovery 在不依赖 Manager 聚合成功的前提下，逐个检查发现到的 plugin。
 func InspectDiscovery(ctx context.Context) (DiscoveryInspection, error) {
+	return InspectDiscoveryWithOptions(ctx, DiscoveryOptions{})
+}
+
+// InspectDiscoveryWithOptions 在不依赖 Manager 聚合成功的前提下，逐个检查发现到的 plugin。
+func InspectDiscoveryWithOptions(ctx context.Context, options DiscoveryOptions) (DiscoveryInspection, error) {
 	roots, err := DefaultDiscoveryRoots()
 	if err != nil {
 		return DiscoveryInspection{}, err
@@ -78,7 +87,7 @@ func InspectDiscovery(ctx context.Context) (DiscoveryInspection, error) {
 		}
 
 		rootItem.Exists = true
-		plugins, walkErr := inspectRoot(ctx, root)
+		plugins, walkErr := inspectRoot(ctx, root, options)
 		if walkErr != nil {
 			rootItem.Error = walkErr.Error()
 		}
@@ -96,7 +105,7 @@ func InspectDiscovery(ctx context.Context) (DiscoveryInspection, error) {
 	return report, nil
 }
 
-func inspectRoot(ctx context.Context, root string) ([]DiscoveredPluginInspection, error) {
+func inspectRoot(ctx context.Context, root string, options DiscoveryOptions) ([]DiscoveredPluginInspection, error) {
 	items := []DiscoveredPluginInspection{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -106,7 +115,7 @@ func inspectRoot(ctx context.Context, root string) ([]DiscoveredPluginInspection
 			return nil
 		}
 
-		item := inspectManifest(ctx, root, path)
+		item := inspectManifest(ctx, root, path, options)
 		items = append(items, item)
 		return nil
 	})
@@ -116,7 +125,7 @@ func inspectRoot(ctx context.Context, root string) ([]DiscoveredPluginInspection
 	return items, nil
 }
 
-func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredPluginInspection {
+func inspectManifest(ctx context.Context, root, manifestPath string, options DiscoveryOptions) DiscoveredPluginInspection {
 	item := DiscoveredPluginInspection{
 		RootPath:     root,
 		ManifestPath: manifestPath,
@@ -137,6 +146,11 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	item.Capabilities = cloneCapabilityList(manifest.CapabilityList())
 	item.Command = append([]string(nil), manifest.Entry.Command...)
 	item.CommandPath = manifest.ResolveCommand()[0]
+	selectionState := resolveManifestSelectionState(manifest, options)
+	item.Enabled = selectionState.Enabled
+	item.EnableRule = selectionState.EnableRule
+	item.Selected = selectionState.Selected
+	item.SelectionReason = selectionState.SelectionReason
 	if _, err := os.Stat(item.CommandPath); err == nil {
 		item.CommandExists = true
 	} else if !os.IsNotExist(err) {
@@ -149,6 +163,9 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	}
 	if !item.CommandExists {
 		item.InspectionError = "plugin executable does not exist"
+		return item
+	}
+	if !item.Enabled {
 		return item
 	}
 

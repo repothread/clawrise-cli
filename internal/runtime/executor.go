@@ -456,6 +456,7 @@ func (e *Executor) buildFallbackExecutionIdentity(cfg *config.Config, accountNam
 }
 
 func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName string, account config.Account) (pluginruntime.AuthAccount, error) {
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
 	secrets := map[string]string{}
 	for field, ref := range account.Auth.SecretRefs {
 		value, err := config.ResolveSecret(ref)
@@ -467,9 +468,10 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 
 	sessionBinding := config.ResolveStorageBinding(cfg, "session_store")
 	sessionStore, err := authcache.OpenStoreWithOptions(authcache.StoreOptions{
-		ConfigPath: configPath,
-		Backend:    sessionBinding.Backend,
-		Plugin:     sessionBinding.Plugin,
+		ConfigPath:     configPath,
+		Backend:        sessionBinding.Backend,
+		Plugin:         sessionBinding.Plugin,
+		EnabledPlugins: enabledPlugins,
 	})
 	if err != nil {
 		return pluginruntime.AuthAccount{}, err
@@ -491,12 +493,14 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 }
 
 func persistAuthPatches(cfg *config.Config, configPath string, accountName string, account config.Account, sessionPatch *pluginruntime.AuthSessionPayload, secretPatches map[string]string) error {
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
 	if sessionPatch != nil {
 		sessionBinding := config.ResolveStorageBinding(cfg, "session_store")
 		sessionStore, err := authcache.OpenStoreWithOptions(authcache.StoreOptions{
-			ConfigPath: configPath,
-			Backend:    sessionBinding.Backend,
-			Plugin:     sessionBinding.Plugin,
+			ConfigPath:     configPath,
+			Backend:        sessionBinding.Backend,
+			Plugin:         sessionBinding.Plugin,
+			EnabledPlugins: enabledPlugins,
 		})
 		if err != nil {
 			return err
@@ -522,6 +526,7 @@ func persistAuthPatches(cfg *config.Config, configPath string, accountName strin
 			Backend:         backend,
 			FallbackBackend: binding.FallbackBackend,
 			Plugin:          binding.Plugin,
+			EnabledPlugins:  enabledPlugins,
 		})
 		if err != nil {
 			return err

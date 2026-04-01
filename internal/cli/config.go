@@ -212,7 +212,17 @@ func runConfigProviderUse(args []string, store *config.Store, stdout io.Writer) 
 		return fmt.Errorf("platform and plugin must not be empty")
 	}
 
-	candidates, err := pluginruntime.DiscoverProviderCandidates()
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	discoveryOptions := buildPluginDiscoveryOptions(cfg)
+
+	candidates, err := pluginruntime.DiscoverProviderCandidatesWithOptions(discoveryOptions)
+	if err != nil {
+		return err
+	}
+	allCandidates, err := pluginruntime.DiscoverProviderCandidates()
 	if err != nil {
 		return err
 	}
@@ -228,16 +238,24 @@ func runConfigProviderUse(args []string, store *config.Store, stdout io.Writer) 
 		}
 	}
 	if !matched {
+		disabledByRule := false
+		for _, candidate := range allCandidates {
+			if candidate.Platform != platform {
+				continue
+			}
+			if candidate.Plugin == pluginName {
+				disabledByRule = true
+				break
+			}
+		}
+		if disabledByRule {
+			return fmt.Errorf("plugin %s supports platform %s, but it is disabled by plugins.enabled", pluginName, platform)
+		}
 		if len(available) == 0 {
 			return fmt.Errorf("no provider plugin currently supports platform %s", platform)
 		}
 		sort.Strings(available)
 		return fmt.Errorf("plugin %s does not support platform %s; available plugins: %s", pluginName, platform, strings.Join(available, ", "))
-	}
-
-	cfg, err := store.Load()
-	if err != nil {
-		return err
 	}
 	cfg.Ensure()
 	cfg.Plugins.Bindings.Providers[platform] = config.ProviderPluginBinding{

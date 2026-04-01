@@ -159,6 +159,48 @@ done
 	}
 }
 
+func TestOpenRejectsDisabledPluginSecretStore(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	pluginDir := filepath.Join(homeDir, ".clawrise", "plugins", "secret-demo", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "secret-demo",
+  "version": "0.1.0",
+  "kind": "storage_backend",
+  "protocol_version": 1,
+  "storage_backend": {
+    "target": "secret_store",
+    "backend": "plugin.demo_secret"
+  },
+  "entry": {
+    "type": "binary",
+    "command": ["./secret-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	_, err := Open(Options{
+		ConfigPath: filepath.Join(t.TempDir(), "config.yaml"),
+		Backend:    "plugin.demo_secret",
+		Plugin:     "secret-demo",
+		EnabledPlugins: map[string]string{
+			"secret-demo": "disabled",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected disabled plugin secret store to be rejected")
+	}
+	if err.Error() != "storage backend plugin secret-demo for target secret_store is disabled by plugins.enabled" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestEncryptedFileStoreGeneratesLocalKeyAndPersistsSecrets(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 

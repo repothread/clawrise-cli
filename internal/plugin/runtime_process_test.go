@@ -624,3 +624,96 @@ done
 		t.Fatalf("AppendAudit returned error: %v", err)
 	}
 }
+
+func TestNewDiscoveredManagerWithOptionsFiltersDisabledProviders(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	writeProviderDiscoveryTestPlugin(t, pluginRoot, "demo-a", "demo.a.echo")
+	writeProviderDiscoveryTestPlugin(t, pluginRoot, "demo-b", "demo.b.echo")
+
+	manager, err := NewDiscoveredManagerWithOptions(context.Background(), DiscoveryOptions{
+		EnabledPlugins: map[string]string{
+			"demo-a": "disabled",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewDiscoveredManagerWithOptions returned error: %v", err)
+	}
+
+	if _, ok := manager.Registry().Resolve("demo.b.echo"); !ok {
+		t.Fatalf("expected enabled provider operation to be registered")
+	}
+	if _, ok := manager.Registry().Resolve("demo.a.echo"); ok {
+		t.Fatalf("did not expect disabled provider operation to be registered")
+	}
+}
+
+func TestNewDiscoveredManagerWithOptionsRejectsBindingToDisabledProvider(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	writeProviderDiscoveryTestPlugin(t, pluginRoot, "demo-a", "demo.a.echo")
+
+	_, err := NewDiscoveredManagerWithOptions(context.Background(), DiscoveryOptions{
+		EnabledPlugins: map[string]string{
+			"demo-a": "disabled",
+		},
+		ProviderBindings: map[string]string{
+			"demo": "demo-a",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected disabled provider binding to be rejected")
+	}
+	if err.Error() != "provider binding for platform demo points to demo-a, but the plugin is disabled by plugins.enabled" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func writeProviderDiscoveryTestPlugin(t *testing.T, root string, pluginName string, operation string) {
+	t.Helper()
+
+	pluginDir := filepath.Join(root, pluginName, "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, pluginName+".sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"` + pluginName + `","version":"0.1.0","platforms":["demo"]}}'"\n"
+      ;;
+    *'"method":"clawrise.operations.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"operations":[{"operation":"` + operation + `","platform":"demo","mutating":false,"default_timeout_ms":1000,"allowed_subjects":["integration"],"spec":{"summary":"Echo one demo payload.","dry_run_supported":true,"input":{"sample":{"message":"hello"}}}}]}}'"\n"
+      ;;
+    *'"method":"clawrise.catalog.get"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"entries":[{"operation":"` + operation + `"}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write provider plugin: %v", err)
+	}
+
+	manifest := `{
+  "schema_version": 1,
+  "name": "` + pluginName + `",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./` + pluginName + `.sh"]
+  }
+}`
+	if err := os.WriteFile(filepath.Join(pluginDir, ManifestFileName), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("failed to write provider manifest: %v", err)
+	}
+}

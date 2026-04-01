@@ -36,6 +36,26 @@ type StoragePluginBinding struct {
 	FallbackBackend string `yaml:"fallback_backend,omitempty"`
 }
 
+// ResolveEnabledPlugins 返回归一化后的插件启用规则。
+func ResolveEnabledPlugins(cfg *Config) map[string]string {
+	if cfg == nil || len(cfg.Plugins.Enabled) == 0 {
+		return nil
+	}
+
+	items := make(map[string]string, len(cfg.Plugins.Enabled))
+	for pluginName, rule := range cfg.Plugins.Enabled {
+		pluginName = strings.TrimSpace(pluginName)
+		if pluginName == "" {
+			continue
+		}
+		items[pluginName] = strings.TrimSpace(rule)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return items
+}
+
 // HasValue reports whether the binding carries any explicit configuration.
 func (b StoragePluginBinding) HasValue() bool {
 	return strings.TrimSpace(b.Backend) != "" ||

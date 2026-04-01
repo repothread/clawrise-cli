@@ -30,6 +30,7 @@ func runAuthSecret(args []string, cfg *config.Config, store *config.Store, stdou
 		Backend:         secretBackend,
 		FallbackBackend: binding.FallbackBackend,
 		Plugin:          binding.Plugin,
+		EnabledPlugins:  config.ResolveEnabledPlugins(cfg),
 	})
 	if err != nil {
 		return err

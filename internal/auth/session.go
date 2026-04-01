@@ -27,9 +27,10 @@ type StoreFactory func(configPath string) Store
 
 // StoreOptions 描述打开 session store 时的可选参数。
 type StoreOptions struct {
-	ConfigPath string
-	Backend    string
-	Plugin     string
+	ConfigPath     string
+	Backend        string
+	Plugin         string
+	EnabledPlugins map[string]string
 }
 
 // ExternalStoreResolver 描述一个外部 session store 解析器。
@@ -138,9 +139,10 @@ func OpenStoreWithOptions(options StoreOptions) (Store, error) {
 	pluginName := strings.TrimSpace(options.Plugin)
 	if pluginName != "" && pluginName != "builtin" {
 		store, handled, err := openExternalStore(StoreOptions{
-			ConfigPath: options.ConfigPath,
-			Backend:    backend,
-			Plugin:     pluginName,
+			ConfigPath:     options.ConfigPath,
+			Backend:        backend,
+			Plugin:         pluginName,
+			EnabledPlugins: options.EnabledPlugins,
 		})
 		if err != nil {
 			return nil, err
@@ -156,9 +158,10 @@ func OpenStoreWithOptions(options StoreOptions) (Store, error) {
 	}
 
 	store, handled, err := openExternalStore(StoreOptions{
-		ConfigPath: options.ConfigPath,
-		Backend:    backend,
-		Plugin:     pluginName,
+		ConfigPath:     options.ConfigPath,
+		Backend:        backend,
+		Plugin:         pluginName,
+		EnabledPlugins: options.EnabledPlugins,
 	})
 	if err != nil {
 		return nil, err

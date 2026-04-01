@@ -154,6 +154,15 @@ func newDefaultPluginManager(store *config.Store) (*pluginruntime.Manager, error
 		cfg = loaded
 	}
 
+	return pluginruntime.NewDiscoveredManagerWithOptions(context.Background(), buildPluginDiscoveryOptions(cfg))
+}
+
+func buildPluginDiscoveryOptions(cfg *config.Config) pluginruntime.DiscoveryOptions {
+	if cfg == nil {
+		cfg = config.New()
+	}
+
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
 	providerBindings := make(map[string]string)
 	for platform, binding := range cfg.Plugins.Bindings.Providers {
 		platform = strings.TrimSpace(platform)
@@ -173,10 +182,11 @@ func newDefaultPluginManager(store *config.Store) (*pluginruntime.Manager, error
 		authLauncherPreferences[actionType] = append([]string(nil), values...)
 	}
 
-	return pluginruntime.NewDiscoveredManagerWithOptions(context.Background(), pluginruntime.DiscoveryOptions{
+	return pluginruntime.DiscoveryOptions{
+		EnabledPlugins:          enabledPlugins,
 		ProviderBindings:        providerBindings,
 		AuthLauncherPreferences: authLauncherPreferences,
-	})
+	}
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
@@ -399,12 +409,21 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	if err != nil {
 		return err
 	}
+	discoveryOptions := buildPluginDiscoveryOptions(cfg)
 
-	discovery, err := pluginruntime.InspectDiscovery(context.Background())
+	discovery, err := pluginruntime.InspectDiscoveryWithOptions(context.Background(), discoveryOptions)
 	if err != nil {
 		return err
 	}
-	providerCandidates, err := pluginruntime.DiscoverProviderCandidates()
+	providerCandidates, err := pluginruntime.DiscoverProviderCandidatesWithOptions(discoveryOptions)
+	if err != nil {
+		return err
+	}
+	discoveryRoots, err := pluginruntime.DefaultDiscoveryRoots()
+	if err != nil {
+		return err
+	}
+	discoveredManifests, err := pluginruntime.DiscoverManifests(discoveryRoots)
 	if err != nil {
 		return err
 	}
@@ -422,22 +441,29 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 		nextSteps = append(nextSteps, "run `clawrise plugin install <source>` to install at least one provider plugin")
 	}
 
-	providerBindings := make(map[string]string)
-	for platform, binding := range cfg.Plugins.Bindings.Providers {
-		platform = strings.TrimSpace(platform)
-		pluginName := strings.TrimSpace(binding.Plugin)
-		if platform == "" || pluginName == "" {
-			continue
-		}
-		providerBindings[platform] = pluginName
-	}
-	if providerErr := pluginruntime.ValidateProviderBindingsFromCandidates(providerCandidates, providerBindings); providerErr != nil {
+	providerBindings := discoveryOptions.ProviderBindings
+	if providerErr := pluginruntime.ValidateProviderBindingsWithEnabledRules(discoveredManifests, providerBindings, discoveryOptions.EnabledPlugins); providerErr != nil {
 		checks = append(checks, map[string]any{
 			"code":    "PROVIDER_BINDING_INVALID",
 			"status":  "warn",
 			"message": providerErr.Error(),
 		})
 		nextSteps = append(nextSteps, "run `clawrise config provider use <platform> <plugin>` to select the expected provider plugin explicitly")
+	}
+
+	selectedPlugins := 0
+	for _, item := range discovery.Plugins {
+		if item.Selected {
+			selectedPlugins++
+		}
+	}
+	if len(discovery.Plugins) > 0 && selectedPlugins == 0 {
+		checks = append(checks, map[string]any{
+			"code":    "NO_SELECTED_PLUGINS",
+			"status":  "warn",
+			"message": "plugins were discovered, but none are currently selected after plugins.enabled and provider bindings are applied",
+		})
+		nextSteps = append(nextSteps, "update `plugins.enabled` or provider bindings so at least one plugin participates in runtime discovery")
 	}
 
 	defaultAccountOK := true
@@ -556,6 +582,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	runtimeSummary := map[string]any{
 		"registered_operation_count": 0,
 		"catalog_entry_count":        0,
+		"enabled_plugins":            discoveryOptions.EnabledPlugins,
 		"provider_bindings":          providerBindings,
 		"provider_candidates":        providerCandidates,
 		"storage": map[string]any{

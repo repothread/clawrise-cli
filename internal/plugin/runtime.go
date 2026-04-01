@@ -97,6 +97,7 @@ type Manager struct {
 
 // DiscoveryOptions 描述从本地发现插件时的附加路由偏好。
 type DiscoveryOptions struct {
+	EnabledPlugins          map[string]string
 	ProviderBindings        map[string]string
 	AuthLauncherPreferences map[string][]string
 }
@@ -413,10 +414,11 @@ func NewDiscoveredManagerWithOptions(ctx context.Context, options DiscoveryOptio
 	if err != nil {
 		return nil, err
 	}
-	if err := ValidateProviderBindings(manifests, options.ProviderBindings); err != nil {
+	enabledManifests := filterManifestsByEnabledRules(manifests, options.EnabledPlugins)
+	if err := ValidateProviderBindingsWithEnabledRules(manifests, options.ProviderBindings, options.EnabledPlugins); err != nil {
 		return nil, err
 	}
-	providerManifests, launcherManifests, _ := SplitManifestsByKind(manifests)
+	providerManifests, launcherManifests, _ := SplitManifestsByKind(enabledManifests)
 	providerManifests = applyProviderBindings(providerManifests, options.ProviderBindings)
 	launchers := append([]AuthLauncherRuntime{
 		NewSystemAuthLauncherRuntime(),

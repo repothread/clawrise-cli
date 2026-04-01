@@ -41,8 +41,10 @@ func ResolveSecret(raw string) (string, error) {
 		binding := StoragePluginBinding{
 			Backend: "encrypted_file",
 		}
+		cfg := New()
 		cfgStore := NewStore(configPath)
-		if cfg, loadErr := cfgStore.Load(); loadErr == nil {
+		if loadedCfg, loadErr := cfgStore.Load(); loadErr == nil {
+			cfg = loadedCfg
 			binding = ResolveStorageBinding(cfg, "secret_store")
 		}
 		if strings.TrimSpace(binding.Backend) == "" {
@@ -54,6 +56,7 @@ func ResolveSecret(raw string) (string, error) {
 			Backend:         binding.Backend,
 			FallbackBackend: binding.FallbackBackend,
 			Plugin:          binding.Plugin,
+			EnabledPlugins:  ResolveEnabledPlugins(cfg),
 		})
 		if err != nil {
 			return "", err

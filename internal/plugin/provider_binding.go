@@ -15,6 +15,11 @@ type ProviderCandidate struct {
 
 // DiscoverProviderCandidates 扫描当前 discovery roots 下的 provider 候选。
 func DiscoverProviderCandidates() ([]ProviderCandidate, error) {
+	return DiscoverProviderCandidatesWithOptions(DiscoveryOptions{})
+}
+
+// DiscoverProviderCandidatesWithOptions 扫描当前 discovery roots 下参与运行时的 provider 候选。
+func DiscoverProviderCandidatesWithOptions(options DiscoveryOptions) ([]ProviderCandidate, error) {
 	roots, err := DefaultDiscoveryRoots()
 	if err != nil {
 		return nil, err
@@ -23,6 +28,7 @@ func DiscoverProviderCandidates() ([]ProviderCandidate, error) {
 	if err != nil {
 		return nil, err
 	}
+	manifests = filterManifestsByEnabledRules(manifests, options.EnabledPlugins)
 	return providerCandidatesFromManifests(manifests), nil
 }
 
@@ -54,6 +60,33 @@ func providerCandidatesFromManifests(manifests []Manifest) []ProviderCandidate {
 // ValidateProviderBindings 校验 provider 绑定是否与已发现插件一致。
 func ValidateProviderBindings(manifests []Manifest, bindings map[string]string) error {
 	return ValidateProviderBindingsFromCandidates(providerCandidatesFromManifests(manifests), bindings)
+}
+
+// ValidateProviderBindingsWithEnabledRules 校验 provider 绑定在启用规则过滤后的可用性。
+func ValidateProviderBindingsWithEnabledRules(allManifests []Manifest, bindings map[string]string, enabledRules map[string]string) error {
+	allCandidates := groupProviderCandidatesByPlatform(providerCandidatesFromManifests(allManifests))
+	enabledManifests := filterManifestsByEnabledRules(allManifests, enabledRules)
+
+	for platform, pluginName := range bindings {
+		platform = strings.TrimSpace(platform)
+		pluginName = strings.TrimSpace(pluginName)
+		if platform == "" || pluginName == "" {
+			continue
+		}
+
+		state := resolvePluginEnabledState(pluginName, enabledRules)
+		if state.Enabled {
+			continue
+		}
+
+		for _, candidate := range allCandidates[platform] {
+			if candidate.Plugin == pluginName {
+				return fmt.Errorf("provider binding for platform %s points to %s, but the plugin is disabled by plugins.enabled", platform, pluginName)
+			}
+		}
+	}
+
+	return ValidateProviderBindings(enabledManifests, bindings)
 }
 
 // ValidateProviderBindingsFromCandidates 基于候选列表校验 provider 绑定。
