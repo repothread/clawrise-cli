@@ -12,7 +12,9 @@ type PluginsConfig struct {
 
 // PluginInstallConfig describes the baseline trust policy for plugin install sources.
 type PluginInstallConfig struct {
-	AllowedSources []string `yaml:"allowed_sources,omitempty"`
+	AllowedSources   []string `yaml:"allowed_sources,omitempty"`
+	AllowedHosts     []string `yaml:"allowed_hosts,omitempty"`
+	AllowedNPMScopes []string `yaml:"allowed_npm_scopes,omitempty"`
 }
 
 // PluginBindingsConfig describes binding rules for each capability class.
@@ -69,6 +71,45 @@ func ResolvePluginInstallAllowedSources(cfg *Config) []string {
 		return nil
 	}
 	return normalizeStringList(cfg.Plugins.Install.AllowedSources)
+}
+
+// ResolvePluginInstallAllowedHosts returns the normalized allowlist for remote install hosts.
+func ResolvePluginInstallAllowedHosts(cfg *Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	return normalizeStringList(cfg.Plugins.Install.AllowedHosts)
+}
+
+// ResolvePluginInstallAllowedNPMScopes returns the normalized allowlist for npm package scopes.
+func ResolvePluginInstallAllowedNPMScopes(cfg *Config) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	values := normalizeStringList(cfg.Plugins.Install.AllowedNPMScopes)
+	if len(values) == 0 {
+		return nil
+	}
+
+	items := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		switch normalized := normalizeNPMPolicyScope(value); normalized {
+		case "":
+			continue
+		default:
+			if _, exists := seen[normalized]; exists {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			items = append(items, normalized)
+		}
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return items
 }
 
 // HasValue reports whether the binding carries any explicit configuration.
@@ -265,4 +306,19 @@ func normalizeStringList(values []string) []string {
 		items = append(items, value)
 	}
 	return items
+}
+
+func normalizeNPMPolicyScope(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	switch value {
+	case "", "*", "unscoped":
+		return value
+	}
+	if !strings.HasPrefix(value, "@") {
+		value = "@" + value
+	}
+	if len(value) == 1 {
+		return ""
+	}
+	return value
 }

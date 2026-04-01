@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// VerifyResult 描述一个已安装 plugin 的校验结果。
+// VerifyResult describes one installed plugin verification result.
 type VerifyResult struct {
 	Name                  string                 `json:"name"`
 	Version               string                 `json:"version"`
@@ -16,6 +16,7 @@ type VerifyResult struct {
 	RuntimeCapabilities   []CapabilityDescriptor `json:"runtime_capabilities,omitempty"`
 	Path                  string                 `json:"path"`
 	Source                string                 `json:"source,omitempty"`
+	SourceType            string                 `json:"source_type,omitempty"`
 	ExpectedChecksumSHA   string                 `json:"expected_checksum_sha256,omitempty"`
 	ActualChecksumSHA     string                 `json:"actual_checksum_sha256,omitempty"`
 	ChecksumMatch         bool                   `json:"checksum_match"`
@@ -25,13 +26,19 @@ type VerifyResult struct {
 	CoreVersion           string                 `json:"core_version,omitempty"`
 	CoreVersionChecked    bool                   `json:"core_version_checked"`
 	CoreVersionCompatible bool                   `json:"core_version_compatible"`
+	Trust                 *SourceTrustStatus     `json:"trust,omitempty"`
 	Verified              bool                   `json:"verified"`
 	Warnings              []string               `json:"warnings,omitempty"`
 	Issues                []string               `json:"issues,omitempty"`
 }
 
-// VerifyInstalled 校验一个已安装 plugin 的内容和兼容性。
+// VerifyInstalled verifies one installed plugin with the default verification options.
 func VerifyInstalled(name, version, coreVersion string) (VerifyResult, error) {
+	return VerifyInstalledWithOptions(name, version, InstallOptions{CoreVersion: coreVersion})
+}
+
+// VerifyInstalledWithOptions verifies one installed plugin with explicit trust and compatibility options.
+func VerifyInstalledWithOptions(name, version string, options InstallOptions) (VerifyResult, error) {
 	info, err := InfoInstalled(name, version)
 	if err != nil {
 		return VerifyResult{}, err
@@ -46,11 +53,29 @@ func VerifyInstalled(name, version, coreVersion string) (VerifyResult, error) {
 		ProtocolVersion:    info.Manifest.ProtocolVersion,
 		ProtocolCompatible: info.Manifest.ProtocolVersion == ProtocolVersion,
 		MinCoreVersion:     strings.TrimSpace(info.Manifest.MinCoreVersion),
-		CoreVersion:        strings.TrimSpace(coreVersion),
+		CoreVersion:        strings.TrimSpace(options.CoreVersion),
 	}
 	if info.Install != nil {
 		result.Source = info.Install.Source
+		result.SourceType = classifyInstallSource(info.Install.Source)
 		result.ExpectedChecksumSHA = info.Install.ChecksumSHA
+
+		reference, refErr := parseInstallSourceReference(info.Install.Source)
+		if refErr != nil {
+			result.Issues = append(result.Issues, refErr.Error())
+		} else {
+			trust := evaluateInstallSourceTrust(reference, options)
+			result.Trust = &trust
+			if !trust.Allowed {
+				result.Issues = append(result.Issues, trust.Issues...)
+			}
+		}
+
+		if strings.TrimSpace(info.Install.ArtifactURL) != "" {
+			if err := validateRemoteHostPolicy(info.Install.ArtifactURL, options); err != nil {
+				result.Issues = append(result.Issues, err.Error())
+			}
+		}
 	}
 
 	actualChecksum, err := checksumTree(info.Path)
@@ -86,8 +111,13 @@ func VerifyInstalled(name, version, coreVersion string) (VerifyResult, error) {
 	return result, nil
 }
 
-// VerifyAllInstalled 批量校验所有已安装 plugin。
+// VerifyAllInstalled verifies all installed plugins with the default verification options.
 func VerifyAllInstalled(coreVersion string) ([]VerifyResult, error) {
+	return VerifyAllInstalledWithOptions(InstallOptions{CoreVersion: coreVersion})
+}
+
+// VerifyAllInstalledWithOptions verifies all installed plugins with explicit trust and compatibility options.
+func VerifyAllInstalledWithOptions(options InstallOptions) ([]VerifyResult, error) {
 	items, err := ListInstalled()
 	if err != nil {
 		return nil, err
@@ -95,7 +125,7 @@ func VerifyAllInstalled(coreVersion string) ([]VerifyResult, error) {
 
 	results := make([]VerifyResult, 0, len(items))
 	for _, item := range items {
-		result, err := VerifyInstalled(item.Name, item.Version, coreVersion)
+		result, err := VerifyInstalledWithOptions(item.Name, item.Version, options)
 		if err != nil {
 			return nil, err
 		}

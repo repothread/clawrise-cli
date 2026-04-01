@@ -24,11 +24,12 @@ var pluginDownloadHTTPClient = &http.Client{Timeout: 60 * time.Second}
 var npmRegistryBaseURL = "https://registry.npmjs.org"
 
 const (
-	pluginSourceTypeLocal = "local"
-	pluginSourceTypeFile  = "file"
-	pluginSourceTypeHTTP  = "http"
-	pluginSourceTypeHTTPS = "https"
-	pluginSourceTypeNPM   = "npm"
+	pluginSourceTypeLocal    = "local"
+	pluginSourceTypeFile     = "file"
+	pluginSourceTypeHTTP     = "http"
+	pluginSourceTypeHTTPS    = "https"
+	pluginSourceTypeNPM      = "npm"
+	pluginSourceTypeRegistry = "registry"
 )
 
 var defaultAllowedInstallSources = []string{
@@ -36,6 +37,7 @@ var defaultAllowedInstallSources = []string{
 	pluginSourceTypeFile,
 	pluginSourceTypeHTTPS,
 	pluginSourceTypeNPM,
+	pluginSourceTypeRegistry,
 }
 
 // InstalledPlugin describes one installed plugin package.
@@ -65,9 +67,25 @@ type InstallResult struct {
 
 // InstallOptions describes additional constraints applied to one plugin installation.
 type InstallOptions struct {
-	CoreVersion    string
-	AllowedSources []string
-	ExpectedName   string
+	CoreVersion      string
+	AllowedSources   []string
+	AllowedHosts     []string
+	AllowedNPMScopes []string
+	DiscoveryOptions DiscoveryOptions
+	ExpectedName     string
+}
+
+// SourceTrustStatus describes how one install source matches the current trust policy.
+type SourceTrustStatus struct {
+	Source           string   `json:"source"`
+	SourceType       string   `json:"source_type"`
+	Allowed          bool     `json:"allowed"`
+	Host             string   `json:"host,omitempty"`
+	PackageName      string   `json:"package_name,omitempty"`
+	PackageScope     string   `json:"package_scope,omitempty"`
+	RegistrySourceID string   `json:"registry_source_id,omitempty"`
+	Reference        string   `json:"reference,omitempty"`
+	Issues           []string `json:"issues,omitempty"`
 }
 
 // RemoveResult describes one plugin removal result.
@@ -83,19 +101,26 @@ type InstallMetadata struct {
 	Source      string `json:"source"`
 	InstalledAt string `json:"installed_at"`
 	ChecksumSHA string `json:"checksum_sha256"`
+	ArtifactURL string `json:"artifact_url,omitempty"`
 }
 
 // UpgradeResult describes one plugin upgrade result.
 type UpgradeResult struct {
-	Name            string           `json:"name"`
-	FromVersion     string           `json:"from_version"`
-	ToVersion       string           `json:"to_version"`
-	Source          string           `json:"source"`
-	Upgraded        bool             `json:"upgraded"`
-	Reinstalled     bool             `json:"reinstalled"`
-	RemovedPrevious bool             `json:"removed_previous"`
-	Path            string           `json:"path"`
-	Install         *InstallMetadata `json:"install,omitempty"`
+	Name            string             `json:"name"`
+	FromVersion     string             `json:"from_version"`
+	ToVersion       string             `json:"to_version"`
+	Source          string             `json:"source"`
+	SourceType      string             `json:"source_type,omitempty"`
+	Checked         bool               `json:"checked"`
+	UpdateAvailable bool               `json:"update_available"`
+	Upgraded        bool               `json:"upgraded"`
+	Reinstalled     bool               `json:"reinstalled"`
+	RemovedPrevious bool               `json:"removed_previous"`
+	Reason          string             `json:"reason,omitempty"`
+	Error           string             `json:"error,omitempty"`
+	Path            string             `json:"path"`
+	Trust           *SourceTrustStatus `json:"trust,omitempty"`
+	Install         *InstallMetadata   `json:"install,omitempty"`
 }
 
 // PluginInfo describes one installed plugin with full manifest and install metadata.
@@ -112,6 +137,26 @@ type PluginInfo struct {
 	MatchedProviderBindings []string                `json:"matched_provider_bindings,omitempty"`
 	Path                    string                  `json:"path"`
 	Install                 *InstallMetadata        `json:"install,omitempty"`
+}
+
+type installSourceReference struct {
+	Raw               string
+	SourceType        string
+	ResolvedPath      string
+	URL               *url.URL
+	PackageName       string
+	PackageScope      string
+	RequestedTag      string
+	RegistrySourceID  string
+	RegistryReference string
+}
+
+type installCandidate struct {
+	Manifest       Manifest
+	PluginDir      string
+	ResolvedSource string
+	ArtifactURL    string
+	Trust          SourceTrustStatus
 }
 
 // Install installs one plugin from any supported source.
@@ -133,47 +178,32 @@ func InstallWithOptions(source string, options InstallOptions) (InstallResult, e
 	if source == "" {
 		return InstallResult{}, fmt.Errorf("plugin source is required")
 	}
-	if err := validateInstallSourcePolicy(source, options.AllowedSources); err != nil {
-		return InstallResult{}, err
-	}
-
-	tempDir, err := os.MkdirTemp("", "clawrise-plugin-install-*")
-	if err != nil {
-		return InstallResult{}, fmt.Errorf("failed to create temporary plugin dir: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	pluginDir, resolvedSource, err := materializeSource(source, tempDir)
+	candidate, cleanup, err := resolveInstallCandidate(source, options)
 	if err != nil {
 		return InstallResult{}, err
 	}
+	defer cleanup()
 
-	manifest, err := LoadManifest(filepath.Join(pluginDir, ManifestFileName))
-	if err != nil {
-		return InstallResult{}, err
-	}
-	if err := validateInstallManifest(manifest, options); err != nil {
-		return InstallResult{}, err
-	}
-	checksum, err := checksumTree(pluginDir)
+	checksum, err := checksumTree(candidate.PluginDir)
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("failed to compute plugin checksum: %w", err)
 	}
 
 	installMetadata := &InstallMetadata{
-		Source:      resolvedSource,
+		Source:      candidate.ResolvedSource,
 		InstalledAt: time.Now().UTC().Format(time.RFC3339),
 		ChecksumSHA: checksum,
+		ArtifactURL: candidate.ArtifactURL,
 	}
 
-	targetDir := filepath.Join(root, manifest.Name, manifest.Version)
+	targetDir := filepath.Join(root, candidate.Manifest.Name, candidate.Manifest.Version)
 	if err := os.RemoveAll(targetDir); err != nil {
 		return InstallResult{}, fmt.Errorf("failed to remove existing plugin target: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(targetDir), 0o755); err != nil {
 		return InstallResult{}, fmt.Errorf("failed to create plugin parent dir: %w", err)
 	}
-	if err := copyTree(pluginDir, targetDir); err != nil {
+	if err := copyTree(candidate.PluginDir, targetDir); err != nil {
 		return InstallResult{}, err
 	}
 	if err := writeInstallMetadata(targetDir, installMetadata); err != nil {
@@ -181,7 +211,7 @@ func InstallWithOptions(source string, options InstallOptions) (InstallResult, e
 	}
 
 	return InstallResult{
-		Manifest: manifest,
+		Manifest: candidate.Manifest,
 		Path:     targetDir,
 		Install:  installMetadata,
 	}, nil
@@ -194,40 +224,63 @@ func InstallLocal(source string) (InstallResult, error) {
 
 // UpgradeInstalled upgrades one installed plugin by reinstalling from its recorded source.
 func UpgradeInstalled(name, version string, options InstallOptions) (UpgradeResult, error) {
-	info, err := InfoInstalled(name, version)
+	result, candidate, err := checkUpgradeCandidate(name, version, options)
 	if err != nil {
-		return UpgradeResult{}, err
+		return result, err
 	}
-	if info.Install == nil || strings.TrimSpace(info.Install.Source) == "" {
-		return UpgradeResult{}, fmt.Errorf("plugin %s@%s does not record an install source, so it cannot be upgraded automatically", info.Manifest.Name, info.Manifest.Version)
+	if !result.UpdateAvailable {
+		return result, nil
 	}
 
-	options.ExpectedName = info.Manifest.Name
-	installed, err := InstallWithOptions(info.Install.Source, options)
+	options.ExpectedName = name
+	installed, err := InstallWithOptions(result.Source, options)
 	if err != nil {
-		return UpgradeResult{}, err
+		result.Error = err.Error()
+		return result, err
 	}
 
-	result := UpgradeResult{
-		Name:        info.Manifest.Name,
-		FromVersion: info.Manifest.Version,
-		ToVersion:   installed.Manifest.Version,
-		Source:      info.Install.Source,
-		Upgraded:    installed.Manifest.Version != info.Manifest.Version,
-		Reinstalled: installed.Manifest.Version == info.Manifest.Version,
-		Path:        installed.Path,
-		Install:     installed.Install,
-	}
+	result.Checked = true
+	result.Upgraded = installed.Manifest.Version != version
+	result.Reinstalled = installed.Manifest.Version == version
+	result.ToVersion = installed.Manifest.Version
+	result.Path = installed.Path
+	result.Install = installed.Install
 
 	// Remove the previous version after a successful upgrade so discovery does not pick multiple versions.
-	if installed.Manifest.Version != info.Manifest.Version {
-		if _, err := RemoveInstalled(info.Manifest.Name, info.Manifest.Version); err != nil {
-			return UpgradeResult{}, fmt.Errorf("plugin %s@%s upgraded to %s but failed to remove previous version: %w", info.Manifest.Name, info.Manifest.Version, installed.Manifest.Version, err)
+	if installed.Manifest.Version != version {
+		if _, err := RemoveInstalled(name, version); err != nil {
+			result.Error = fmt.Sprintf("plugin %s@%s upgraded to %s but failed to remove previous version: %v", name, version, installed.Manifest.Version, err)
+			return result, fmt.Errorf(result.Error)
 		}
 		result.RemovedPrevious = true
 	}
 
+	if candidate != nil {
+		result.Trust = &candidate.Trust
+	}
 	return result, nil
+}
+
+// UpgradeAllInstalled upgrades every installed plugin version that still records an install source.
+func UpgradeAllInstalled(options InstallOptions) ([]UpgradeResult, error) {
+	items, err := ListInstalled()
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]UpgradeResult, 0, len(items))
+	for _, item := range items {
+		result, upgradeErr := UpgradeInstalled(item.Name, item.Version, options)
+		if upgradeErr != nil {
+			if result.Name == "" {
+				result.Name = item.Name
+				result.FromVersion = item.Version
+			}
+			result.Error = upgradeErr.Error()
+		}
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 // ListInstalled returns all installed plugins under the default plugins root.
@@ -357,13 +410,152 @@ func pluginsRootDir() (string, error) {
 	return filepath.Join(homeDir, ".clawrise", "plugins"), nil
 }
 
-func validateInstallSourcePolicy(source string, allowedSources []string) error {
-	sourceType := classifyInstallSource(source)
-	allowed := normalizeAllowedInstallSources(allowedSources)
-	if _, ok := allowed[sourceType]; ok {
-		return nil
+func resolveInstallCandidate(source string, options InstallOptions) (installCandidate, func(), error) {
+	source = strings.TrimSpace(source)
+	reference, err := parseInstallSourceReference(source)
+	if err != nil {
+		return installCandidate{}, func() {}, err
 	}
-	return fmt.Errorf("plugin source type %s is not allowed by the current install trust policy", sourceType)
+
+	trust := evaluateInstallSourceTrust(reference, options)
+	if !trust.Allowed {
+		return installCandidate{}, func() {}, fmt.Errorf(strings.Join(trust.Issues, "; "))
+	}
+
+	tempDir, err := os.MkdirTemp("", "clawrise-plugin-install-*")
+	if err != nil {
+		return installCandidate{}, func() {}, fmt.Errorf("failed to create temporary plugin dir: %w", err)
+	}
+	cleanup := func() {
+		_ = os.RemoveAll(tempDir)
+	}
+
+	pluginDir, resolvedSource, artifactURL, err := materializeSource(reference, tempDir, options)
+	if err != nil {
+		cleanup()
+		return installCandidate{}, func() {}, err
+	}
+
+	manifest, err := LoadManifest(filepath.Join(pluginDir, ManifestFileName))
+	if err != nil {
+		cleanup()
+		return installCandidate{}, func() {}, err
+	}
+	if err := validateInstallManifest(manifest, options); err != nil {
+		cleanup()
+		return installCandidate{}, func() {}, err
+	}
+
+	candidate := installCandidate{
+		Manifest:       manifest,
+		PluginDir:      pluginDir,
+		ResolvedSource: resolvedSource,
+		ArtifactURL:    artifactURL,
+		Trust:          trust,
+	}
+	return candidate, cleanup, nil
+}
+
+func checkUpgradeCandidate(name, version string, options InstallOptions) (UpgradeResult, *installCandidate, error) {
+	info, err := InfoInstalled(name, version)
+	if err != nil {
+		return UpgradeResult{}, nil, err
+	}
+	if info.Install == nil || strings.TrimSpace(info.Install.Source) == "" {
+		return UpgradeResult{
+			Name:        info.Manifest.Name,
+			FromVersion: info.Manifest.Version,
+			ToVersion:   info.Manifest.Version,
+			Reason:      "installed plugin does not record an install source",
+		}, nil, fmt.Errorf("plugin %s@%s does not record an install source, so it cannot be upgraded automatically", info.Manifest.Name, info.Manifest.Version)
+	}
+
+	options.ExpectedName = info.Manifest.Name
+	var trust *SourceTrustStatus
+	if reference, refErr := parseInstallSourceReference(info.Install.Source); refErr == nil {
+		status := evaluateInstallSourceTrust(reference, options)
+		trust = &status
+	}
+	candidate, cleanup, err := resolveInstallCandidate(info.Install.Source, options)
+	if err != nil {
+		return UpgradeResult{
+			Name:        info.Manifest.Name,
+			FromVersion: info.Manifest.Version,
+			ToVersion:   info.Manifest.Version,
+			Source:      info.Install.Source,
+			SourceType:  classifyInstallSource(info.Install.Source),
+			Trust:       trust,
+		}, nil, err
+	}
+	defer cleanup()
+
+	result := UpgradeResult{
+		Name:        info.Manifest.Name,
+		FromVersion: info.Manifest.Version,
+		ToVersion:   candidate.Manifest.Version,
+		Source:      info.Install.Source,
+		SourceType:  candidate.Trust.SourceType,
+		Checked:     true,
+		Trust:       &candidate.Trust,
+	}
+
+	comparison, comparable := compareVersionStrings(info.Manifest.Version, candidate.Manifest.Version)
+	switch {
+	case comparable && comparison < 0:
+		result.UpdateAvailable = true
+	case comparable && comparison == 0:
+		result.Reason = upgradeNoChangeReason(info.Install.Source, true)
+	case comparable && comparison > 0:
+		result.Reason = "recorded source currently resolves to an older plugin version"
+	case !comparable && strings.TrimSpace(candidate.Manifest.Version) != strings.TrimSpace(info.Manifest.Version):
+		result.UpdateAvailable = true
+	default:
+		result.Reason = upgradeNoChangeReason(info.Install.Source, false)
+	}
+
+	return result, &candidate, nil
+}
+
+func evaluateInstallSourceTrust(reference installSourceReference, options InstallOptions) SourceTrustStatus {
+	status := SourceTrustStatus{
+		Source:           reference.Raw,
+		SourceType:       reference.SourceType,
+		Host:             normalizeHostName(hostnameFromURL(reference.URL)),
+		PackageName:      reference.PackageName,
+		PackageScope:     reference.PackageScope,
+		RegistrySourceID: reference.RegistrySourceID,
+		Reference:        reference.RegistryReference,
+		Allowed:          true,
+	}
+
+	allowedSources := normalizeAllowedInstallSources(options.AllowedSources)
+	if _, ok := allowedSources[reference.SourceType]; !ok {
+		status.Allowed = false
+		status.Issues = append(status.Issues, fmt.Sprintf("plugin source type %s is not allowed by the current install trust policy", reference.SourceType))
+	}
+
+	allowedHosts := normalizeAllowedHosts(options.AllowedHosts)
+	if isRemoteSourceType(reference.SourceType) && len(allowedHosts) > 0 {
+		host := normalizeHostName(hostnameFromURL(reference.URL))
+		if host == "" || !matchesAnyAllowedHost(host, allowedHosts) {
+			status.Allowed = false
+			status.Issues = append(status.Issues, fmt.Sprintf("plugin source host %s is not allowed by the current install trust policy", firstNonEmptyString(host, "<unknown>")))
+		}
+	}
+
+	allowedNPMScopes := normalizeAllowedNPMScopes(options.AllowedNPMScopes)
+	if reference.SourceType == pluginSourceTypeNPM && len(allowedNPMScopes) > 0 {
+		if !matchesAllowedNPMScope(reference.PackageScope, allowedNPMScopes) {
+			scope := reference.PackageScope
+			if scope == "" {
+				scope = "unscoped"
+			}
+			status.Allowed = false
+			status.Issues = append(status.Issues, fmt.Sprintf("npm package scope %s is not allowed by the current install trust policy", scope))
+		}
+	}
+
+	return status
 }
 
 func normalizeAllowedInstallSources(values []string) map[string]struct{} {
@@ -374,7 +566,7 @@ func normalizeAllowedInstallSources(values []string) map[string]struct{} {
 	items := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		switch strings.ToLower(strings.TrimSpace(value)) {
-		case pluginSourceTypeLocal, pluginSourceTypeFile, pluginSourceTypeHTTP, pluginSourceTypeHTTPS, pluginSourceTypeNPM:
+		case pluginSourceTypeLocal, pluginSourceTypeFile, pluginSourceTypeHTTP, pluginSourceTypeHTTPS, pluginSourceTypeNPM, pluginSourceTypeRegistry:
 			items[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
 		}
 	}
@@ -386,11 +578,99 @@ func normalizeAllowedInstallSources(values []string) map[string]struct{} {
 	return items
 }
 
+func normalizeAllowedHosts(values []string) []string {
+	items := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		normalized := normalizeHostName(value)
+		if normalized == "" {
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		items = append(items, normalized)
+	}
+	return items
+}
+
+func normalizeAllowedNPMScopes(values []string) []string {
+	items := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(strings.ToLower(value))
+		switch {
+		case value == "":
+			continue
+		case value == "*" || value == "unscoped":
+		case !strings.HasPrefix(value, "@"):
+			value = "@" + value
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+	return items
+}
+
+func parseInstallSourceReference(source string) (installSourceReference, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return installSourceReference{}, fmt.Errorf("plugin source is required")
+	}
+
+	reference := installSourceReference{
+		Raw:        source,
+		SourceType: classifyInstallSource(source),
+	}
+	switch reference.SourceType {
+	case pluginSourceTypeFile:
+		reference.ResolvedPath = strings.TrimPrefix(source, "file://")
+	case pluginSourceTypeHTTP, pluginSourceTypeHTTPS:
+		parsed, err := url.Parse(source)
+		if err != nil {
+			return installSourceReference{}, fmt.Errorf("failed to parse plugin source url: %w", err)
+		}
+		reference.URL = parsed
+	case pluginSourceTypeNPM:
+		spec := strings.TrimSpace(strings.TrimPrefix(source, "npm://"))
+		if spec == "" {
+			spec = source
+		}
+		packageName, requestedVersion := parseNPMPackageSpec(spec)
+		if packageName == "" {
+			return installSourceReference{}, fmt.Errorf("invalid npm package spec: %s", spec)
+		}
+		reference.PackageName = packageName
+		reference.PackageScope = npmPackageScope(packageName)
+		reference.RequestedTag = requestedVersion
+		if parsed, err := url.Parse(strings.TrimRight(npmRegistryBaseURL, "/")); err == nil {
+			reference.URL = parsed
+		}
+	case pluginSourceTypeRegistry:
+		registrySourceID, registryReference, requestedVersion, err := parseRegistryInstallSpec(source)
+		if err != nil {
+			return installSourceReference{}, err
+		}
+		reference.RegistrySourceID = registrySourceID
+		reference.RegistryReference = registryReference
+		reference.RequestedTag = requestedVersion
+	default:
+		reference.ResolvedPath = source
+	}
+	return reference, nil
+}
+
 func classifyInstallSource(source string) string {
 	source = strings.TrimSpace(source)
 	switch {
 	case strings.HasPrefix(source, "file://"):
 		return pluginSourceTypeFile
+	case strings.HasPrefix(source, "registry://"):
+		return pluginSourceTypeRegistry
 	case strings.HasPrefix(source, "https://"):
 		return pluginSourceTypeHTTPS
 	case strings.HasPrefix(source, "http://"):
@@ -402,6 +682,38 @@ func classifyInstallSource(source string) string {
 	default:
 		return pluginSourceTypeLocal
 	}
+}
+
+func parseRegistryInstallSpec(source string) (string, string, string, error) {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(source, "registry://"))
+	if trimmed == "" {
+		return "", "", "", fmt.Errorf("registry source reference is required")
+	}
+
+	var sourceID string
+	var reference string
+	if strings.Contains(trimmed, "/") {
+		parts := strings.SplitN(trimmed, "/", 2)
+		sourceID = strings.TrimSpace(parts[0])
+		reference = strings.TrimSpace(parts[1])
+	} else {
+		reference = trimmed
+	}
+
+	reference = strings.TrimPrefix(reference, "/")
+	if reference == "" {
+		return "", "", "", fmt.Errorf("registry install reference is required")
+	}
+
+	version := ""
+	if index := strings.LastIndex(reference, "@"); index > 0 {
+		version = strings.TrimSpace(reference[index+1:])
+		reference = strings.TrimSpace(reference[:index])
+	}
+	if reference == "" {
+		return "", "", "", fmt.Errorf("registry install reference is required")
+	}
+	return sourceID, reference, version, nil
 }
 
 func validateInstallManifest(manifest Manifest, options InstallOptions) error {
@@ -421,38 +733,39 @@ func validateInstallManifest(manifest Manifest, options InstallOptions) error {
 	return nil
 }
 
-func materializeSource(source, tempDir string) (string, string, error) {
-	source = strings.TrimSpace(source)
-	if strings.HasPrefix(source, "file://") {
-		trimmed := strings.TrimPrefix(source, "file://")
-		pluginDir, _, err := materializeFileSource(trimmed, tempDir)
-		return pluginDir, source, err
-	}
-	switch {
-	case strings.HasPrefix(source, "http://"), strings.HasPrefix(source, "https://"):
+func materializeSource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
+	source := strings.TrimSpace(reference.Raw)
+	switch reference.SourceType {
+	case pluginSourceTypeFile:
+		pluginDir, _, err := materializeFileSource(reference.ResolvedPath, tempDir)
+		return pluginDir, source, "", err
+	case pluginSourceTypeHTTP, pluginSourceTypeHTTPS:
 		archivePath, resolvedSource, err := downloadRemoteSource(source, tempDir)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		pluginDir, _, err := materializeFileSource(archivePath, tempDir)
-		return pluginDir, resolvedSource, err
-	case strings.HasPrefix(source, "npm://"):
-		archivePath, resolvedSource, err := resolveNPMSource(source, tempDir)
+		return pluginDir, resolvedSource, resolvedSource, err
+	case pluginSourceTypeNPM:
+		archivePath, resolvedSource, artifactURL, err := resolveNPMSource(reference, tempDir, options)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
 		pluginDir, _, err := materializeFileSource(archivePath, tempDir)
-		return pluginDir, resolvedSource, err
-	default:
-		if shouldResolveBareNPMPackageSpec(source) {
-			archivePath, resolvedSource, err := resolveNPMSource(source, tempDir)
-			if err != nil {
-				return "", "", err
-			}
-			pluginDir, _, err := materializeFileSource(archivePath, tempDir)
-			return pluginDir, resolvedSource, err
+		return pluginDir, resolvedSource, artifactURL, err
+	case pluginSourceTypeRegistry:
+		archivePath, resolvedSource, artifactURL, err := resolveRegistrySource(reference, tempDir, options)
+		if err != nil {
+			return "", "", "", err
 		}
-		return materializeFileSource(source, tempDir)
+		pluginDir, _, err := materializeFileSource(archivePath, tempDir)
+		if err != nil {
+			return "", "", "", err
+		}
+		return pluginDir, resolvedSource, artifactURL, err
+	default:
+		pluginDir, resolvedSource, err := materializeFileSource(reference.ResolvedPath, tempDir)
+		return pluginDir, resolvedSource, "", err
 	}
 }
 
@@ -566,29 +879,26 @@ func downloadRemoteSource(source, tempDir string) (string, string, error) {
 	return path, source, nil
 }
 
-func resolveNPMSource(source, tempDir string) (string, string, error) {
-	spec := strings.TrimSpace(strings.TrimPrefix(source, "npm://"))
-	if spec == "" {
-		return "", "", fmt.Errorf("npm package spec is required")
+func resolveNPMSource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
+	if reference.PackageName == "" {
+		return "", "", "", fmt.Errorf("npm package spec is required")
 	}
 
-	packageName, requestedVersion := parseNPMPackageSpec(spec)
-	if packageName == "" {
-		return "", "", fmt.Errorf("invalid npm package spec: %s", spec)
+	packageURL := strings.TrimRight(npmRegistryBaseURL, "/") + "/" + url.PathEscape(reference.PackageName)
+	if err := validateRemoteHostPolicy(packageURL, options); err != nil {
+		return "", "", "", err
 	}
-
-	packageURL := strings.TrimRight(npmRegistryBaseURL, "/") + "/" + url.PathEscape(packageName)
 	request, err := http.NewRequest(http.MethodGet, packageURL, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to build npm metadata request: %w", err)
+		return "", "", "", fmt.Errorf("failed to build npm metadata request: %w", err)
 	}
 	response, err := pluginDownloadHTTPClient.Do(request)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch npm package metadata: %w", err)
+		return "", "", "", fmt.Errorf("failed to fetch npm package metadata: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= 400 {
-		return "", "", fmt.Errorf("npm metadata request failed with status %d", response.StatusCode)
+		return "", "", "", fmt.Errorf("npm metadata request failed with status %d", response.StatusCode)
 	}
 
 	var metadata struct {
@@ -600,10 +910,10 @@ func resolveNPMSource(source, tempDir string) (string, string, error) {
 		} `json:"versions"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&metadata); err != nil {
-		return "", "", fmt.Errorf("failed to decode npm package metadata: %w", err)
+		return "", "", "", fmt.Errorf("failed to decode npm package metadata: %w", err)
 	}
 
-	version := requestedVersion
+	version := reference.RequestedTag
 	if version == "" {
 		version = "latest"
 	}
@@ -613,14 +923,97 @@ func resolveNPMSource(source, tempDir string) (string, string, error) {
 
 	versionMetadata, ok := metadata.Versions[version]
 	if !ok || strings.TrimSpace(versionMetadata.Dist.Tarball) == "" {
-		return "", "", fmt.Errorf("npm package version %s not found for %s", version, packageName)
+		return "", "", "", fmt.Errorf("npm package version %s not found for %s", version, reference.PackageName)
+	}
+	if err := validateRemoteHostPolicy(versionMetadata.Dist.Tarball, options); err != nil {
+		return "", "", "", err
 	}
 
 	archivePath, _, err := downloadRemoteSource(versionMetadata.Dist.Tarball, tempDir)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return archivePath, source, nil
+	return archivePath, reference.Raw, versionMetadata.Dist.Tarball, nil
+}
+
+func resolveRegistrySource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
+	runtimes, err := DiscoverRegistrySourceRuntimes(options.DiscoveryOptions)
+	if err != nil {
+		return "", "", "", err
+	}
+	if len(runtimes) == 0 {
+		return "", "", "", fmt.Errorf("no registry source plugins are available for registry installs")
+	}
+
+	candidates := make([]RegistrySourceRuntime, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if reference.RegistrySourceID != "" && runtime.ID() != reference.RegistrySourceID {
+			continue
+		}
+		candidates = append(candidates, runtime)
+	}
+	if len(candidates) == 0 {
+		return "", "", "", fmt.Errorf("registry source %s is not available", reference.RegistrySourceID)
+	}
+
+	var lastErr error
+	for _, runtime := range candidates {
+		if strings.TrimSpace(runtime.ID()) == "" {
+			lastErr = fmt.Errorf("registry source plugin %s does not declare a capability id", runtime.Name())
+			continue
+		}
+		resolveResult, resolveErr := runtime.Resolve(context.Background(), RegistrySourceResolveParams{
+			SourceID:  runtime.ID(),
+			Reference: reference.RegistryReference,
+			Version:   reference.RequestedTag,
+		})
+		_ = runtime.Close()
+		if resolveErr != nil {
+			lastErr = resolveErr
+			if reference.RegistrySourceID != "" {
+				return "", "", "", resolveErr
+			}
+			continue
+		}
+		if strings.TrimSpace(resolveResult.ArtifactURL) == "" {
+			lastErr = fmt.Errorf("registry source %s returned an empty artifact_url", runtime.ID())
+			if reference.RegistrySourceID != "" {
+				return "", "", "", lastErr
+			}
+			continue
+		}
+		if err := validateRemoteHostPolicy(resolveResult.ArtifactURL, options); err != nil {
+			lastErr = err
+			if reference.RegistrySourceID != "" {
+				return "", "", "", err
+			}
+			continue
+		}
+
+		archivePath, _, err := downloadRemoteSource(resolveResult.ArtifactURL, tempDir)
+		if err != nil {
+			lastErr = err
+			if reference.RegistrySourceID != "" {
+				return "", "", "", err
+			}
+			continue
+		}
+		if err := verifyDownloadedArtifactChecksum(archivePath, resolveResult.ChecksumSHA256); err != nil {
+			lastErr = err
+			if reference.RegistrySourceID != "" {
+				return "", "", "", err
+			}
+			continue
+		}
+
+		canonicalSource := canonicalRegistrySource(runtime.ID(), firstNonEmptyString(resolveResult.Name, reference.RegistryReference), reference.RequestedTag)
+		return archivePath, canonicalSource, resolveResult.ArtifactURL, nil
+	}
+
+	if lastErr != nil {
+		return "", "", "", lastErr
+	}
+	return "", "", "", fmt.Errorf("no registry source could resolve %s", reference.RegistryReference)
 }
 
 func shouldResolveBareNPMPackageSpec(source string) bool {
@@ -665,6 +1058,159 @@ func parseNPMPackageSpec(spec string) (string, string) {
 		return spec, ""
 	}
 	return spec[:index], spec[index+1:]
+}
+
+func npmPackageScope(packageName string) string {
+	if !strings.HasPrefix(packageName, "@") {
+		return ""
+	}
+	parts := strings.Split(packageName, "/")
+	if len(parts) != 2 {
+		return ""
+	}
+	return strings.ToLower(parts[0])
+}
+
+func validateRemoteHostPolicy(rawURL string, options InstallOptions) error {
+	allowedHosts := normalizeAllowedHosts(options.AllowedHosts)
+	if len(allowedHosts) == 0 {
+		return nil
+	}
+
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return fmt.Errorf("failed to parse remote source url: %w", err)
+	}
+	host := normalizeHostName(parsed.Hostname())
+	if host == "" {
+		return fmt.Errorf("remote source host is required")
+	}
+	if matchesAnyAllowedHost(host, allowedHosts) {
+		return nil
+	}
+	return fmt.Errorf("plugin source host %s is not allowed by the current install trust policy", host)
+}
+
+func isRemoteSourceType(sourceType string) bool {
+	switch strings.TrimSpace(sourceType) {
+	case pluginSourceTypeHTTP, pluginSourceTypeHTTPS, pluginSourceTypeNPM:
+		return true
+	default:
+		return false
+	}
+}
+
+func hostnameFromURL(parsed *url.URL) string {
+	if parsed == nil {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
+func normalizeHostName(host string) string {
+	return strings.TrimSpace(strings.ToLower(host))
+}
+
+func matchesAnyAllowedHost(host string, allowedHosts []string) bool {
+	host = normalizeHostName(host)
+	for _, allowedHost := range allowedHosts {
+		allowedHost = normalizeHostName(allowedHost)
+		if allowedHost == "" {
+			continue
+		}
+		switch {
+		case allowedHost == "*":
+			return true
+		case strings.HasPrefix(allowedHost, "*."):
+			suffix := strings.TrimPrefix(allowedHost, "*")
+			if strings.HasSuffix(host, suffix) && len(host) > len(strings.TrimPrefix(suffix, ".")) {
+				return true
+			}
+		case strings.HasPrefix(allowedHost, "."):
+			if strings.HasSuffix(host, allowedHost) && len(host) > len(strings.TrimPrefix(allowedHost, ".")) {
+				return true
+			}
+		case host == allowedHost:
+			return true
+		}
+	}
+	return false
+}
+
+func matchesAllowedNPMScope(scope string, allowedScopes []string) bool {
+	scope = strings.TrimSpace(strings.ToLower(scope))
+	for _, allowedScope := range allowedScopes {
+		allowedScope = strings.TrimSpace(strings.ToLower(allowedScope))
+		switch allowedScope {
+		case "*":
+			return true
+		case "unscoped":
+			if scope == "" {
+				return true
+			}
+		default:
+			if scope == allowedScope {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func compareVersionStrings(current string, candidate string) (int, bool) {
+	currentParts, currentOK := parseVersionParts(strings.TrimSpace(strings.TrimPrefix(current, "v")))
+	candidateParts, candidateOK := parseVersionParts(strings.TrimSpace(strings.TrimPrefix(candidate, "v")))
+	if !currentOK || !candidateOK {
+		return 0, false
+	}
+
+	maxLen := len(currentParts)
+	if len(candidateParts) > maxLen {
+		maxLen = len(candidateParts)
+	}
+	for len(currentParts) < maxLen {
+		currentParts = append(currentParts, 0)
+	}
+	for len(candidateParts) < maxLen {
+		candidateParts = append(candidateParts, 0)
+	}
+
+	for index := 0; index < maxLen; index++ {
+		switch {
+		case currentParts[index] < candidateParts[index]:
+			return -1, true
+		case currentParts[index] > candidateParts[index]:
+			return 1, true
+		}
+	}
+	return 0, true
+}
+
+func upgradeNoChangeReason(source string, comparable bool) string {
+	if isPinnedSourceReference(source) {
+		return "recorded source is pinned to the installed plugin version"
+	}
+	if comparable {
+		return "recorded source currently resolves to the installed plugin version"
+	}
+	return "recorded source resolves to the same plugin version"
+}
+
+func isPinnedSourceReference(source string) bool {
+	switch classifyInstallSource(source) {
+	case pluginSourceTypeNPM:
+		spec := strings.TrimSpace(strings.TrimPrefix(source, "npm://"))
+		if spec == "" {
+			spec = strings.TrimSpace(source)
+		}
+		_, version := parseNPMPackageSpec(spec)
+		return strings.TrimSpace(version) != ""
+	case pluginSourceTypeRegistry:
+		_, _, version, err := parseRegistryInstallSpec(source)
+		return err == nil && strings.TrimSpace(version) != ""
+	default:
+		return false
+	}
 }
 
 func looksLikeNPMPackageSpec(spec string) bool {
@@ -767,6 +1313,36 @@ func checksumTree(root string) (string, error) {
 		}
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func checksumFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func verifyDownloadedArtifactChecksum(path string, expected string) error {
+	expected = strings.TrimSpace(strings.ToLower(expected))
+	if expected == "" {
+		return nil
+	}
+
+	actual, err := checksumFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to checksum downloaded plugin artifact: %w", err)
+	}
+	if actual != expected {
+		return fmt.Errorf("downloaded plugin artifact checksum does not match registry metadata")
+	}
+	return nil
 }
 
 func copyFile(source, target string, mode os.FileMode) error {
@@ -875,4 +1451,33 @@ func loadInstallMetadata(root string) (*InstallMetadata, error) {
 		return nil, fmt.Errorf("failed to decode plugin install metadata: %w", err)
 	}
 	return &metadata, nil
+}
+
+func canonicalRegistrySource(sourceID string, reference string, version string) string {
+	sourceID = strings.TrimSpace(sourceID)
+	reference = strings.Trim(strings.TrimSpace(reference), "/")
+	version = strings.TrimSpace(version)
+
+	var builder strings.Builder
+	builder.WriteString("registry://")
+	if sourceID != "" {
+		builder.WriteString(sourceID)
+		builder.WriteString("/")
+	}
+	builder.WriteString(reference)
+	if version != "" {
+		builder.WriteString("@")
+		builder.WriteString(version)
+	}
+	return builder.String()
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

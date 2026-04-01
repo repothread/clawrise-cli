@@ -66,6 +66,32 @@ func TestResolvePluginInstallAllowedSourcesNormalizesConfig(t *testing.T) {
 	}
 }
 
+func TestResolvePluginInstallAllowedHostsNormalizesConfig(t *testing.T) {
+	cfg := New()
+	cfg.Plugins.Install.AllowedHosts = []string{" plugins.example.com ", "*.trusted.example.com", "plugins.example.com", " "}
+
+	allowed := ResolvePluginInstallAllowedHosts(cfg)
+	if len(allowed) != 2 {
+		t.Fatalf("unexpected allowed hosts: %+v", allowed)
+	}
+	if allowed[0] != "plugins.example.com" || allowed[1] != "*.trusted.example.com" {
+		t.Fatalf("unexpected normalized allowed hosts: %+v", allowed)
+	}
+}
+
+func TestResolvePluginInstallAllowedNPMScopesNormalizesConfig(t *testing.T) {
+	cfg := New()
+	cfg.Plugins.Install.AllowedNPMScopes = []string{" clawrise ", "@Trusted", "unscoped", "@trusted", "*", " "}
+
+	allowed := ResolvePluginInstallAllowedNPMScopes(cfg)
+	if len(allowed) != 4 {
+		t.Fatalf("unexpected allowed npm scopes: %+v", allowed)
+	}
+	if allowed[0] != "@clawrise" || allowed[1] != "@trusted" || allowed[2] != "unscoped" || allowed[3] != "*" {
+		t.Fatalf("unexpected normalized allowed npm scopes: %+v", allowed)
+	}
+}
+
 func TestSetAuthLauncherPreferenceMovesLauncherToFront(t *testing.T) {
 	cfg := New()
 	cfg.Ensure()

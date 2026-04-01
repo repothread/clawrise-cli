@@ -1303,6 +1303,131 @@ func TestRunPluginUpgradeCommand(t *testing.T) {
 	}
 }
 
+func TestRunPluginUpgradeAllCommand(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	homeDir := t.TempDir()
+	sourceDirA := filepath.Join(t.TempDir(), "plugin-src-a")
+	sourceDirB := filepath.Join(t.TempDir(), "plugin-src-b")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", homeDir)
+
+	writeManifest := func(dir string, name string, version string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
+			t.Fatalf("failed to create source dir: %v", err)
+		}
+		manifest := `{
+  "schema_version": 1,
+  "name": "` + name + `",
+  "version": "` + version + `",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`
+		if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("failed to write plugin binary: %v", err)
+		}
+	}
+
+	writeManifest(sourceDirA, "demo-a", "0.1.0")
+	writeManifest(sourceDirB, "demo-b", "0.1.0")
+
+	if _, err := pluginruntime.InstallLocal(sourceDirA); err != nil {
+		t.Fatalf("failed to install plugin A: %v", err)
+	}
+	if _, err := pluginruntime.InstallLocal(sourceDirB); err != nil {
+		t.Fatalf("failed to install plugin B: %v", err)
+	}
+
+	writeManifest(sourceDirA, "demo-a", "0.2.0")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := Run([]string{"plugin", "upgrade", "--all"}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	}); err != nil {
+		t.Fatalf("plugin upgrade --all returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"upgraded": 1`)) {
+		t.Fatalf("expected plugin upgrade --all output to include one upgraded plugin, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"name": "demo-b"`)) {
+		t.Fatalf("expected plugin upgrade --all output to include unchanged plugin results, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunPluginVerifyUsesConfiguredTrustPolicy(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	homeDir := t.TempDir()
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", homeDir)
+
+	cfg := config.New()
+	cfg.Plugins.Install.AllowedSources = []string{"https"}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to write plugin binary: %v", err)
+	}
+
+	if _, err := pluginruntime.InstallLocal(sourceDir); err != nil {
+		t.Fatalf("failed to install plugin: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"plugin", "verify", "demo", "0.1.0"}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected plugin verify to fail when current trust policy rejects the recorded source")
+	}
+	if exitErr, ok := err.(ExitError); !ok || exitErr.Code != 1 {
+		t.Fatalf("expected verify command to exit with code 1, got: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"allowed": false`)) {
+		t.Fatalf("expected verify output to expose trust rejection, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunCompletionHelpFlag(t *testing.T) {
 	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
 

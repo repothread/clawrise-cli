@@ -185,6 +185,36 @@ func TestInstallAllowsHTTPWhenTrustPolicyIncludesHTTP(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsRemoteHostOutsideAllowlist(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	_, err := InstallWithOptions("https://plugins.example.com/demo-plugin.tar.gz", InstallOptions{
+		AllowedHosts: []string{"downloads.example.com"},
+	})
+	if err == nil {
+		t.Fatal("expected install to reject remote host outside allowlist")
+	}
+	if !strings.Contains(err.Error(), "source host") {
+		t.Fatalf("expected host trust policy error, got: %v", err)
+	}
+}
+
+func TestInstallRejectsNPMScopeOutsideAllowlist(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	_, err := InstallWithOptions("npm://@forbidden/demo-plugin", InstallOptions{
+		AllowedNPMScopes: []string{"@clawrise"},
+	})
+	if err == nil {
+		t.Fatal("expected install to reject npm scope outside allowlist")
+	}
+	if !strings.Contains(err.Error(), "npm package scope") {
+		t.Fatalf("expected npm scope trust policy error, got: %v", err)
+	}
+}
+
 func TestInstallRejectsPluginThatRequiresNewerCore(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -238,6 +268,294 @@ func TestUpgradeInstalledReinstallsFromRecordedSourceAndRemovesPreviousVersion(t
 	}
 	if len(items) != 1 || items[0].Version != "0.2.0" {
 		t.Fatalf("expected only upgraded version to remain installed, got: %+v", items)
+	}
+}
+
+func TestInstallRegistrySourceSupport(t *testing.T) {
+	homeDir := t.TempDir()
+	pluginRoot := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+
+	archivePath := filepath.Join(t.TempDir(), "workflow-demo-0.2.0.tgz")
+	if err := writeTestPluginArchiveWithManifest(archivePath, "workflow-demo", "0.2.0"); err != nil {
+		t.Fatalf("failed to write plugin archive: %v", err)
+	}
+	archiveData, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("failed to read plugin archive: %v", err)
+	}
+	archiveChecksum, err := checksumFile(archivePath)
+	if err != nil {
+		t.Fatalf("failed to checksum plugin archive: %v", err)
+	}
+
+	registryDir := filepath.Join(pluginRoot, "registry-demo", "0.1.0")
+	if err := os.MkdirAll(registryDir, 0o755); err != nil {
+		t.Fatalf("failed to create registry plugin dir: %v", err)
+	}
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.registry_source.resolve"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"name":"workflow-demo","version":"0.2.0","artifact_url":"https://downloads.example.com/workflow-demo-0.2.0.tgz","checksum_sha256":"` + archiveChecksum + `"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(registryDir, "registry-demo.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write registry plugin script: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(registryDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "registry-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "registry_source",
+      "id": "community",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./registry-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write registry plugin manifest: %v", err)
+	}
+
+	previousClient := pluginDownloadHTTPClient
+	pluginDownloadHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.String() != "https://downloads.example.com/workflow-demo-0.2.0.tgz" {
+				t.Fatalf("unexpected registry download url: %s", request.URL.String())
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/gzip"},
+				},
+				Body: io.NopCloser(strings.NewReader(string(archiveData))),
+			}, nil
+		}),
+	}
+	defer func() {
+		pluginDownloadHTTPClient = previousClient
+	}()
+
+	result, err := InstallWithOptions("registry://community/workflow-demo", InstallOptions{
+		AllowedHosts: []string{"downloads.example.com"},
+	})
+	if err != nil {
+		t.Fatalf("InstallWithOptions returned error: %v", err)
+	}
+	if result.Manifest.Name != "workflow-demo" || result.Manifest.Version != "0.2.0" {
+		t.Fatalf("unexpected registry install result: %+v", result)
+	}
+	if result.Install == nil || result.Install.Source != "registry://community/workflow-demo" {
+		t.Fatalf("unexpected registry install metadata: %+v", result.Install)
+	}
+	if result.Install.ArtifactURL != "https://downloads.example.com/workflow-demo-0.2.0.tgz" {
+		t.Fatalf("expected artifact url to be recorded, got: %+v", result.Install)
+	}
+}
+
+func TestUpgradeInstalledFromRegistrySource(t *testing.T) {
+	homeDir := t.TempDir()
+	pluginRoot := t.TempDir()
+	controlPath := filepath.Join(t.TempDir(), "registry-version.txt")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+
+	if err := os.WriteFile(controlPath, []byte("0.1.0"), 0o644); err != nil {
+		t.Fatalf("failed to seed control file: %v", err)
+	}
+
+	archiveV1Path := filepath.Join(t.TempDir(), "workflow-demo-0.1.0.tgz")
+	archiveV2Path := filepath.Join(t.TempDir(), "workflow-demo-0.2.0.tgz")
+	if err := writeTestPluginArchiveWithManifest(archiveV1Path, "workflow-demo", "0.1.0"); err != nil {
+		t.Fatalf("failed to write plugin v1 archive: %v", err)
+	}
+	if err := writeTestPluginArchiveWithManifest(archiveV2Path, "workflow-demo", "0.2.0"); err != nil {
+		t.Fatalf("failed to write plugin v2 archive: %v", err)
+	}
+	archiveV1Data, err := os.ReadFile(archiveV1Path)
+	if err != nil {
+		t.Fatalf("failed to read plugin v1 archive: %v", err)
+	}
+	archiveV2Data, err := os.ReadFile(archiveV2Path)
+	if err != nil {
+		t.Fatalf("failed to read plugin v2 archive: %v", err)
+	}
+	archiveV1Checksum, err := checksumFile(archiveV1Path)
+	if err != nil {
+		t.Fatalf("failed to checksum plugin v1 archive: %v", err)
+	}
+	archiveV2Checksum, err := checksumFile(archiveV2Path)
+	if err != nil {
+		t.Fatalf("failed to checksum plugin v2 archive: %v", err)
+	}
+
+	registryDir := filepath.Join(pluginRoot, "registry-demo", "0.1.0")
+	if err := os.MkdirAll(registryDir, 0o755); err != nil {
+		t.Fatalf("failed to create registry plugin dir: %v", err)
+	}
+	script := `#!/bin/sh
+state_file="` + controlPath + `"
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.registry_source.resolve"'*)
+      version=$(cat "$state_file")
+      case "$version" in
+        "0.1.0")
+          url="https://downloads.example.com/workflow-demo-0.1.0.tgz"
+          checksum="` + archiveV1Checksum + `"
+          ;;
+        *)
+          url="https://downloads.example.com/workflow-demo-0.2.0.tgz"
+          checksum="` + archiveV2Checksum + `"
+          version="0.2.0"
+          ;;
+      esac
+      printf '{"jsonrpc":"2.0","id":"1","result":{"name":"workflow-demo","version":"%s","artifact_url":"%s","checksum_sha256":"%s"}}'"\n" "$version" "$url" "$checksum"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(registryDir, "registry-demo.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write registry plugin script: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(registryDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "registry-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "registry_source",
+      "id": "community",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./registry-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write registry plugin manifest: %v", err)
+	}
+
+	previousClient := pluginDownloadHTTPClient
+	pluginDownloadHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			switch request.URL.String() {
+			case "https://downloads.example.com/workflow-demo-0.1.0.tgz":
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/gzip"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(archiveV1Data))),
+				}, nil
+			case "https://downloads.example.com/workflow-demo-0.2.0.tgz":
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/gzip"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(archiveV2Data))),
+				}, nil
+			default:
+				t.Fatalf("unexpected registry download url: %s", request.URL.String())
+				return nil, nil
+			}
+		}),
+	}
+	defer func() {
+		pluginDownloadHTTPClient = previousClient
+	}()
+
+	if _, err := InstallWithOptions("registry://community/workflow-demo", InstallOptions{
+		AllowedHosts: []string{"downloads.example.com"},
+	}); err != nil {
+		t.Fatalf("failed to install registry-backed plugin: %v", err)
+	}
+
+	if err := os.WriteFile(controlPath, []byte("0.2.0"), 0o644); err != nil {
+		t.Fatalf("failed to switch registry control file: %v", err)
+	}
+
+	result, err := UpgradeInstalled("workflow-demo", "0.1.0", InstallOptions{
+		CoreVersion:  "0.2.0",
+		AllowedHosts: []string{"downloads.example.com"},
+	})
+	if err != nil {
+		t.Fatalf("UpgradeInstalled returned error: %v", err)
+	}
+	if !result.Upgraded || result.ToVersion != "0.2.0" || !result.RemovedPrevious {
+		t.Fatalf("unexpected registry upgrade result: %+v", result)
+	}
+
+	info, err := InfoInstalled("workflow-demo", "0.2.0")
+	if err != nil {
+		t.Fatalf("failed to load upgraded plugin info: %v", err)
+	}
+	if info.Install == nil || info.Install.Source != "registry://community/workflow-demo" {
+		t.Fatalf("expected registry source to remain floating and source-pinned, got: %+v", info.Install)
+	}
+}
+
+func TestUpgradeAllInstalledReturnsPerPluginResults(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDirA := filepath.Join(t.TempDir(), "plugin-src-a")
+	sourceDirB := filepath.Join(t.TempDir(), "plugin-src-b")
+	if err := writeTestPluginSourceDir(sourceDirA, "demo-a", "0.1.0", ""); err != nil {
+		t.Fatalf("failed to write initial plugin A source dir: %v", err)
+	}
+	if err := writeTestPluginSourceDir(sourceDirB, "demo-b", "0.1.0", ""); err != nil {
+		t.Fatalf("failed to write initial plugin B source dir: %v", err)
+	}
+
+	if _, err := InstallLocal(sourceDirA); err != nil {
+		t.Fatalf("InstallLocal returned error for plugin A: %v", err)
+	}
+	if _, err := InstallLocal(sourceDirB); err != nil {
+		t.Fatalf("InstallLocal returned error for plugin B: %v", err)
+	}
+
+	if err := writeTestPluginSourceDir(sourceDirA, "demo-a", "0.2.0", ""); err != nil {
+		t.Fatalf("failed to rewrite plugin A source dir: %v", err)
+	}
+
+	results, err := UpgradeAllInstalled(InstallOptions{
+		CoreVersion: "0.2.0",
+	})
+	if err != nil {
+		t.Fatalf("UpgradeAllInstalled returned error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected two upgrade results, got: %+v", results)
+	}
+
+	var upgraded UpgradeResult
+	var unchanged UpgradeResult
+	for _, item := range results {
+		switch item.Name {
+		case "demo-a":
+			upgraded = item
+		case "demo-b":
+			unchanged = item
+		}
+	}
+	if !upgraded.Upgraded || upgraded.ToVersion != "0.2.0" {
+		t.Fatalf("expected plugin A to upgrade, got: %+v", upgraded)
+	}
+	if unchanged.Upgraded || !unchanged.Checked || unchanged.Reason == "" {
+		t.Fatalf("expected plugin B to be checked but left unchanged, got: %+v", unchanged)
 	}
 }
 
@@ -615,6 +933,10 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 }
 
 func writeTestPluginArchive(path string) error {
+	return writeTestPluginArchiveWithManifest(path, "demo", "0.2.0")
+}
+
+func writeTestPluginArchiveWithManifest(path string, name string, version string) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return err
@@ -630,8 +952,8 @@ func writeTestPluginArchive(path string) error {
 	files := map[string]string{
 		"demo-plugin/plugin.json": `{
   "schema_version": 1,
-  "name": "demo",
-  "version": "0.2.0",
+  "name": "` + name + `",
+  "version": "` + version + `",
   "kind": "provider",
   "protocol_version": 1,
   "platforms": ["demo"],
