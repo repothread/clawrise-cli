@@ -4,10 +4,14 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"net/url"
@@ -121,6 +125,7 @@ type UpgradeResult struct {
 	Path            string             `json:"path"`
 	Trust           *SourceTrustStatus `json:"trust,omitempty"`
 	Install         *InstallMetadata   `json:"install,omitempty"`
+	Preflight       *VerifyResult      `json:"preflight,omitempty"`
 }
 
 // PluginInfo describes one installed plugin with full manifest and install metadata.
@@ -157,6 +162,11 @@ type installCandidate struct {
 	ResolvedSource string
 	ArtifactURL    string
 	Trust          SourceTrustStatus
+}
+
+type remoteDownloadResult struct {
+	ArchivePath string
+	FinalURL    string
 }
 
 // Install installs one plugin from any supported source.
@@ -471,33 +481,38 @@ func checkUpgradeCandidate(name, version string, options InstallOptions) (Upgrad
 	}
 
 	options.ExpectedName = info.Manifest.Name
-	var trust *SourceTrustStatus
-	if reference, refErr := parseInstallSourceReference(info.Install.Source); refErr == nil {
-		status := evaluateInstallSourceTrust(reference, options)
-		trust = &status
-	}
-	candidate, cleanup, err := resolveInstallCandidate(info.Install.Source, options)
+	preflight, err := VerifyInstalledWithOptions(info.Manifest.Name, info.Manifest.Version, options)
 	if err != nil {
-		return UpgradeResult{
-			Name:        info.Manifest.Name,
-			FromVersion: info.Manifest.Version,
-			ToVersion:   info.Manifest.Version,
-			Source:      info.Install.Source,
-			SourceType:  classifyInstallSource(info.Install.Source),
-			Trust:       trust,
-		}, nil, err
+		return UpgradeResult{}, nil, err
 	}
-	defer cleanup()
 
 	result := UpgradeResult{
 		Name:        info.Manifest.Name,
 		FromVersion: info.Manifest.Version,
-		ToVersion:   candidate.Manifest.Version,
+		ToVersion:   info.Manifest.Version,
 		Source:      info.Install.Source,
-		SourceType:  candidate.Trust.SourceType,
+		SourceType:  classifyInstallSource(info.Install.Source),
 		Checked:     true,
-		Trust:       &candidate.Trust,
+		Trust:       preflight.Trust,
+		Install:     info.Install,
+		Preflight:   &preflight,
 	}
+	if !preflight.Verified {
+		result.Path = info.Path
+		result.Reason = "installed plugin failed pre-upgrade verification"
+		result.Error = buildPreUpgradeVerificationError(preflight)
+		return result, nil, fmt.Errorf("plugin %s@%s failed pre-upgrade verification: %s", info.Manifest.Name, info.Manifest.Version, result.Error)
+	}
+
+	candidate, cleanup, err := resolveInstallCandidate(info.Install.Source, options)
+	if err != nil {
+		return result, nil, err
+	}
+	defer cleanup()
+
+	result.ToVersion = candidate.Manifest.Version
+	result.SourceType = candidate.Trust.SourceType
+	result.Trust = &candidate.Trust
 
 	comparison, comparable := compareVersionStrings(info.Manifest.Version, candidate.Manifest.Version)
 	switch {
@@ -740,12 +755,12 @@ func materializeSource(reference installSourceReference, tempDir string, options
 		pluginDir, _, err := materializeFileSource(reference.ResolvedPath, tempDir)
 		return pluginDir, source, "", err
 	case pluginSourceTypeHTTP, pluginSourceTypeHTTPS:
-		archivePath, resolvedSource, err := downloadRemoteSource(source, tempDir)
+		downloaded, err := downloadRemoteSource(source, tempDir, options)
 		if err != nil {
 			return "", "", "", err
 		}
-		pluginDir, _, err := materializeFileSource(archivePath, tempDir)
-		return pluginDir, resolvedSource, resolvedSource, err
+		pluginDir, _, err := materializeFileSource(downloaded.ArchivePath, tempDir)
+		return pluginDir, source, downloaded.FinalURL, err
 	case pluginSourceTypeNPM:
 		archivePath, resolvedSource, artifactURL, err := resolveNPMSource(reference, tempDir, options)
 		if err != nil {
@@ -851,32 +866,44 @@ func locatePluginRoot(root string) (string, error) {
 	return candidate, nil
 }
 
-func downloadRemoteSource(source, tempDir string) (string, string, error) {
+func downloadRemoteSource(source, tempDir string, options InstallOptions) (remoteDownloadResult, error) {
 	request, err := http.NewRequest(http.MethodGet, source, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to build plugin download request: %w", err)
+		return remoteDownloadResult{}, fmt.Errorf("failed to build plugin download request: %w", err)
 	}
 	response, err := pluginDownloadHTTPClient.Do(request)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to download plugin source: %w", err)
+		return remoteDownloadResult{}, fmt.Errorf("failed to download plugin source: %w", err)
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode >= 400 {
-		return "", "", fmt.Errorf("plugin source download failed with status %d", response.StatusCode)
+		return remoteDownloadResult{}, fmt.Errorf("plugin source download failed with status %d", response.StatusCode)
+	}
+
+	finalURL := source
+	if response.Request != nil && response.Request.URL != nil {
+		finalURL = response.Request.URL.String()
+	}
+	// 即使初始地址通过了 allowlist，最终重定向目标仍要再次校验。
+	if err := validateFinalRemoteDownloadTarget(source, finalURL, options); err != nil {
+		return remoteDownloadResult{}, err
 	}
 
 	path := filepath.Join(tempDir, "download.tgz")
 	file, err := os.Create(path)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create downloaded plugin archive: %w", err)
+		return remoteDownloadResult{}, fmt.Errorf("failed to create downloaded plugin archive: %w", err)
 	}
 	defer file.Close()
 
 	if _, err := io.Copy(file, response.Body); err != nil {
-		return "", "", fmt.Errorf("failed to write downloaded plugin archive: %w", err)
+		return remoteDownloadResult{}, fmt.Errorf("failed to write downloaded plugin archive: %w", err)
 	}
-	return path, source, nil
+	return remoteDownloadResult{
+		ArchivePath: path,
+		FinalURL:    finalURL,
+	}, nil
 }
 
 func resolveNPMSource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
@@ -897,6 +924,12 @@ func resolveNPMSource(reference installSourceReference, tempDir string, options 
 		return "", "", "", fmt.Errorf("failed to fetch npm package metadata: %w", err)
 	}
 	defer response.Body.Close()
+	if response.Request != nil && response.Request.URL != nil {
+		// npm metadata 请求本身也可能跳到别的 host，需要复验最终位置。
+		if err := validateFinalRemoteDownloadTarget(packageURL, response.Request.URL.String(), options); err != nil {
+			return "", "", "", err
+		}
+	}
 	if response.StatusCode >= 400 {
 		return "", "", "", fmt.Errorf("npm metadata request failed with status %d", response.StatusCode)
 	}
@@ -905,7 +938,9 @@ func resolveNPMSource(reference installSourceReference, tempDir string, options 
 		DistTags map[string]string `json:"dist-tags"`
 		Versions map[string]struct {
 			Dist struct {
-				Tarball string `json:"tarball"`
+				Tarball   string `json:"tarball"`
+				Integrity string `json:"integrity"`
+				Shasum    string `json:"shasum"`
 			} `json:"dist"`
 		} `json:"versions"`
 	}
@@ -929,11 +964,14 @@ func resolveNPMSource(reference installSourceReference, tempDir string, options 
 		return "", "", "", err
 	}
 
-	archivePath, _, err := downloadRemoteSource(versionMetadata.Dist.Tarball, tempDir)
+	downloaded, err := downloadRemoteSource(versionMetadata.Dist.Tarball, tempDir, options)
 	if err != nil {
 		return "", "", "", err
 	}
-	return archivePath, reference.Raw, versionMetadata.Dist.Tarball, nil
+	if err := verifyDownloadedNPMArtifact(downloaded.ArchivePath, versionMetadata.Dist.Integrity, versionMetadata.Dist.Shasum); err != nil {
+		return "", "", "", err
+	}
+	return downloaded.ArchivePath, reference.Raw, downloaded.FinalURL, nil
 }
 
 func resolveRegistrySource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
@@ -990,7 +1028,7 @@ func resolveRegistrySource(reference installSourceReference, tempDir string, opt
 			continue
 		}
 
-		archivePath, _, err := downloadRemoteSource(resolveResult.ArtifactURL, tempDir)
+		downloaded, err := downloadRemoteSource(resolveResult.ArtifactURL, tempDir, options)
 		if err != nil {
 			lastErr = err
 			if reference.RegistrySourceID != "" {
@@ -998,7 +1036,7 @@ func resolveRegistrySource(reference installSourceReference, tempDir string, opt
 			}
 			continue
 		}
-		if err := verifyDownloadedArtifactChecksum(archivePath, resolveResult.ChecksumSHA256); err != nil {
+		if err := verifyDownloadedArtifactChecksum(downloaded.ArchivePath, resolveResult.ChecksumSHA256); err != nil {
 			lastErr = err
 			if reference.RegistrySourceID != "" {
 				return "", "", "", err
@@ -1007,7 +1045,7 @@ func resolveRegistrySource(reference installSourceReference, tempDir string, opt
 		}
 
 		canonicalSource := canonicalRegistrySource(runtime.ID(), firstNonEmptyString(resolveResult.Name, reference.RegistryReference), reference.RequestedTag)
-		return archivePath, canonicalSource, resolveResult.ArtifactURL, nil
+		return downloaded.ArchivePath, canonicalSource, downloaded.FinalURL, nil
 	}
 
 	if lastErr != nil {
@@ -1089,6 +1127,27 @@ func validateRemoteHostPolicy(rawURL string, options InstallOptions) error {
 		return nil
 	}
 	return fmt.Errorf("plugin source host %s is not allowed by the current install trust policy", host)
+}
+
+func validateFinalRemoteDownloadTarget(initialURL string, finalURL string, options InstallOptions) error {
+	initialURL = strings.TrimSpace(initialURL)
+	finalURL = strings.TrimSpace(finalURL)
+	if finalURL == "" {
+		return fmt.Errorf("plugin download did not report a final source url")
+	}
+	if err := validateRemoteHostPolicy(finalURL, options); err != nil {
+		return err
+	}
+
+	initialParsed, initialErr := url.Parse(initialURL)
+	finalParsed, finalErr := url.Parse(finalURL)
+	if initialErr != nil || finalErr != nil {
+		return nil
+	}
+	if strings.EqualFold(initialParsed.Scheme, "https") && !strings.EqualFold(finalParsed.Scheme, "https") {
+		return fmt.Errorf("plugin download redirected from https to insecure scheme %s", strings.TrimSpace(finalParsed.Scheme))
+	}
+	return nil
 }
 
 func isRemoteSourceType(sourceType string) bool {
@@ -1316,17 +1375,11 @@ func checksumTree(root string) (string, error) {
 }
 
 func checksumFile(path string) (string, error) {
-	file, err := os.Open(path)
+	sum, err := digestFile(path, sha256.New)
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return hex.EncodeToString(sum), nil
 }
 
 func verifyDownloadedArtifactChecksum(path string, expected string) error {
@@ -1343,6 +1396,103 @@ func verifyDownloadedArtifactChecksum(path string, expected string) error {
 		return fmt.Errorf("downloaded plugin artifact checksum does not match registry metadata")
 	}
 	return nil
+}
+
+func verifyDownloadedNPMArtifact(path string, integrity string, shasum string) error {
+	integrity = strings.TrimSpace(integrity)
+	if integrity != "" {
+		if err := verifySubresourceIntegrity(path, integrity); err != nil {
+			return err
+		}
+	}
+
+	shasum = strings.TrimSpace(strings.ToLower(shasum))
+	if shasum == "" {
+		return nil
+	}
+
+	actual, err := digestFile(path, sha1.New)
+	if err != nil {
+		return fmt.Errorf("failed to checksum downloaded npm plugin artifact: %w", err)
+	}
+	if hex.EncodeToString(actual) != shasum {
+		return fmt.Errorf("downloaded npm plugin artifact shasum does not match registry metadata")
+	}
+	return nil
+}
+
+func verifySubresourceIntegrity(path string, expected string) error {
+	tokens := strings.Fields(expected)
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	supportedChecks := 0
+	for _, token := range tokens {
+		parts := strings.SplitN(strings.TrimSpace(token), "-", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+			continue
+		}
+
+		actual, supported, err := checksumFileBase64(path, parts[0])
+		if err != nil {
+			return err
+		}
+		if !supported {
+			continue
+		}
+
+		supportedChecks++
+		if actual == strings.TrimSpace(parts[1]) {
+			return nil
+		}
+	}
+
+	if supportedChecks == 0 {
+		return fmt.Errorf("downloaded npm plugin artifact uses unsupported integrity metadata")
+	}
+	return fmt.Errorf("downloaded npm plugin artifact integrity does not match registry metadata")
+}
+
+func checksumFileBase64(path string, algorithm string) (string, bool, error) {
+	var newHash func() hash.Hash
+	switch strings.ToLower(strings.TrimSpace(algorithm)) {
+	case "sha256":
+		newHash = sha256.New
+	case "sha384":
+		newHash = sha512.New384
+	case "sha512":
+		newHash = sha512.New
+	default:
+		return "", false, nil
+	}
+
+	sum, err := digestFile(path, newHash)
+	if err != nil {
+		return "", true, fmt.Errorf("failed to checksum downloaded npm plugin artifact: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(sum), true, nil
+}
+
+func digestFile(path string, newHash func() hash.Hash) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	digest := newHash()
+	if _, err := io.Copy(digest, file); err != nil {
+		return nil, err
+	}
+	return digest.Sum(nil), nil
+}
+
+func buildPreUpgradeVerificationError(result VerifyResult) string {
+	if len(result.Issues) > 0 {
+		return strings.Join(result.Issues, "; ")
+	}
+	return "installed plugin failed pre-upgrade verification"
 }
 
 func copyFile(source, target string, mode os.FileMode) error {

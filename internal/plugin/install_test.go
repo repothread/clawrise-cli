@@ -3,6 +3,10 @@ package plugin
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha1"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -268,6 +272,44 @@ func TestUpgradeInstalledReinstallsFromRecordedSourceAndRemovesPreviousVersion(t
 	}
 	if len(items) != 1 || items[0].Version != "0.2.0" {
 		t.Fatalf("expected only upgraded version to remain installed, got: %+v", items)
+	}
+}
+
+func TestUpgradeInstalledRejectsWhenCurrentPluginFailsVerification(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	if err := writeTestPluginSourceDir(sourceDir, "demo", "0.1.0", ""); err != nil {
+		t.Fatalf("failed to write initial plugin source dir: %v", err)
+	}
+
+	installed, err := InstallLocal(sourceDir)
+	if err != nil {
+		t.Fatalf("InstallLocal returned error: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(installed.Path, "bin", "demo-plugin"), []byte("#!/bin/sh\necho mutated\n"), 0o755); err != nil {
+		t.Fatalf("failed to mutate installed plugin: %v", err)
+	}
+	if err := writeTestPluginSourceDir(sourceDir, "demo", "0.2.0", ""); err != nil {
+		t.Fatalf("failed to rewrite plugin source dir: %v", err)
+	}
+
+	result, err := UpgradeInstalled("demo", "0.1.0", InstallOptions{
+		CoreVersion: "0.2.0",
+	})
+	if err == nil {
+		t.Fatal("expected upgrade to stop when current plugin fails verification")
+	}
+	if !strings.Contains(err.Error(), "pre-upgrade verification") {
+		t.Fatalf("expected pre-upgrade verification error, got: %v", err)
+	}
+	if result.Preflight == nil || result.Preflight.Verified {
+		t.Fatalf("expected upgrade result to expose failed preflight verification, got: %+v", result)
+	}
+	if result.Reason != "installed plugin failed pre-upgrade verification" {
+		t.Fatalf("unexpected upgrade rejection reason: %+v", result)
 	}
 }
 
@@ -696,6 +738,8 @@ func TestInstallNPMSupport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read npm test archive: %v", err)
 	}
+	integrity := buildTestSRI(archiveData)
+	shasum := buildTestSHA1Hex(archiveData)
 
 	previousClient := pluginDownloadHTTPClient
 	pluginDownloadHTTPClient = &http.Client{
@@ -709,7 +753,9 @@ func TestInstallNPMSupport(t *testing.T) {
 					"versions": map[string]any{
 						"0.2.0": map[string]any{
 							"dist": map[string]any{
-								"tarball": "https://registry.example.com/tarballs/demo-plugin.tar.gz",
+								"tarball":   "https://registry.example.com/tarballs/demo-plugin.tar.gz",
+								"integrity": integrity,
+								"shasum":    shasum,
 							},
 						},
 					},
@@ -755,6 +801,9 @@ func TestInstallNPMSupport(t *testing.T) {
 	if result.Manifest.Name != "demo" || result.Install == nil || result.Install.Source != "npm://@clawrise/clawrise-plugin-demo" {
 		t.Fatalf("unexpected npm install result: %+v", result)
 	}
+	if result.Install.ArtifactURL != "https://registry.example.com/tarballs/demo-plugin.tar.gz" {
+		t.Fatalf("expected npm install to record artifact url, got: %+v", result.Install)
+	}
 }
 
 func TestInstallAcceptsBareNPMPackageSpec(t *testing.T) {
@@ -770,6 +819,8 @@ func TestInstallAcceptsBareNPMPackageSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read npm test archive: %v", err)
 	}
+	integrity := buildTestSRI(archiveData)
+	shasum := buildTestSHA1Hex(archiveData)
 
 	previousClient := pluginDownloadHTTPClient
 	pluginDownloadHTTPClient = &http.Client{
@@ -783,7 +834,9 @@ func TestInstallAcceptsBareNPMPackageSpec(t *testing.T) {
 					"versions": map[string]any{
 						"0.2.0": map[string]any{
 							"dist": map[string]any{
-								"tarball": "https://registry.example.com/tarballs/demo-plugin.tar.gz",
+								"tarball":   "https://registry.example.com/tarballs/demo-plugin.tar.gz",
+								"integrity": integrity,
+								"shasum":    shasum,
 							},
 						},
 					},
@@ -828,6 +881,110 @@ func TestInstallAcceptsBareNPMPackageSpec(t *testing.T) {
 	}
 	if result.Manifest.Name != "demo" || result.Install == nil || result.Install.Source != "@clawrise/clawrise-plugin-demo" {
 		t.Fatalf("unexpected bare npm install result: %+v", result)
+	}
+}
+
+func TestInstallRejectsNPMArtifactIntegrityMismatch(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	archivePath := filepath.Join(t.TempDir(), "demo-plugin.tar.gz")
+	if err := writeTestPluginArchive(archivePath); err != nil {
+		t.Fatalf("failed to write plugin archive: %v", err)
+	}
+
+	archiveData, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("failed to read npm test archive: %v", err)
+	}
+
+	previousClient := pluginDownloadHTTPClient
+	pluginDownloadHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			switch request.URL.String() {
+			case "https://registry.example.com/@clawrise%2Fclawrise-plugin-demo":
+				payload, err := json.Marshal(map[string]any{
+					"dist-tags": map[string]any{
+						"latest": "0.2.0",
+					},
+					"versions": map[string]any{
+						"0.2.0": map[string]any{
+							"dist": map[string]any{
+								"tarball":   "https://registry.example.com/tarballs/demo-plugin.tar.gz",
+								"integrity": "sha512-invalid",
+								"shasum":    buildTestSHA1Hex(archiveData),
+							},
+						},
+					},
+				})
+				if err != nil {
+					t.Fatalf("failed to encode npm metadata payload: %v", err)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(payload))),
+				}, nil
+			case "https://registry.example.com/tarballs/demo-plugin.tar.gz":
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/gzip"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(archiveData))),
+				}, nil
+			default:
+				t.Fatalf("unexpected npm test url: %s", request.URL.String())
+				return nil, nil
+			}
+		}),
+	}
+	defer func() {
+		pluginDownloadHTTPClient = previousClient
+	}()
+
+	previousRegistryURL := npmRegistryBaseURL
+	npmRegistryBaseURL = "https://registry.example.com"
+	defer func() {
+		npmRegistryBaseURL = previousRegistryURL
+	}()
+
+	_, err = Install("npm://@clawrise/clawrise-plugin-demo")
+	if err == nil {
+		t.Fatal("expected npm install to reject mismatched artifact integrity")
+	}
+	if !strings.Contains(err.Error(), "integrity") {
+		t.Fatalf("expected integrity error, got: %v", err)
+	}
+}
+
+func TestValidateFinalRemoteDownloadTargetRejectsRedirectedHostOutsideAllowlist(t *testing.T) {
+	err := validateFinalRemoteDownloadTarget(
+		"https://plugins.example.com/demo-plugin.tar.gz",
+		"https://cdn.example.com/demo-plugin.tar.gz",
+		InstallOptions{AllowedHosts: []string{"plugins.example.com"}},
+	)
+	if err == nil {
+		t.Fatal("expected redirected download target to be rejected")
+	}
+	if !strings.Contains(err.Error(), "source host") {
+		t.Fatalf("expected redirected host trust error, got: %v", err)
+	}
+}
+
+func TestValidateFinalRemoteDownloadTargetRejectsHTTPSDowngrade(t *testing.T) {
+	err := validateFinalRemoteDownloadTarget(
+		"https://plugins.example.com/demo-plugin.tar.gz",
+		"http://plugins.example.com/demo-plugin.tar.gz",
+		InstallOptions{},
+	)
+	if err == nil {
+		t.Fatal("expected https redirect downgrade to be rejected")
+	}
+	if !strings.Contains(err.Error(), "insecure scheme") {
+		t.Fatalf("expected scheme downgrade error, got: %v", err)
 	}
 }
 
@@ -1002,4 +1159,14 @@ func writeTestPluginSourceDir(path string, name string, version string, extraFie
 		return err
 	}
 	return os.WriteFile(filepath.Join(path, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755)
+}
+
+func buildTestSRI(data []byte) string {
+	sum := sha512.Sum512(data)
+	return "sha512-" + base64.StdEncoding.EncodeToString(sum[:])
+}
+
+func buildTestSHA1Hex(data []byte) string {
+	sum := sha1.Sum(data)
+	return hex.EncodeToString(sum[:])
 }
