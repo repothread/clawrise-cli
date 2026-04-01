@@ -27,6 +27,7 @@ const (
 type runtimeGovernance struct {
 	paths runtimePaths
 	store governanceStore
+	sinks []auditSink
 	retry retryPolicy
 	now   func() time.Time
 }
@@ -98,6 +99,7 @@ type auditRecord struct {
 	Error         *ErrorBody        `json:"error,omitempty"`
 	Meta          Meta              `json:"meta"`
 	Idempotency   *IdempotencyState `json:"idempotency,omitempty"`
+	Warnings      []string          `json:"warnings,omitempty"`
 }
 
 type fileGovernanceStore struct {
@@ -117,6 +119,7 @@ func newRuntimeGovernance(configPath string, cfg *config.Config, now func() time
 	return &runtimeGovernance{
 		paths: paths,
 		store: openGovernanceStore(paths, binding, enabledPlugins),
+		sinks: openAuditSinks(cfg),
 		retry: resolveRetryPolicy(cfg.Runtime),
 		now:   now,
 	}
@@ -277,7 +280,7 @@ func (g *runtimeGovernance) validateIdempotencyConflict(state *IdempotencyState,
 	return nil
 }
 
-func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) error {
+func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) []string {
 	record := auditRecord{
 		Time:          g.now().UTC().Format(time.RFC3339),
 		RequestID:     envelope.RequestID,
@@ -289,8 +292,15 @@ func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) 
 		Error:         redactError(envelope.Error),
 		Meta:          envelope.Meta,
 		Idempotency:   cloneIdempotencyState(envelope.Idempotency),
+		Warnings:      append([]string(nil), envelope.Warnings...),
 	}
-	return g.store.AppendAuditRecord(g.now().UTC().Format("2006-01-02"), record)
+
+	warnings := make([]string, 0)
+	if err := g.store.AppendAuditRecord(g.now().UTC().Format("2006-01-02"), record); err != nil {
+		warnings = append(warnings, "写入治理审计记录失败: "+err.Error())
+	}
+	warnings = append(warnings, g.emitAuditSinks(record)...)
+	return warnings
 }
 
 func (g *runtimeGovernance) shouldRetry(definition adapter.Definition, appErr *apperr.AppError, retryCount int) bool {
@@ -584,6 +594,7 @@ func convertAuditRecordToPlugin(record auditRecord) pluginruntime.GovernanceAudi
 		Error:         convertGovernanceErrorToPlugin(record.Error),
 		Meta:          convertGovernanceMetaToPlugin(record.Meta),
 		Idempotency:   convertGovernanceIdempotencyStateToPlugin(record.Idempotency),
+		Warnings:      append([]string(nil), record.Warnings...),
 	}
 }
 

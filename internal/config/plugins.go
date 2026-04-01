@@ -138,13 +138,115 @@ func ResolveAuthLauncherPreferences(cfg *Config, actionType string) []string {
 	if actionType == "" || cfg.Plugins.Bindings.AuthLaunchers == nil {
 		return nil
 	}
-	values := cfg.Plugins.Bindings.AuthLaunchers[actionType]
+	for key, values := range cfg.Plugins.Bindings.AuthLaunchers {
+		if strings.TrimSpace(key) != actionType {
+			continue
+		}
+		return normalizeStringList(values)
+	}
+	return nil
+}
+
+// ResolveAllAuthLauncherPreferences returns the normalized launcher preference map.
+func ResolveAllAuthLauncherPreferences(cfg *Config) map[string][]string {
+	if cfg == nil || len(cfg.Plugins.Bindings.AuthLaunchers) == 0 {
+		return nil
+	}
+
+	items := make(map[string][]string, len(cfg.Plugins.Bindings.AuthLaunchers))
+	for actionType, values := range cfg.Plugins.Bindings.AuthLaunchers {
+		actionType = strings.TrimSpace(actionType)
+		if actionType == "" {
+			continue
+		}
+		preferences := normalizeStringList(values)
+		if len(preferences) == 0 {
+			continue
+		}
+		items[actionType] = preferences
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return items
+}
+
+// SetAuthLauncherPreference puts the target launcher at the head of one action-type preference list.
+func SetAuthLauncherPreference(cfg *Config, actionType string, launcherID string) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	actionType = strings.TrimSpace(actionType)
+	launcherID = strings.TrimSpace(launcherID)
+	if actionType == "" || launcherID == "" {
+		return nil
+	}
+
+	cfg.Ensure()
+	current := ResolveAuthLauncherPreferences(cfg, actionType)
+	next := make([]string, 0, len(current)+1)
+	next = append(next, launcherID)
+	for _, item := range current {
+		if item == launcherID {
+			continue
+		}
+		next = append(next, item)
+	}
+	cfg.Plugins.Bindings.AuthLaunchers[actionType] = next
+	return append([]string(nil), next...)
+}
+
+// UnsetAuthLauncherPreference removes one launcher or one whole action-type preference group.
+func UnsetAuthLauncherPreference(cfg *Config, actionType string, launcherID string) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	actionType = strings.TrimSpace(actionType)
+	launcherID = strings.TrimSpace(launcherID)
+	if actionType == "" {
+		return nil
+	}
+
+	cfg.Ensure()
+	if launcherID == "" {
+		delete(cfg.Plugins.Bindings.AuthLaunchers, actionType)
+		return nil
+	}
+
+	current := ResolveAuthLauncherPreferences(cfg, actionType)
+	next := make([]string, 0, len(current))
+	for _, item := range current {
+		if item == launcherID {
+			continue
+		}
+		next = append(next, item)
+	}
+	if len(next) == 0 {
+		delete(cfg.Plugins.Bindings.AuthLaunchers, actionType)
+		return nil
+	}
+	cfg.Plugins.Bindings.AuthLaunchers[actionType] = next
+	return append([]string(nil), next...)
+}
+
+func normalizeStringList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
 	items := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			continue
 		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
 		items = append(items, value)
 	}
 	return items

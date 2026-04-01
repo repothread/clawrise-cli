@@ -3,6 +3,7 @@ package plugin
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,14 +25,19 @@ var npmRegistryBaseURL = "https://registry.npmjs.org"
 
 // InstalledPlugin describes one installed plugin package.
 type InstalledPlugin struct {
-	Name           string                  `json:"name"`
-	Version        string                  `json:"version"`
-	Kind           string                  `json:"kind"`
-	Platforms      []string                `json:"platforms"`
-	StorageBackend *StorageBackendManifest `json:"storage_backend,omitempty"`
-	Capabilities   []CapabilityDescriptor  `json:"capabilities,omitempty"`
-	RootDir        string                  `json:"root_dir"`
-	Install        *InstallMetadata        `json:"install,omitempty"`
+	Name                    string                  `json:"name"`
+	Version                 string                  `json:"version"`
+	Kind                    string                  `json:"kind"`
+	Platforms               []string                `json:"platforms"`
+	StorageBackend          *StorageBackendManifest `json:"storage_backend,omitempty"`
+	Capabilities            []CapabilityDescriptor  `json:"capabilities,omitempty"`
+	Enabled                 bool                    `json:"enabled"`
+	EnableRule              string                  `json:"enable_rule,omitempty"`
+	Selected                bool                    `json:"selected"`
+	SelectionReason         string                  `json:"selection_reason,omitempty"`
+	MatchedProviderBindings []string                `json:"matched_provider_bindings,omitempty"`
+	RootDir                 string                  `json:"root_dir"`
+	Install                 *InstallMetadata        `json:"install,omitempty"`
 }
 
 // InstallResult describes one plugin installation result.
@@ -58,9 +64,17 @@ type InstallMetadata struct {
 
 // PluginInfo describes one installed plugin with full manifest and install metadata.
 type PluginInfo struct {
-	Manifest Manifest         `json:"manifest"`
-	Path     string           `json:"path"`
-	Install  *InstallMetadata `json:"install,omitempty"`
+	Manifest                Manifest               `json:"manifest"`
+	Capabilities            []CapabilityDescriptor `json:"capabilities,omitempty"`
+	RuntimeCapabilities     []CapabilityDescriptor `json:"runtime_capabilities,omitempty"`
+	Warnings                []string               `json:"warnings,omitempty"`
+	Enabled                 bool                   `json:"enabled"`
+	EnableRule              string                 `json:"enable_rule,omitempty"`
+	Selected                bool                   `json:"selected"`
+	SelectionReason         string                 `json:"selection_reason,omitempty"`
+	MatchedProviderBindings []string               `json:"matched_provider_bindings,omitempty"`
+	Path                    string                 `json:"path"`
+	Install                 *InstallMetadata       `json:"install,omitempty"`
 }
 
 // Install installs one plugin from any supported source.
@@ -132,6 +146,11 @@ func InstallLocal(source string) (InstallResult, error) {
 
 // ListInstalled returns all installed plugins under the default plugins root.
 func ListInstalled() ([]InstalledPlugin, error) {
+	return ListInstalledWithOptions(DiscoveryOptions{})
+}
+
+// ListInstalledWithOptions returns all installed plugins with the current discovery selection state.
+func ListInstalledWithOptions(options DiscoveryOptions) ([]InstalledPlugin, error) {
 	root, err := pluginsRootDir()
 	if err != nil {
 		return nil, err
@@ -148,16 +167,7 @@ func ListInstalled() ([]InstalledPlugin, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, InstalledPlugin{
-			Name:           manifest.Name,
-			Version:        manifest.Version,
-			Kind:           manifest.Kind,
-			Platforms:      append([]string(nil), manifest.Platforms...),
-			StorageBackend: cloneStorageBackendManifest(manifest.StorageBackend),
-			Capabilities:   cloneCapabilityList(manifest.CapabilityList()),
-			RootDir:        manifest.RootDir,
-			Install:        metadata,
-		})
+		items = append(items, buildInstalledPlugin(manifest, metadata, options))
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Name == items[j].Name {
@@ -170,6 +180,11 @@ func ListInstalled() ([]InstalledPlugin, error) {
 
 // InfoInstalled returns one installed plugin with manifest and install metadata.
 func InfoInstalled(name, version string) (PluginInfo, error) {
+	return InfoInstalledWithOptions(name, version, DiscoveryOptions{})
+}
+
+// InfoInstalledWithOptions returns one installed plugin with install metadata and current selection state.
+func InfoInstalledWithOptions(name, version string, options DiscoveryOptions) (PluginInfo, error) {
 	root, err := pluginsRootDir()
 	if err != nil {
 		return PluginInfo{}, err
@@ -190,11 +205,25 @@ func InfoInstalled(name, version string) (PluginInfo, error) {
 	if err != nil {
 		return PluginInfo{}, err
 	}
-	return PluginInfo{
-		Manifest: manifest,
-		Path:     targetDir,
-		Install:  metadata,
-	}, nil
+
+	selectionState := resolveManifestSelectionState(manifest, options)
+	info := PluginInfo{
+		Manifest:                manifest,
+		Capabilities:            cloneCapabilityList(manifest.CapabilityList()),
+		Enabled:                 selectionState.Enabled,
+		EnableRule:              selectionState.EnableRule,
+		Selected:                selectionState.Selected,
+		SelectionReason:         selectionState.SelectionReason,
+		MatchedProviderBindings: matchedProviderBindingPlatforms(manifest, options.ProviderBindings),
+		Path:                    targetDir,
+		Install:                 metadata,
+	}
+
+	capabilityInspection := inspectRuntimeCapabilities(context.Background(), manifest)
+	info.RuntimeCapabilities = capabilityInspection.RuntimeCapabilities
+	info.Warnings = append(info.Warnings, capabilityInspection.Warnings...)
+
+	return info, nil
 }
 
 // RemoveInstalled removes one installed plugin version.
@@ -274,6 +303,25 @@ func cloneStorageBackendManifest(manifest *StorageBackendManifest) *StorageBacke
 	}
 	cloned := *manifest
 	return &cloned
+}
+
+func buildInstalledPlugin(manifest Manifest, metadata *InstallMetadata, options DiscoveryOptions) InstalledPlugin {
+	selectionState := resolveManifestSelectionState(manifest, options)
+	return InstalledPlugin{
+		Name:                    manifest.Name,
+		Version:                 manifest.Version,
+		Kind:                    manifest.Kind,
+		Platforms:               append([]string(nil), manifest.Platforms...),
+		StorageBackend:          cloneStorageBackendManifest(manifest.StorageBackend),
+		Capabilities:            cloneCapabilityList(manifest.CapabilityList()),
+		Enabled:                 selectionState.Enabled,
+		EnableRule:              selectionState.EnableRule,
+		Selected:                selectionState.Selected,
+		SelectionReason:         selectionState.SelectionReason,
+		MatchedProviderBindings: matchedProviderBindingPlatforms(manifest, options.ProviderBindings),
+		RootDir:                 manifest.RootDir,
+		Install:                 metadata,
+	}
 }
 
 func materializeFileSource(source, tempDir string) (string, string, error) {

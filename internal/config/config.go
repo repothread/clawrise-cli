@@ -104,6 +104,7 @@ type legacyAuthConfig struct {
 type RuntimeConfig struct {
 	Retry      RetryConfig      `yaml:"retry,omitempty"`
 	Governance GovernanceConfig `yaml:"governance,omitempty"`
+	Policy     PolicyConfig     `yaml:"policy,omitempty"`
 }
 
 // RetryConfig describes automatic retry settings.
@@ -117,6 +118,13 @@ type RetryConfig struct {
 type GovernanceConfig struct {
 	Backend string `yaml:"backend,omitempty"`
 	Plugin  string `yaml:"plugin,omitempty"`
+}
+
+// PolicyConfig 描述本地策略链的基础规则。
+type PolicyConfig struct {
+	DenyOperations            []string          `yaml:"deny_operations,omitempty"`
+	RequireApprovalOperations []string          `yaml:"require_approval_operations,omitempty"`
+	AnnotateOperations        map[string]string `yaml:"annotate_operations,omitempty"`
 }
 
 // New returns an empty config.

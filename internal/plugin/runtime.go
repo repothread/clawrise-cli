@@ -336,13 +336,7 @@ func (m *Manager) LaunchAuth(ctx context.Context, params AuthLaunchParams) (Auth
 		}, nil
 	}
 
-	candidates := make([]authLauncherRegistration, 0)
-	for _, launcher := range m.authLaunchers {
-		if !launcherSupportsAction(launcher.descriptor, params.Context.Platform, params.Action.Type) {
-			continue
-		}
-		candidates = append(candidates, launcher)
-	}
+	candidates := m.matchingAuthLaunchers(params.Action.Type, params.Context.Platform)
 	if len(candidates) == 0 {
 		return AuthLaunchResult{
 			Handled: false,
@@ -351,18 +345,7 @@ func (m *Manager) LaunchAuth(ctx context.Context, params AuthLaunchParams) (Auth
 		}, nil
 	}
 
-	sort.SliceStable(candidates, func(i, j int) bool {
-		actionType := strings.TrimSpace(params.Action.Type)
-		leftRank := m.launcherPreferenceRank(actionType, candidates[i])
-		rightRank := m.launcherPreferenceRank(actionType, candidates[j])
-		if leftRank != rightRank {
-			return leftRank < rightRank
-		}
-		if candidates[i].descriptor.Priority == candidates[j].descriptor.Priority {
-			return candidates[i].order < candidates[j].order
-		}
-		return candidates[i].descriptor.Priority > candidates[j].descriptor.Priority
-	})
+	m.sortAuthLaunchers(params.Action.Type, candidates)
 
 	var launchErr error
 	for _, launcher := range candidates {
@@ -395,6 +378,22 @@ func (m *Manager) LaunchAuth(ctx context.Context, params AuthLaunchParams) (Auth
 		Status:  "launcher_failed",
 		Message: launchErr.Error(),
 	}, launchErr
+}
+
+// RankAuthLaunchersForAction returns the resolved launcher order for one action type.
+func (m *Manager) RankAuthLaunchersForAction(actionType string) []AuthLauncherDescriptor {
+	candidates := m.matchingAuthLaunchers(actionType, "")
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	m.sortAuthLaunchers(actionType, candidates)
+
+	items := make([]AuthLauncherDescriptor, 0, len(candidates))
+	for _, launcher := range candidates {
+		items = append(items, launcher.descriptor)
+	}
+	return items
 }
 
 // NewDiscoveredManager creates a manager backed by discovered provider plugins
@@ -442,6 +441,35 @@ func launcherSupportsAction(descriptor AuthLauncherDescriptor, platform string, 
 		return false
 	}
 	return true
+}
+
+func (m *Manager) matchingAuthLaunchers(actionType string, platform string) []authLauncherRegistration {
+	if m == nil || len(m.authLaunchers) == 0 {
+		return nil
+	}
+
+	candidates := make([]authLauncherRegistration, 0)
+	for _, launcher := range m.authLaunchers {
+		if !launcherSupportsAction(launcher.descriptor, platform, actionType) {
+			continue
+		}
+		candidates = append(candidates, launcher)
+	}
+	return candidates
+}
+
+func (m *Manager) sortAuthLaunchers(actionType string, candidates []authLauncherRegistration) {
+	sort.SliceStable(candidates, func(i, j int) bool {
+		leftRank := m.launcherPreferenceRank(actionType, candidates[i])
+		rightRank := m.launcherPreferenceRank(actionType, candidates[j])
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if candidates[i].descriptor.Priority == candidates[j].descriptor.Priority {
+			return candidates[i].order < candidates[j].order
+		}
+		return candidates[i].descriptor.Priority > candidates[j].descriptor.Priority
+	})
 }
 
 func stringSliceContainsTrimmed(values []string, target string) bool {

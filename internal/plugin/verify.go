@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ type VerifyResult struct {
 	Version               string                 `json:"version"`
 	Kind                  string                 `json:"kind,omitempty"`
 	Capabilities          []CapabilityDescriptor `json:"capabilities,omitempty"`
+	RuntimeCapabilities   []CapabilityDescriptor `json:"runtime_capabilities,omitempty"`
 	Path                  string                 `json:"path"`
 	Source                string                 `json:"source,omitempty"`
 	ExpectedChecksumSHA   string                 `json:"expected_checksum_sha256,omitempty"`
@@ -24,6 +26,7 @@ type VerifyResult struct {
 	CoreVersionChecked    bool                   `json:"core_version_checked"`
 	CoreVersionCompatible bool                   `json:"core_version_compatible"`
 	Verified              bool                   `json:"verified"`
+	Warnings              []string               `json:"warnings,omitempty"`
 	Issues                []string               `json:"issues,omitempty"`
 }
 
@@ -74,6 +77,10 @@ func VerifyInstalled(name, version, coreVersion string) (VerifyResult, error) {
 			result.Issues = append(result.Issues, "plugin min_core_version is newer than current core version")
 		}
 	}
+
+	capabilityInspection := inspectRuntimeCapabilities(context.Background(), info.Manifest)
+	result.RuntimeCapabilities = capabilityInspection.RuntimeCapabilities
+	result.Warnings = append(result.Warnings, capabilityInspection.Warnings...)
 
 	result.Verified = len(result.Issues) == 0
 	return result, nil

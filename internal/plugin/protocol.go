@@ -526,6 +526,7 @@ type GovernanceAuditRecord struct {
 	Error         *GovernanceErrorBody        `json:"error,omitempty"`
 	Meta          GovernanceMeta              `json:"meta"`
 	Idempotency   *GovernanceIdempotencyState `json:"idempotency,omitempty"`
+	Warnings      []string                    `json:"warnings,omitempty"`
 }
 
 // GovernanceIdempotencyLoadParams 描述幂等记录读取请求。
@@ -547,5 +548,42 @@ type GovernanceIdempotencySaveParams struct {
 // GovernanceAuditAppendParams 描述审计记录追加请求。
 type GovernanceAuditAppendParams struct {
 	Day    string                `json:"day"`
+	Record GovernanceAuditRecord `json:"record"`
+}
+
+// PolicyEvaluationContext 描述策略判断所需的执行上下文。
+type PolicyEvaluationContext struct {
+	AccountName string `json:"account_name,omitempty"`
+	Platform    string `json:"platform,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	AuthMethod  string `json:"auth_method,omitempty"`
+}
+
+// PolicyEvaluationRequest 描述一次待评估的执行请求。
+type PolicyEvaluationRequest struct {
+	RequestID string                  `json:"request_id"`
+	Operation string                  `json:"operation"`
+	DryRun    bool                    `json:"dry_run"`
+	Mutating  bool                    `json:"mutating"`
+	Input     map[string]any          `json:"input,omitempty"`
+	Context   PolicyEvaluationContext `json:"context"`
+}
+
+// PolicyEvaluateParams 描述策略评估请求。
+type PolicyEvaluateParams struct {
+	PolicyID string                  `json:"policy_id,omitempty"`
+	Request  PolicyEvaluationRequest `json:"request"`
+}
+
+// PolicyEvaluateResult 描述策略评估结果。
+type PolicyEvaluateResult struct {
+	Decision    string         `json:"decision"`
+	Message     string         `json:"message,omitempty"`
+	Annotations map[string]any `json:"annotations,omitempty"`
+}
+
+// AuditEmitParams 描述审计事件投递请求。
+type AuditEmitParams struct {
+	SinkID string                `json:"sink_id,omitempty"`
 	Record GovernanceAuditRecord `json:"record"`
 }

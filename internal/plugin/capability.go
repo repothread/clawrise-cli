@@ -23,6 +23,10 @@ const (
 	CapabilityTypeAuthLauncher = "auth_launcher"
 	// CapabilityTypeStorageBackend 表示 storage backend 能力。
 	CapabilityTypeStorageBackend = "storage_backend"
+	// CapabilityTypePolicy 表示执行前策略判断能力。
+	CapabilityTypePolicy = "policy"
+	// CapabilityTypeAuditSink 表示审计事件扇出能力。
+	CapabilityTypeAuditSink = "audit_sink"
 )
 
 // CapabilityDescriptor 描述一个插件暴露的单个 capability。
@@ -58,6 +62,10 @@ func (c CapabilityDescriptor) Validate() error {
 		if err := descriptor.Validate(); err != nil {
 			return err
 		}
+	case CapabilityTypePolicy:
+		// policy 可选按平台过滤；其余细节交给运行时方法定义。
+	case CapabilityTypeAuditSink:
+		// audit sink 当前只需要 capability 标识即可。
 	default:
 		return fmt.Errorf("unsupported capability type: %s", capabilityType)
 	}

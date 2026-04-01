@@ -27,6 +27,7 @@ type Envelope struct {
 	Error       *ErrorBody        `json:"error"`
 	Meta        Meta              `json:"meta"`
 	Idempotency *IdempotencyState `json:"idempotency,omitempty"`
+	Warnings    []string          `json:"warnings,omitempty"`
 }
 
 // Context describes the resolved execution context for the current command.

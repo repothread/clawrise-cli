@@ -184,6 +184,77 @@ func TestInstallStorageBackendPlugin(t *testing.T) {
 	}
 }
 
+func TestListAndInfoInstalledWithOptionsExposeSelectionAndRuntimeCapabilities(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo-provider",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"provider","platforms":["demo"]}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(sourceDir, "bin", "demo-plugin"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write plugin binary: %v", err)
+	}
+
+	if _, err := InstallLocal(sourceDir); err != nil {
+		t.Fatalf("InstallLocal returned error: %v", err)
+	}
+
+	options := DiscoveryOptions{
+		ProviderBindings: map[string]string{
+			"demo": "demo-provider",
+		},
+	}
+
+	items, err := ListInstalledWithOptions(options)
+	if err != nil {
+		t.Fatalf("ListInstalledWithOptions returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("unexpected installed plugins: %+v", items)
+	}
+	if !items[0].Selected || len(items[0].MatchedProviderBindings) != 1 || items[0].MatchedProviderBindings[0] != "demo" {
+		t.Fatalf("expected provider binding hit, got: %+v", items[0])
+	}
+
+	info, err := InfoInstalledWithOptions("demo-provider", "0.1.0", options)
+	if err != nil {
+		t.Fatalf("InfoInstalledWithOptions returned error: %v", err)
+	}
+	if len(info.RuntimeCapabilities) != 1 || info.RuntimeCapabilities[0].Type != CapabilityTypeProvider {
+		t.Fatalf("unexpected runtime capabilities: %+v", info)
+	}
+	if len(info.MatchedProviderBindings) != 1 || info.MatchedProviderBindings[0] != "demo" {
+		t.Fatalf("unexpected provider binding hits: %+v", info.MatchedProviderBindings)
+	}
+	if len(info.Warnings) != 0 {
+		t.Fatalf("expected no runtime capability warnings, got: %+v", info.Warnings)
+	}
+}
+
 func TestInstallNPMSupport(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)

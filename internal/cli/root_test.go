@@ -173,6 +173,12 @@ func TestRunConfigInitSelectsMachinePresetByDefault(t *testing.T) {
 	if cfg.Auth.SecretStore.Backend != "encrypted_file" {
 		t.Fatalf("unexpected default secret backend: %+v", cfg.Auth.SecretStore)
 	}
+	if cfg.Plugins.Bindings.Storage.SecretStore.Backend != "encrypted_file" || cfg.Plugins.Bindings.Storage.SecretStore.Plugin != "builtin" {
+		t.Fatalf("expected secret store binding to use new plugins model, got: %+v", cfg.Plugins.Bindings.Storage.SecretStore)
+	}
+	if cfg.Plugins.Bindings.Storage.SessionStore.Backend != "file" || cfg.Plugins.Bindings.Storage.SessionStore.Plugin != "builtin" {
+		t.Fatalf("expected session store binding to use new plugins model, got: %+v", cfg.Plugins.Bindings.Storage.SessionStore)
+	}
 	if cfg.Defaults.Account != "notion_integration_default" || cfg.Defaults.Platform != "notion" {
 		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
 	}
@@ -246,6 +252,9 @@ func TestRunConfigSecretStoreUseUpdatesBackend(t *testing.T) {
 	}
 	if cfg.Auth.SecretStore.Backend != "keychain" {
 		t.Fatalf("unexpected secret backend: %+v", cfg.Auth.SecretStore)
+	}
+	if cfg.Plugins.Bindings.Storage.SecretStore.Backend != "keychain" || cfg.Plugins.Bindings.Storage.SecretStore.Plugin != "builtin" {
+		t.Fatalf("expected plugins storage binding to be updated, got: %+v", cfg.Plugins.Bindings.Storage.SecretStore)
 	}
 	if cfg.Auth.SecretStore.FallbackBackend != "" {
 		t.Fatalf("unexpected fallback backend: %+v", cfg.Auth.SecretStore)
@@ -391,6 +400,91 @@ func TestRunConfigProviderUnsetRemovesBinding(t *testing.T) {
 	}
 	if _, exists := updatedCfg.Plugins.Bindings.Providers["demo"]; exists {
 		t.Fatalf("expected provider binding to be removed, got: %+v", updatedCfg.Plugins.Bindings.Providers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"unset": true`)) {
+		t.Fatalf("expected unset marker in output, got: %s", stdout.String())
+	}
+}
+
+func TestRunConfigAuthLauncherPreferUpdatesPreference(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	manager := newTestPluginManagerWithManagerOptions(t, []pluginruntime.AuthLauncherRuntime{
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "browser",
+				DisplayName: "Browser",
+				ActionTypes: []string{"open_url"},
+			},
+		},
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "device",
+				DisplayName: "Device",
+				ActionTypes: []string{"open_url"},
+			},
+		},
+	}, map[string][]string{
+		"open_url": {"browser"},
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "auth-launcher", "prefer", "open_url", "device"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: manager,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	preferences := cfg.Plugins.Bindings.AuthLaunchers["open_url"]
+	if len(preferences) != 1 || preferences[0] != "device" {
+		t.Fatalf("unexpected auth launcher preferences: %+v", cfg.Plugins.Bindings.AuthLaunchers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"launcher_id": "device"`)) {
+		t.Fatalf("expected output to include launcher id, got: %s", stdout.String())
+	}
+}
+
+func TestRunConfigAuthLauncherUnsetRemovesLauncherPreference(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Bindings.AuthLaunchers["open_url"] = []string{"browser", "device"}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "auth-launcher", "unset", "open_url", "browser"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	updatedCfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	preferences := updatedCfg.Plugins.Bindings.AuthLaunchers["open_url"]
+	if len(preferences) != 1 || preferences[0] != "device" {
+		t.Fatalf("unexpected auth launcher preferences after unset: %+v", updatedCfg.Plugins.Bindings.AuthLaunchers)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"unset": true`)) {
 		t.Fatalf("expected unset marker in output, got: %s", stdout.String())
@@ -1530,7 +1624,7 @@ accounts:
 			AuthProvider: provider,
 		},
 	)
-	manager := newTestPluginManagerWithOptions(t, feishuClient, nil, []pluginruntime.AuthLauncherRuntime{launcher}, []pluginruntime.Runtime{deviceRuntime})
+	manager := newTestPluginManagerWithOptions(t, feishuClient, nil, []pluginruntime.AuthLauncherRuntime{launcher}, []pluginruntime.Runtime{deviceRuntime}, nil)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -1798,6 +1892,91 @@ func TestRunDoctor(t *testing.T) {
 	}
 }
 
+func TestRunDoctorShowsResolvedAuthLauncherPreferences(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Defaults.Account = "demo_account"
+	cfg.Accounts["demo_account"] = config.Account{
+		Platform: "notion",
+		Subject:  "integration",
+		Auth: config.AccountAuth{
+			Method:     "notion.internal_token",
+			SecretRefs: map[string]string{"token": "secret://demo_account/token"},
+		},
+	}
+	cfg.Plugins.Bindings.AuthLaunchers["open_url"] = []string{"device"}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	manager := newTestPluginManagerWithManagerOptions(t, []pluginruntime.AuthLauncherRuntime{
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "browser",
+				DisplayName: "Browser",
+				ActionTypes: []string{"open_url"},
+				Priority:    100,
+			},
+		},
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "device",
+				DisplayName: "Device",
+				ActionTypes: []string{"open_url"},
+				Priority:    1,
+			},
+		},
+	}, map[string][]string{
+		"open_url": {"device"},
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: manager,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &payload); decodeErr != nil {
+		t.Fatalf("failed to decode doctor output: %v", decodeErr)
+	}
+
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected doctor payload: %+v", payload)
+	}
+	runtimeData, ok := data["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected runtime payload: %+v", data)
+	}
+	preferences, ok := runtimeData["auth_launcher_preferences"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected auth launcher preferences in doctor output, got: %+v", runtimeData)
+	}
+	openURL, ok := preferences["open_url"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected open_url preference summary, got: %+v", preferences)
+	}
+	resolved, ok := openURL["resolved"].([]any)
+	if !ok || len(resolved) < 2 {
+		t.Fatalf("expected resolved launcher order, got: %+v", openURL)
+	}
+	first, ok := resolved[0].(map[string]any)
+	if !ok || first["id"] != "device" {
+		t.Fatalf("expected configured launcher to be resolved first, got: %+v", resolved)
+	}
+}
+
 func TestRunDoctorReportsDisabledPluginBinding(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	pluginRoot := t.TempDir()
@@ -1910,7 +2089,7 @@ func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithOptions(t, feishuClient, nil, nil, nil)
+	return newTestPluginManagerWithOptions(t, feishuClient, nil, nil, nil, nil)
 }
 
 func newTestPluginManagerWithNotionClient(t *testing.T, factory func(sessionStore authcache.Store) (*notionadapter.Client, error)) *pluginruntime.Manager {
@@ -1920,20 +2099,24 @@ func newTestPluginManagerWithNotionClient(t *testing.T, factory func(sessionStor
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithOptions(t, feishuClient, factory, nil, nil)
+	return newTestPluginManagerWithOptions(t, feishuClient, factory, nil, nil, nil)
 }
 
 func newTestPluginManagerWithLaunchers(t *testing.T, launchers []pluginruntime.AuthLauncherRuntime) *pluginruntime.Manager {
+	return newTestPluginManagerWithManagerOptions(t, launchers, nil)
+}
+
+func newTestPluginManagerWithManagerOptions(t *testing.T, launchers []pluginruntime.AuthLauncherRuntime, preferences map[string][]string) *pluginruntime.Manager {
 	t.Helper()
 
 	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithOptions(t, feishuClient, nil, launchers, nil)
+	return newTestPluginManagerWithOptions(t, feishuClient, nil, launchers, nil, preferences)
 }
 
-func newTestPluginManagerWithOptions(t *testing.T, feishuClient *feishuadapter.Client, notionFactory func(sessionStore authcache.Store) (*notionadapter.Client, error), launchers []pluginruntime.AuthLauncherRuntime, extraRuntimes []pluginruntime.Runtime) *pluginruntime.Manager {
+func newTestPluginManagerWithOptions(t *testing.T, feishuClient *feishuadapter.Client, notionFactory func(sessionStore authcache.Store) (*notionadapter.Client, error), launchers []pluginruntime.AuthLauncherRuntime, extraRuntimes []pluginruntime.Runtime, preferences map[string][]string) *pluginruntime.Manager {
 	t.Helper()
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
@@ -1961,7 +2144,8 @@ func newTestPluginManagerWithOptions(t *testing.T, feishuClient *feishuadapter.C
 	runtimes = append(runtimes, extraRuntimes...)
 
 	manager, err := pluginruntime.NewManagerWithOptions(context.Background(), runtimes, pluginruntime.ManagerOptions{
-		AuthLaunchers: launchers,
+		AuthLaunchers:           launchers,
+		AuthLauncherPreferences: preferences,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct test plugin manager: %v", err)

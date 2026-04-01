@@ -59,6 +59,65 @@ done
 	}
 }
 
+func TestProcessRuntimeListCapabilities(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "demo-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"provider","platforms":["demo"]},{"type":"storage_backend","target":"session_store","backend":"plugin.demo_session"}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write demo plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "provider",
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessRuntime(manifest)
+
+	capabilities, err := runtime.ListCapabilities(context.Background())
+	if err != nil {
+		t.Fatalf("ListCapabilities returned error: %v", err)
+	}
+	if len(capabilities) != 2 {
+		t.Fatalf("unexpected capabilities: %+v", capabilities)
+	}
+	if capabilities[0].Type != CapabilityTypeProvider || capabilities[1].Target != "session_store" {
+		t.Fatalf("unexpected capability payload: %+v", capabilities)
+	}
+}
+
 func TestProcessRuntimeListCatalogExecuteAndHealth(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "demo")
@@ -220,6 +279,128 @@ done
 	}
 	if !result.Handled || result.LauncherID != "launcher" {
 		t.Fatalf("unexpected launch result: %+v", result)
+	}
+}
+
+func TestProcessPolicyEvaluate(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "policy")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "policy-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.policy.evaluate"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"命中策略审计注释"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "policy-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 80
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessPolicy(manifest, manifest.CapabilitiesByType(CapabilityTypePolicy)[0])
+
+	result, err := runtime.Evaluate(context.Background(), PolicyEvaluateParams{
+		Request: PolicyEvaluationRequest{
+			RequestID: "req_demo",
+			Operation: "demo.page.update",
+			Mutating:  true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if result.Decision != "annotate" || result.Message != "命中策略审计注释" {
+		t.Fatalf("unexpected policy result: %+v", result)
+	}
+}
+
+func TestProcessAuditSinkEmit(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "audit-sink")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "audit-sink-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.audit.emit"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write audit sink plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "audit-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./audit-sink-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessAuditSink(manifest, manifest.CapabilitiesByType(CapabilityTypeAuditSink)[0])
+
+	if err := runtime.Emit(context.Background(), AuditEmitParams{
+		Record: GovernanceAuditRecord{
+			RequestID: "req_demo",
+			Operation: "demo.page.update",
+			OK:        true,
+		},
+	}); err != nil {
+		t.Fatalf("Emit returned error: %v", err)
 	}
 }
 

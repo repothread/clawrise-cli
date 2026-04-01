@@ -56,6 +56,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	requestID := buildRequestID(startAt)
 	governance := newRuntimeGovernance(e.store.Path(), config.New(), e.now)
 	var input map[string]any
+	var warnings []string
 
 	cfg, err := e.store.Load()
 	if err != nil {
@@ -118,7 +119,6 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("account %s with subject %s is not allowed to call %s", accountName, account.Subject, canonicalOperation)), ExecutionProfile{}), input), nil
 	}
 
-	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
 	executionProfile := ExecutionProfile{
 		Name:       accountName,
 		Account:    accountName,
@@ -126,6 +126,13 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		Subject:    account.Subject,
 		AuthMethod: strings.TrimSpace(account.Auth.Method),
 	}
+	policyWarnings, policyErr := e.evaluatePolicies(ctx, cfg, definition, requestID, canonicalOperation, input, executionProfile, opts.DryRun)
+	warnings = append(warnings, policyWarnings...)
+	if policyErr != nil {
+		return e.auditEnvelope(governance, withWarnings(e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, policyErr, executionProfile), warnings), input), nil
+	}
+
+	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
 
 	if opts.DryRun {
 		data := map[string]any{
@@ -144,7 +151,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		if idempotency != nil {
 			idempotency.Status = "dry_run"
 		}
-		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, 0, nil, executionProfile), input), nil
+		return e.auditEnvelope(governance, withWarnings(e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, 0, nil, executionProfile), warnings), input), nil
 	}
 
 	timeout := definition.DefaultTimeout
@@ -207,7 +214,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		}
 	}
 
-	envelope := e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, retryCount, appErr, executionProfile)
+	envelope := withWarnings(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, retryCount, appErr, executionProfile), warnings)
 	if idempotencyRecord != nil {
 		if err := governance.finishIdempotency(idempotency, idempotencyRecord, envelope); err != nil {
 			idempotency.Persisted = false
@@ -278,7 +285,15 @@ func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelop
 	if governance == nil || envelope.Meta.DryRun {
 		return envelope
 	}
-	_ = governance.writeAudit(envelope, input)
+	envelope.Warnings = append(envelope.Warnings, governance.writeAudit(envelope, input)...)
+	return envelope
+}
+
+func withWarnings(envelope Envelope, warnings []string) Envelope {
+	if len(warnings) == 0 {
+		return envelope
+	}
+	envelope.Warnings = append([]string(nil), warnings...)
 	return envelope
 }
 

@@ -29,6 +29,8 @@ func runConfig(args []string, store *config.Store, stdout io.Writer, manager *pl
 		return runConfigSecretStore(args[1:], store, stdout)
 	case "provider":
 		return runConfigProvider(args[1:], store, stdout)
+	case "auth-launcher":
+		return runConfigAuthLauncher(args[1:], store, stdout, manager)
 	default:
 		return fmt.Errorf("unknown config command: %s", args[0])
 	}
@@ -113,6 +115,8 @@ func printConfigHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "       clawrise config secret-store use <backend> [--fallback-backend <backend>]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config provider use <platform> <plugin>")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config provider unset <platform>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config auth-launcher prefer <action_type> <launcher_id>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config auth-launcher unset <action_type> [launcher_id]")
 }
 
 func runConfigSecretStore(args []string, store *config.Store, stdout io.Writer) error {
@@ -157,6 +161,7 @@ func runConfigSecretStoreUse(args []string, store *config.Store, stdout io.Write
 	}
 
 	cfg.Auth.SecretStore.Backend = backend
+	cfg.Auth.SecretStore.Plugin = "builtin"
 	if backend == "auto" {
 		fallbackBackend = strings.TrimSpace(fallbackBackend)
 		if fallbackBackend == "" {
@@ -165,6 +170,12 @@ func runConfigSecretStoreUse(args []string, store *config.Store, stdout io.Write
 		cfg.Auth.SecretStore.FallbackBackend = fallbackBackend
 	} else {
 		cfg.Auth.SecretStore.FallbackBackend = ""
+	}
+	cfg.Ensure()
+	cfg.Plugins.Bindings.Storage.SecretStore = config.StoragePluginBinding{
+		Backend:         cfg.Auth.SecretStore.Backend,
+		Plugin:          "builtin",
+		FallbackBackend: cfg.Auth.SecretStore.FallbackBackend,
 	}
 
 	if err := store.Save(cfg); err != nil {
@@ -310,6 +321,116 @@ func printConfigProviderHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "       clawrise config provider unset <platform>")
 }
 
+func runConfigAuthLauncher(args []string, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printConfigAuthLauncherHelp(stdout)
+		return nil
+	}
+
+	switch strings.TrimSpace(args[0]) {
+	case "prefer":
+		return runConfigAuthLauncherPrefer(args[1:], store, stdout, manager)
+	case "unset":
+		return runConfigAuthLauncherUnset(args[1:], store, stdout)
+	default:
+		return fmt.Errorf("unknown config auth-launcher command: %s", args[0])
+	}
+}
+
+func runConfigAuthLauncherPrefer(args []string, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: clawrise config auth-launcher prefer <action_type> <launcher_id>")
+	}
+	if manager == nil {
+		return fmt.Errorf("plugin manager is required for config auth-launcher prefer")
+	}
+
+	actionType := strings.TrimSpace(args[0])
+	launcherID := strings.TrimSpace(args[1])
+	if actionType == "" || launcherID == "" {
+		return fmt.Errorf("action_type and launcher_id must not be empty")
+	}
+
+	launchers := manager.AuthLaunchers()
+	available := make([]string, 0)
+	matched := false
+	for _, launcher := range launchers {
+		if !launcherSupportsConfiguredAction(launcher, actionType) {
+			continue
+		}
+		available = append(available, launcher.ID)
+		if launcher.ID == launcherID {
+			matched = true
+		}
+	}
+	if !matched {
+		if len(available) == 0 {
+			return fmt.Errorf("no auth launcher currently supports action %s", actionType)
+		}
+		sort.Strings(available)
+		return fmt.Errorf("auth launcher %s does not support action %s; available launchers: %s", launcherID, actionType, strings.Join(available, ", "))
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	preferences := config.SetAuthLauncherPreference(cfg, actionType, launcherID)
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"action_type": actionType,
+			"launcher_id": launcherID,
+			"preferences": preferences,
+		},
+	})
+}
+
+func runConfigAuthLauncherUnset(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 1 && len(args) != 2 {
+		return fmt.Errorf("usage: clawrise config auth-launcher unset <action_type> [launcher_id]")
+	}
+
+	actionType := strings.TrimSpace(args[0])
+	launcherID := ""
+	if len(args) == 2 {
+		launcherID = strings.TrimSpace(args[1])
+	}
+	if actionType == "" {
+		return fmt.Errorf("action_type must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	preferences := config.UnsetAuthLauncherPreference(cfg, actionType, launcherID)
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"action_type": actionType,
+			"launcher_id": launcherID,
+			"preferences": preferences,
+			"unset":       true,
+		},
+	})
+}
+
+func printConfigAuthLauncherHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config auth-launcher prefer <action_type> <launcher_id>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config auth-launcher unset <action_type> [launcher_id]")
+}
+
 type initConfigOptions struct {
 	Platform string
 	PresetID string
@@ -382,10 +503,22 @@ func buildInitConfigFromMetadata(ctx context.Context, manager *pluginruntime.Man
 	cfg.Defaults.Account = accountName
 	cfg.Defaults.PlatformAccounts[account.Platform] = accountName
 	applyBootstrapDefaults(cfg)
+	if runtime, ok := manager.RuntimeForPlatform(account.Platform); ok {
+		if manifestRuntime, ok := runtime.(interface{ Manifest() pluginruntime.Manifest }); ok {
+			manifest := manifestRuntime.Manifest()
+			if strings.TrimSpace(manifest.Name) != "" {
+				cfg.Plugins.Bindings.Providers[account.Platform] = config.ProviderPluginBinding{
+					Plugin: manifest.Name,
+				}
+			}
+		}
+	}
 	cfg.Accounts[accountName] = account
 
 	secretFields := append([]string(nil), preset.SecretFields...)
 	sort.Strings(secretFields)
+	secretBinding := config.ResolveStorageBinding(cfg, "secret_store")
+	sessionBinding := config.ResolveStorageBinding(cfg, "session_store")
 	return initConfigResult{
 		Config:         cfg,
 		AccountName:    accountName,
@@ -393,8 +526,8 @@ func buildInitConfigFromMetadata(ctx context.Context, manager *pluginruntime.Man
 		Subject:        account.Subject,
 		Method:         account.Auth.Method,
 		SecretFields:   secretFields,
-		SessionBackend: cfg.Auth.SessionStore.Backend,
-		SecretBackend:  cfg.Auth.SecretStore.Backend,
+		SessionBackend: sessionBinding.Backend,
+		SecretBackend:  secretBinding.Backend,
 	}, nil
 }
 
@@ -407,6 +540,24 @@ func applyBootstrapDefaults(cfg *config.Config) {
 	if strings.TrimSpace(cfg.Auth.SessionStore.Backend) == "" {
 		cfg.Auth.SessionStore.Backend = "file"
 	}
+	if strings.TrimSpace(cfg.Auth.AuthFlowStore.Backend) == "" {
+		cfg.Auth.AuthFlowStore.Backend = "file"
+	}
+	if strings.TrimSpace(cfg.Runtime.Governance.Backend) == "" {
+		cfg.Runtime.Governance.Backend = "file"
+	}
+	if !cfg.Plugins.Bindings.Storage.SecretStore.HasValue() {
+		cfg.Plugins.Bindings.Storage.SecretStore = bootstrapStorageBinding(cfg.Auth.SecretStore.Backend, cfg.Auth.SecretStore.Plugin, cfg.Auth.SecretStore.FallbackBackend)
+	}
+	if !cfg.Plugins.Bindings.Storage.SessionStore.HasValue() {
+		cfg.Plugins.Bindings.Storage.SessionStore = bootstrapStorageBinding(cfg.Auth.SessionStore.Backend, cfg.Auth.SessionStore.Plugin, "")
+	}
+	if !cfg.Plugins.Bindings.Storage.AuthFlowStore.HasValue() {
+		cfg.Plugins.Bindings.Storage.AuthFlowStore = bootstrapStorageBinding(cfg.Auth.AuthFlowStore.Backend, cfg.Auth.AuthFlowStore.Plugin, "")
+	}
+	if !cfg.Plugins.Bindings.Storage.Governance.HasValue() {
+		cfg.Plugins.Bindings.Storage.Governance = bootstrapStorageBinding(cfg.Runtime.Governance.Backend, cfg.Runtime.Governance.Plugin, "")
+	}
 	if cfg.Runtime.Retry.MaxAttempts == 0 {
 		cfg.Runtime.Retry.MaxAttempts = 1
 	}
@@ -415,6 +566,20 @@ func applyBootstrapDefaults(cfg *config.Config) {
 	}
 	if cfg.Runtime.Retry.MaxDelayMS == 0 {
 		cfg.Runtime.Retry.MaxDelayMS = 1000
+	}
+}
+
+func bootstrapStorageBinding(backend string, plugin string, fallbackBackend string) config.StoragePluginBinding {
+	backend = strings.TrimSpace(backend)
+	plugin = strings.TrimSpace(plugin)
+	fallbackBackend = strings.TrimSpace(fallbackBackend)
+	if plugin == "" && backend != "" {
+		plugin = "builtin"
+	}
+	return config.StoragePluginBinding{
+		Backend:         backend,
+		Plugin:          plugin,
+		FallbackBackend: fallbackBackend,
 	}
 }
 
@@ -533,4 +698,20 @@ func normalizeInitScopes(scopes []string) []string {
 		items = append(items, value)
 	}
 	return items
+}
+
+func launcherSupportsConfiguredAction(launcher pluginruntime.AuthLauncherDescriptor, actionType string) bool {
+	actionType = strings.TrimSpace(actionType)
+	if actionType == "" {
+		return false
+	}
+	if len(launcher.ActionTypes) == 0 {
+		return true
+	}
+	for _, item := range launcher.ActionTypes {
+		if strings.TrimSpace(item) == actionType {
+			return true
+		}
+	}
+	return false
 }

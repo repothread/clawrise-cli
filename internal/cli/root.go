@@ -76,7 +76,7 @@ func Run(args []string, deps Dependencies) error {
 		}
 		return runDoctor(store, deps.Stdout, manager)
 	case "plugin":
-		return runPlugin(args[1:], deps.Stdout, deps.Version)
+		return runPlugin(args[1:], store, deps.Stdout, deps.Version)
 	case "spec":
 		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
@@ -173,19 +173,10 @@ func buildPluginDiscoveryOptions(cfg *config.Config) pluginruntime.DiscoveryOpti
 		providerBindings[platform] = pluginName
 	}
 
-	authLauncherPreferences := make(map[string][]string)
-	for actionType, values := range cfg.Plugins.Bindings.AuthLaunchers {
-		actionType = strings.TrimSpace(actionType)
-		if actionType == "" {
-			continue
-		}
-		authLauncherPreferences[actionType] = append([]string(nil), values...)
-	}
-
 	return pluginruntime.DiscoveryOptions{
 		EnabledPlugins:          enabledPlugins,
 		ProviderBindings:        providerBindings,
-		AuthLauncherPreferences: authLauncherPreferences,
+		AuthLauncherPreferences: config.ResolveAllAuthLauncherPreferences(cfg),
 	}
 }
 
@@ -442,6 +433,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	}
 
 	providerBindings := discoveryOptions.ProviderBindings
+	providerConflicts, selectedProviders := summarizeProviderCandidates(providerCandidates, providerBindings)
 	if providerErr := pluginruntime.ValidateProviderBindingsWithEnabledRules(discoveredManifests, providerBindings, discoveryOptions.EnabledPlugins); providerErr != nil {
 		checks = append(checks, map[string]any{
 			"code":    "PROVIDER_BINDING_INVALID",
@@ -585,6 +577,8 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 		"enabled_plugins":            discoveryOptions.EnabledPlugins,
 		"provider_bindings":          providerBindings,
 		"provider_candidates":        providerCandidates,
+		"provider_conflicts":         providerConflicts,
+		"selected_providers":         selectedProviders,
 		"storage": map[string]any{
 			"root_dir":        runtimeRootDir,
 			"idempotency_dir": filepath.Join(runtimeRootDir, "idempotency"),
@@ -605,6 +599,8 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	if manager != nil {
 		runtimeSummary["registered_operation_count"] = len(manager.Registry().Definitions())
 		runtimeSummary["catalog_entry_count"] = len(manager.CatalogEntries())
+		runtimeSummary["auth_launchers"] = manager.AuthLaunchers()
+		runtimeSummary["auth_launcher_preferences"] = summarizeAuthLauncherPreferences(cfg, manager)
 	}
 
 	playbookValidation := map[string]any{
@@ -678,7 +674,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")
 	_, _ = fmt.Fprintln(w, "  clawrise secret [put|delete]")
-	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store]")
+	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store|provider|auth-launcher]")
 	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise docs generate [path] [--out-dir <dir>]")
@@ -694,6 +690,140 @@ func printPlatformHelp(stdout io.Writer) {
 
 func printSubjectHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise subject [use|current|unset|list]")
+}
+
+type providerConflictView struct {
+	Platform string   `json:"platform"`
+	Plugins  []string `json:"plugins"`
+	Binding  string   `json:"binding,omitempty"`
+	Resolved bool     `json:"resolved"`
+}
+
+type selectedProviderView struct {
+	Platform string `json:"platform"`
+	Plugin   string `json:"plugin"`
+	Source   string `json:"source"`
+}
+
+type authLauncherPreferenceView struct {
+	Configured []string                               `json:"configured,omitempty"`
+	Resolved   []pluginruntime.AuthLauncherDescriptor `json:"resolved,omitempty"`
+}
+
+func summarizeProviderCandidates(candidates []pluginruntime.ProviderCandidate, bindings map[string]string) ([]providerConflictView, []selectedProviderView) {
+	grouped := make(map[string][]string)
+	for _, candidate := range candidates {
+		platform := strings.TrimSpace(candidate.Platform)
+		pluginName := strings.TrimSpace(candidate.Plugin)
+		if platform == "" || pluginName == "" {
+			continue
+		}
+		grouped[platform] = append(grouped[platform], pluginName)
+	}
+
+	platforms := make([]string, 0, len(grouped))
+	for platform := range grouped {
+		platforms = append(platforms, platform)
+	}
+	sort.Strings(platforms)
+
+	conflicts := make([]providerConflictView, 0)
+	selected := make([]selectedProviderView, 0, len(platforms))
+	for _, platform := range platforms {
+		plugins := uniqueSortedStrings(grouped[platform])
+		binding := strings.TrimSpace(bindings[platform])
+		if len(plugins) > 1 {
+			conflicts = append(conflicts, providerConflictView{
+				Platform: platform,
+				Plugins:  plugins,
+				Binding:  binding,
+				Resolved: binding != "",
+			})
+		}
+
+		switch {
+		case binding != "":
+			selected = append(selected, selectedProviderView{
+				Platform: platform,
+				Plugin:   binding,
+				Source:   "binding",
+			})
+		case len(plugins) == 1:
+			selected = append(selected, selectedProviderView{
+				Platform: platform,
+				Plugin:   plugins[0],
+				Source:   "single_candidate",
+			})
+		}
+	}
+
+	return conflicts, selected
+}
+
+func summarizeAuthLauncherPreferences(cfg *config.Config, manager *pluginruntime.Manager) map[string]authLauncherPreferenceView {
+	if cfg == nil {
+		cfg = config.New()
+	}
+
+	actionSet := make(map[string]struct{})
+	for actionType := range config.ResolveAllAuthLauncherPreferences(cfg) {
+		actionSet[actionType] = struct{}{}
+	}
+	if manager != nil {
+		for _, launcher := range manager.AuthLaunchers() {
+			for _, actionType := range launcher.ActionTypes {
+				actionType = strings.TrimSpace(actionType)
+				if actionType == "" {
+					continue
+				}
+				actionSet[actionType] = struct{}{}
+			}
+		}
+	}
+
+	if len(actionSet) == 0 {
+		return nil
+	}
+
+	actionTypes := make([]string, 0, len(actionSet))
+	for actionType := range actionSet {
+		actionTypes = append(actionTypes, actionType)
+	}
+	sort.Strings(actionTypes)
+
+	items := make(map[string]authLauncherPreferenceView, len(actionTypes))
+	for _, actionType := range actionTypes {
+		view := authLauncherPreferenceView{
+			Configured: config.ResolveAuthLauncherPreferences(cfg, actionType),
+		}
+		if manager != nil {
+			view.Resolved = manager.RankAuthLaunchersForAction(actionType)
+		}
+		items[actionType] = view
+	}
+	return items
+}
+
+func uniqueSortedStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+	sort.Strings(items)
+	return items
 }
 
 // isHelpToken keeps help-token detection consistent across subcommands.

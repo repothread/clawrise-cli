@@ -40,6 +40,11 @@ func (r *ProcessRuntime) Name() string {
 	return r.manifest.Name
 }
 
+// Manifest 返回当前进程运行时对应的 manifest。
+func (r *ProcessRuntime) Manifest() Manifest {
+	return r.manifest
+}
+
 func (r *ProcessRuntime) Handshake(ctx context.Context) (HandshakeResult, error) {
 	var result HandshakeResult
 	if err := r.call(ctx, "clawrise.handshake", HandshakeParams{
@@ -52,6 +57,15 @@ func (r *ProcessRuntime) Handshake(ctx context.Context) (HandshakeResult, error)
 		return HandshakeResult{}, err
 	}
 	return result, nil
+}
+
+// ListCapabilities returns the capability list declared by the plugin process.
+func (r *ProcessRuntime) ListCapabilities(ctx context.Context) ([]CapabilityDescriptor, error) {
+	var result CapabilityListResult
+	if err := r.call(ctx, "clawrise.capabilities.list", map[string]any{}, &result); err != nil {
+		return nil, err
+	}
+	return cloneCapabilityList(result.Capabilities), nil
 }
 
 func (r *ProcessRuntime) ListOperations(ctx context.Context) ([]adapter.Definition, error) {

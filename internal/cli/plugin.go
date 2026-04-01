@@ -5,22 +5,33 @@ import (
 	"io"
 	"strings"
 
+	"github.com/clawrise/clawrise-cli/internal/config"
 	"github.com/clawrise/clawrise-cli/internal/output"
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
-func runPlugin(args []string, stdout io.Writer, coreVersion string) error {
+func runPlugin(args []string, store *config.Store, stdout io.Writer, coreVersion string) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
 		printPluginHelp(stdout)
 		return nil
 	}
+
+	cfg := config.New()
+	if store != nil {
+		loaded, err := store.Load()
+		if err != nil {
+			return err
+		}
+		cfg = loaded
+	}
+	discoveryOptions := buildPluginDiscoveryOptions(cfg)
 
 	switch args[0] {
 	case "list":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: clawrise plugin list")
 		}
-		items, err := pluginruntime.ListInstalled()
+		items, err := pluginruntime.ListInstalledWithOptions(discoveryOptions)
 		if err != nil {
 			return err
 		}
@@ -43,7 +54,7 @@ func runPlugin(args []string, stdout io.Writer, coreVersion string) error {
 		if len(args) != 3 {
 			return fmt.Errorf("usage: clawrise plugin info <name> <version>")
 		}
-		result, err := pluginruntime.InfoInstalled(args[1], args[2])
+		result, err := pluginruntime.InfoInstalledWithOptions(args[1], args[2], discoveryOptions)
 		if err != nil {
 			return err
 		}

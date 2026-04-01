@@ -19,29 +19,32 @@ type DiscoveryRootInspection struct {
 
 // DiscoveredPluginInspection 描述一个被发现 plugin 的详细状态。
 type DiscoveredPluginInspection struct {
-	RootPath        string                  `json:"root_path"`
-	ManifestPath    string                  `json:"manifest_path"`
-	Name            string                  `json:"name,omitempty"`
-	Version         string                  `json:"version,omitempty"`
-	Kind            string                  `json:"kind,omitempty"`
-	Platforms       []string                `json:"platforms,omitempty"`
-	StorageBackend  *StorageBackendManifest `json:"storage_backend,omitempty"`
-	Capabilities    []CapabilityDescriptor  `json:"capabilities,omitempty"`
-	Path            string                  `json:"path,omitempty"`
-	Command         []string                `json:"command,omitempty"`
-	CommandPath     string                  `json:"command_path,omitempty"`
-	CommandExists   bool                    `json:"command_exists"`
-	Enabled         bool                    `json:"enabled"`
-	EnableRule      string                  `json:"enable_rule,omitempty"`
-	Selected        bool                    `json:"selected"`
-	SelectionReason string                  `json:"selection_reason,omitempty"`
-	Install         *InstallMetadata        `json:"install,omitempty"`
-	Handshake       *HandshakeResult        `json:"handshake,omitempty"`
-	OperationCount  int                     `json:"operation_count"`
-	CatalogCount    int                     `json:"catalog_count"`
-	Health          *HealthResult           `json:"health,omitempty"`
-	Healthy         bool                    `json:"healthy"`
-	InspectionError string                  `json:"inspection_error,omitempty"`
+	RootPath                string                  `json:"root_path"`
+	ManifestPath            string                  `json:"manifest_path"`
+	Name                    string                  `json:"name,omitempty"`
+	Version                 string                  `json:"version,omitempty"`
+	Kind                    string                  `json:"kind,omitempty"`
+	Platforms               []string                `json:"platforms,omitempty"`
+	StorageBackend          *StorageBackendManifest `json:"storage_backend,omitempty"`
+	Capabilities            []CapabilityDescriptor  `json:"capabilities,omitempty"`
+	Path                    string                  `json:"path,omitempty"`
+	Command                 []string                `json:"command,omitempty"`
+	CommandPath             string                  `json:"command_path,omitempty"`
+	CommandExists           bool                    `json:"command_exists"`
+	Enabled                 bool                    `json:"enabled"`
+	EnableRule              string                  `json:"enable_rule,omitempty"`
+	Selected                bool                    `json:"selected"`
+	SelectionReason         string                  `json:"selection_reason,omitempty"`
+	MatchedProviderBindings []string                `json:"matched_provider_bindings,omitempty"`
+	Install                 *InstallMetadata        `json:"install,omitempty"`
+	Handshake               *HandshakeResult        `json:"handshake,omitempty"`
+	RuntimeCapabilities     []CapabilityDescriptor  `json:"runtime_capabilities,omitempty"`
+	OperationCount          int                     `json:"operation_count"`
+	CatalogCount            int                     `json:"catalog_count"`
+	Health                  *HealthResult           `json:"health,omitempty"`
+	Healthy                 bool                    `json:"healthy"`
+	InspectionWarnings      []string                `json:"inspection_warnings,omitempty"`
+	InspectionError         string                  `json:"inspection_error,omitempty"`
 }
 
 // DiscoveryInspection 汇总当前环境下可发现 plugin 的状态。
@@ -151,6 +154,7 @@ func inspectManifest(ctx context.Context, root, manifestPath string, options Dis
 	item.EnableRule = selectionState.EnableRule
 	item.Selected = selectionState.Selected
 	item.SelectionReason = selectionState.SelectionReason
+	item.MatchedProviderBindings = matchedProviderBindingPlatforms(manifest, options.ProviderBindings)
 	if _, err := os.Stat(item.CommandPath); err == nil {
 		item.CommandExists = true
 	} else if !os.IsNotExist(err) {
@@ -178,6 +182,13 @@ func inspectManifest(ctx context.Context, root, manifestPath string, options Dis
 		return item
 	}
 	item.Handshake = &handshake
+
+	capabilityInspection := inspectRuntimeCapabilities(ctx, manifest)
+	item.RuntimeCapabilities = capabilityInspection.RuntimeCapabilities
+	item.InspectionWarnings = append(item.InspectionWarnings, capabilityInspection.Warnings...)
+	if len(item.RuntimeCapabilities) > 0 && (len(manifest.CapabilitiesByType(CapabilityTypePolicy)) > 0 || len(manifest.CapabilitiesByType(CapabilityTypeAuditSink)) > 0) {
+		item.Healthy = true
+	}
 
 	if manifest.SupportsKind(ManifestKindProvider) {
 		operations, err := runtime.ListOperations(ctx)
