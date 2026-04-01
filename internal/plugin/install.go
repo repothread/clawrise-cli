@@ -29,6 +29,7 @@ type InstalledPlugin struct {
 	Kind           string                  `json:"kind"`
 	Platforms      []string                `json:"platforms"`
 	StorageBackend *StorageBackendManifest `json:"storage_backend,omitempty"`
+	Capabilities   []CapabilityDescriptor  `json:"capabilities,omitempty"`
 	RootDir        string                  `json:"root_dir"`
 	Install        *InstallMetadata        `json:"install,omitempty"`
 }
@@ -153,6 +154,7 @@ func ListInstalled() ([]InstalledPlugin, error) {
 			Kind:           manifest.Kind,
 			Platforms:      append([]string(nil), manifest.Platforms...),
 			StorageBackend: cloneStorageBackendManifest(manifest.StorageBackend),
+			Capabilities:   cloneCapabilityList(manifest.CapabilityList()),
 			RootDir:        manifest.RootDir,
 			Install:        metadata,
 		})

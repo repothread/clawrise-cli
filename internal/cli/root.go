@@ -60,7 +60,7 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runAccount(args[1:], store, deps.Stdout, manager)
 	case "subject":
@@ -72,20 +72,20 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runDoctor(store, deps.Stdout, manager)
 	case "plugin":
 		return runPlugin(args[1:], deps.Stdout, deps.Version)
 	case "spec":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runSpec(args[1:], deps.Stdout, metadataService.Spec())
 	case "docs":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
@@ -96,7 +96,7 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runAuth(args[1:], store, deps.Stdout, manager)
 	case "secret":
@@ -110,25 +110,25 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runConfig(args[1:], store, deps.Stdout, manager)
 	case "completion":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runCompletion(args[1:], deps.Stdout, metadataService.Spec())
 	case "batch":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
 		executor := runtime.NewExecutorWithManager(store, manager)
 		return runBatch(args[1:], deps.Stdout, deps.Stderr, executor)
 	default:
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
@@ -137,15 +137,46 @@ func Run(args []string, deps Dependencies) error {
 	}
 }
 
-func resolvePluginManager(deps Dependencies) (*pluginruntime.Manager, error) {
+func resolvePluginManager(deps Dependencies, store *config.Store) (*pluginruntime.Manager, error) {
 	if deps.PluginManager != nil {
 		return deps.PluginManager, nil
 	}
-	return newDefaultPluginManager()
+	return newDefaultPluginManager(store)
 }
 
-func newDefaultPluginManager() (*pluginruntime.Manager, error) {
-	return pluginruntime.NewDiscoveredManager(context.Background())
+func newDefaultPluginManager(store *config.Store) (*pluginruntime.Manager, error) {
+	cfg := config.New()
+	if store != nil {
+		loaded, err := store.Load()
+		if err != nil {
+			return nil, err
+		}
+		cfg = loaded
+	}
+
+	providerBindings := make(map[string]string)
+	for platform, binding := range cfg.Plugins.Bindings.Providers {
+		platform = strings.TrimSpace(platform)
+		pluginName := strings.TrimSpace(binding.Plugin)
+		if platform == "" || pluginName == "" {
+			continue
+		}
+		providerBindings[platform] = pluginName
+	}
+
+	authLauncherPreferences := make(map[string][]string)
+	for actionType, values := range cfg.Plugins.Bindings.AuthLaunchers {
+		actionType = strings.TrimSpace(actionType)
+		if actionType == "" {
+			continue
+		}
+		authLauncherPreferences[actionType] = append([]string(nil), values...)
+	}
+
+	return pluginruntime.NewDiscoveredManagerWithOptions(context.Background(), pluginruntime.DiscoveryOptions{
+		ProviderBindings:        providerBindings,
+		AuthLauncherPreferences: authLauncherPreferences,
+	})
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
@@ -373,6 +404,10 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	if err != nil {
 		return err
 	}
+	providerCandidates, err := pluginruntime.DiscoverProviderCandidates()
+	if err != nil {
+		return err
+	}
 
 	cfg.Ensure()
 	checks := make([]map[string]any, 0)
@@ -385,6 +420,24 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"message": "no discoverable plugins were found in the active plugin roots",
 		})
 		nextSteps = append(nextSteps, "run `clawrise plugin install <source>` to install at least one provider plugin")
+	}
+
+	providerBindings := make(map[string]string)
+	for platform, binding := range cfg.Plugins.Bindings.Providers {
+		platform = strings.TrimSpace(platform)
+		pluginName := strings.TrimSpace(binding.Plugin)
+		if platform == "" || pluginName == "" {
+			continue
+		}
+		providerBindings[platform] = pluginName
+	}
+	if providerErr := pluginruntime.ValidateProviderBindingsFromCandidates(providerCandidates, providerBindings); providerErr != nil {
+		checks = append(checks, map[string]any{
+			"code":    "PROVIDER_BINDING_INVALID",
+			"status":  "warn",
+			"message": providerErr.Error(),
+		})
+		nextSteps = append(nextSteps, "run `clawrise config provider use <platform> <plugin>` to select the expected provider plugin explicitly")
 	}
 
 	defaultAccountOK := true
@@ -503,10 +556,18 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	runtimeSummary := map[string]any{
 		"registered_operation_count": 0,
 		"catalog_entry_count":        0,
+		"provider_bindings":          providerBindings,
+		"provider_candidates":        providerCandidates,
 		"storage": map[string]any{
 			"root_dir":        runtimeRootDir,
 			"idempotency_dir": filepath.Join(runtimeRootDir, "idempotency"),
 			"audit_dir":       filepath.Join(runtimeRootDir, "audit"),
+			"bindings": map[string]any{
+				"secret_store":   config.ResolveStorageBinding(cfg, "secret_store"),
+				"session_store":  config.ResolveStorageBinding(cfg, "session_store"),
+				"authflow_store": config.ResolveStorageBinding(cfg, "authflow_store"),
+				"governance":     config.ResolveStorageBinding(cfg, "governance"),
+			},
 		},
 		"retry_policy": map[string]any{
 			"max_attempts":  cfg.Runtime.Retry.MaxAttempts,

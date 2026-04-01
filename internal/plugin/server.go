@@ -50,6 +50,19 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 		return callRPC(request, func(ctx context.Context) (any, error) {
 			return runtime.Handshake(ctx)
 		})
+	case "clawrise.capabilities.list":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			handshake, err := runtime.Handshake(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return CapabilityListResult{
+				Capabilities: []CapabilityDescriptor{{
+					Type:      CapabilityTypeProvider,
+					Platforms: append([]string(nil), handshake.Platforms...),
+				}},
+			}, nil
+		})
 	case "clawrise.operations.list":
 		return callRPC(request, func(ctx context.Context) (any, error) {
 			definitions, err := runtime.ListOperations(ctx)

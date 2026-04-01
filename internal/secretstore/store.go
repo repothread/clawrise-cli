@@ -47,6 +47,7 @@ type Options struct {
 	ConfigPath      string
 	Backend         string
 	FallbackBackend string
+	Plugin          string
 }
 
 var storeFactories = map[string]StoreFactory{
@@ -91,15 +92,15 @@ func Open(options Options) (Store, error) {
 
 	backend := normalizeBackendName(options.Backend)
 	if backend == "" || backend == "auto" {
-		return openAutoStore(configPath, stateDir, options.FallbackBackend)
+		return openAutoStore(configPath, stateDir, options.FallbackBackend, options.Plugin)
 	}
-	return openExplicitStore(configPath, stateDir, backend)
+	return openExplicitStore(configPath, stateDir, backend, options.Plugin)
 }
 
-func openAutoStore(configPath string, stateDir string, fallback string) (Store, error) {
+func openAutoStore(configPath string, stateDir string, fallback string, plugin string) (Store, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		store, err := openNamedStore(configPath, stateDir, "keychain")
+		store, err := openNamedStore(configPath, stateDir, "keychain", plugin)
 		if err == nil {
 			status := store.Status()
 			if status.Supported && status.Readable && status.Writable {
@@ -107,7 +108,7 @@ func openAutoStore(configPath string, stateDir string, fallback string) (Store, 
 			}
 		}
 	case "linux":
-		store, err := openNamedStore(configPath, stateDir, "secret_service")
+		store, err := openNamedStore(configPath, stateDir, "secret_service", plugin)
 		if err == nil {
 			status := store.Status()
 			if status.Supported && status.Readable && status.Writable {
@@ -115,18 +116,18 @@ func openAutoStore(configPath string, stateDir string, fallback string) (Store, 
 			}
 		}
 	case "windows":
-		return openNamedStore(configPath, stateDir, "windows_dpapi_file")
+		return openNamedStore(configPath, stateDir, "windows_dpapi_file", plugin)
 	}
 
 	backend := normalizeBackendName(fallback)
 	if backend == "" || backend == "auto" {
 		backend = "encrypted_file"
 	}
-	return openExplicitStore(configPath, stateDir, backend)
+	return openExplicitStore(configPath, stateDir, backend, plugin)
 }
 
-func openExplicitStore(configPath string, stateDir string, backend string) (Store, error) {
-	store, err := openNamedStore(configPath, stateDir, backend)
+func openExplicitStore(configPath string, stateDir string, backend string, plugin string) (Store, error) {
+	store, err := openNamedStore(configPath, stateDir, backend, plugin)
 	if err != nil {
 		return nil, err
 	}
@@ -139,12 +140,25 @@ func openExplicitStore(configPath string, stateDir string, backend string) (Stor
 	return store, nil
 }
 
-func openNamedStore(configPath string, stateDir string, backend string) (Store, error) {
-	factory, ok := storeFactories[backend]
-	if ok {
-		return factory(configPath, stateDir)
+func openNamedStore(configPath string, stateDir string, backend string, plugin string) (Store, error) {
+	plugin = strings.TrimSpace(plugin)
+	if plugin == "" || plugin == "builtin" {
+		factory, ok := storeFactories[backend]
+		if ok {
+			return factory(configPath, stateDir)
+		}
+	} else {
+		manifest, found, err := discoverSecretStorePlugin(backend, plugin)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("unsupported secret store backend: %s", backend)
+		}
+		return newPluginSecretStore(manifest), nil
 	}
-	manifest, found, err := discoverSecretStorePlugin(backend)
+
+	manifest, found, err := discoverSecretStorePlugin(backend, plugin)
 	if err != nil {
 		return nil, err
 	}
@@ -168,31 +182,12 @@ func normalizeBackendName(value string) string {
 	}
 }
 
-func discoverSecretStorePlugin(backend string) (pluginruntime.Manifest, bool, error) {
-	roots, err := pluginruntime.DefaultDiscoveryRoots()
-	if err != nil {
-		return pluginruntime.Manifest{}, false, err
-	}
-	manifests, err := pluginruntime.DiscoverManifests(roots)
-	if err != nil {
-		return pluginruntime.Manifest{}, false, err
-	}
-	for _, manifest := range manifests {
-		if strings.TrimSpace(manifest.Kind) != pluginruntime.ManifestKindStorageBackend {
-			continue
-		}
-		if manifest.StorageBackend == nil {
-			continue
-		}
-		if strings.TrimSpace(manifest.StorageBackend.Target) != "secret_store" {
-			continue
-		}
-		if strings.TrimSpace(manifest.StorageBackend.Backend) != backend {
-			continue
-		}
-		return manifest, true, nil
-	}
-	return pluginruntime.Manifest{}, false, nil
+func discoverSecretStorePlugin(backend string, pluginName string) (pluginruntime.Manifest, bool, error) {
+	return pluginruntime.FindStorageBackendManifest(pluginruntime.StorageBackendLookup{
+		Target:  "secret_store",
+		Backend: backend,
+		Plugin:  pluginName,
+	})
 }
 
 type pluginSecretStore struct {
@@ -208,6 +203,9 @@ func newPluginSecretStore(manifest pluginruntime.Manifest) Store {
 func (s *pluginSecretStore) Backend() string {
 	if s == nil || s.client == nil {
 		return ""
+	}
+	if backend := strings.TrimSpace(s.client.Backend()); backend != "" {
+		return backend
 	}
 	descriptor, err := s.client.DescribeStorageBackend(context.Background())
 	if err != nil {

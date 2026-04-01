@@ -8,21 +8,23 @@ import (
 
 // VerifyResult 描述一个已安装 plugin 的校验结果。
 type VerifyResult struct {
-	Name                  string   `json:"name"`
-	Version               string   `json:"version"`
-	Path                  string   `json:"path"`
-	Source                string   `json:"source,omitempty"`
-	ExpectedChecksumSHA   string   `json:"expected_checksum_sha256,omitempty"`
-	ActualChecksumSHA     string   `json:"actual_checksum_sha256,omitempty"`
-	ChecksumMatch         bool     `json:"checksum_match"`
-	ProtocolVersion       int      `json:"protocol_version"`
-	ProtocolCompatible    bool     `json:"protocol_compatible"`
-	MinCoreVersion        string   `json:"min_core_version,omitempty"`
-	CoreVersion           string   `json:"core_version,omitempty"`
-	CoreVersionChecked    bool     `json:"core_version_checked"`
-	CoreVersionCompatible bool     `json:"core_version_compatible"`
-	Verified              bool     `json:"verified"`
-	Issues                []string `json:"issues,omitempty"`
+	Name                  string                 `json:"name"`
+	Version               string                 `json:"version"`
+	Kind                  string                 `json:"kind,omitempty"`
+	Capabilities          []CapabilityDescriptor `json:"capabilities,omitempty"`
+	Path                  string                 `json:"path"`
+	Source                string                 `json:"source,omitempty"`
+	ExpectedChecksumSHA   string                 `json:"expected_checksum_sha256,omitempty"`
+	ActualChecksumSHA     string                 `json:"actual_checksum_sha256,omitempty"`
+	ChecksumMatch         bool                   `json:"checksum_match"`
+	ProtocolVersion       int                    `json:"protocol_version"`
+	ProtocolCompatible    bool                   `json:"protocol_compatible"`
+	MinCoreVersion        string                 `json:"min_core_version,omitempty"`
+	CoreVersion           string                 `json:"core_version,omitempty"`
+	CoreVersionChecked    bool                   `json:"core_version_checked"`
+	CoreVersionCompatible bool                   `json:"core_version_compatible"`
+	Verified              bool                   `json:"verified"`
+	Issues                []string               `json:"issues,omitempty"`
 }
 
 // VerifyInstalled 校验一个已安装 plugin 的内容和兼容性。
@@ -35,6 +37,8 @@ func VerifyInstalled(name, version, coreVersion string) (VerifyResult, error) {
 	result := VerifyResult{
 		Name:               info.Manifest.Name,
 		Version:            info.Manifest.Version,
+		Kind:               info.Manifest.Kind,
+		Capabilities:       cloneCapabilityList(info.Manifest.CapabilityList()),
 		Path:               info.Path,
 		ProtocolVersion:    info.Manifest.ProtocolVersion,
 		ProtocolCompatible: info.Manifest.ProtocolVersion == ProtocolVersion,

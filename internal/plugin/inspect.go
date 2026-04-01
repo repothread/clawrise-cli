@@ -26,6 +26,7 @@ type DiscoveredPluginInspection struct {
 	Kind            string                  `json:"kind,omitempty"`
 	Platforms       []string                `json:"platforms,omitempty"`
 	StorageBackend  *StorageBackendManifest `json:"storage_backend,omitempty"`
+	Capabilities    []CapabilityDescriptor  `json:"capabilities,omitempty"`
 	Path            string                  `json:"path,omitempty"`
 	Command         []string                `json:"command,omitempty"`
 	CommandPath     string                  `json:"command_path,omitempty"`
@@ -133,6 +134,7 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	item.Kind = manifest.Kind
 	item.Platforms = append([]string(nil), manifest.Platforms...)
 	item.StorageBackend = cloneStorageBackendManifest(manifest.StorageBackend)
+	item.Capabilities = cloneCapabilityList(manifest.CapabilityList())
 	item.Command = append([]string(nil), manifest.Entry.Command...)
 	item.CommandPath = manifest.ResolveCommand()[0]
 	if _, err := os.Stat(item.CommandPath); err == nil {
@@ -160,8 +162,7 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	}
 	item.Handshake = &handshake
 
-	switch manifest.Kind {
-	case ManifestKindProvider:
+	if manifest.SupportsKind(ManifestKindProvider) {
 		operations, err := runtime.ListOperations(ctx)
 		if err != nil {
 			item.InspectionError = err.Error()
@@ -183,34 +184,76 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 		}
 		item.Health = &health
 		item.Healthy = health.OK
-	case ManifestKindAuthLauncher:
+	}
+	if manifest.SupportsKind(ManifestKindAuthLauncher) {
 		descriptor, err := runtime.DescribeAuthLauncher(ctx)
 		if err != nil {
 			item.InspectionError = err.Error()
 			return item
 		}
-		item.Healthy = strings.TrimSpace(descriptor.ID) != ""
-	case ManifestKindStorageBackend:
+		item.Healthy = item.Healthy || strings.TrimSpace(descriptor.ID) != ""
+	}
+	if manifest.SupportsKind(ManifestKindStorageBackend) {
+		for index, capability := range manifest.StorageBackendCapabilities() {
+			if index == 0 {
+				item.StorageBackend = &StorageBackendManifest{
+					Target:      capability.Target,
+					Backend:     capability.Backend,
+					DisplayName: capability.DisplayName,
+					Description: capability.Description,
+				}
+			}
+
+			healthy, err := inspectStorageCapability(ctx, manifest, capability)
+			if err != nil {
+				item.InspectionError = err.Error()
+				return item
+			}
+			item.Healthy = item.Healthy || healthy
+		}
+	}
+	return item
+}
+
+func inspectStorageCapability(ctx context.Context, manifest Manifest, capability CapabilityDescriptor) (bool, error) {
+	switch capability.Target {
+	case "secret_store":
 		store := NewProcessSecretStore(manifest)
 		defer func() { _ = store.Close() }()
 
-		descriptor, err := store.DescribeStorageBackend(ctx)
-		if err != nil {
-			item.InspectionError = err.Error()
-			return item
-		}
-		item.StorageBackend = &StorageBackendManifest{
-			Target:      descriptor.Target,
-			Backend:     descriptor.Backend,
-			DisplayName: descriptor.DisplayName,
-			Description: descriptor.Description,
-		}
 		status, err := store.Status(ctx)
 		if err != nil {
-			item.InspectionError = err.Error()
-			return item
+			return false, err
 		}
-		item.Healthy = status.Supported
+		return status.Supported, nil
+	case "session_store":
+		store := NewProcessSessionStore(manifest)
+		defer func() { _ = store.Close() }()
+
+		status, err := store.Status(ctx)
+		if err != nil {
+			return false, err
+		}
+		return status.Supported, nil
+	case "authflow_store":
+		store := NewProcessAuthFlowStore(manifest)
+		defer func() { _ = store.Close() }()
+
+		status, err := store.Status(ctx)
+		if err != nil {
+			return false, err
+		}
+		return status.Supported, nil
+	case "governance":
+		store := NewProcessGovernanceStore(manifest)
+		defer func() { _ = store.Close() }()
+
+		status, err := store.Status(ctx)
+		if err != nil {
+			return false, err
+		}
+		return status.Supported, nil
+	default:
+		return false, fmt.Errorf("unsupported storage backend target: %s", strings.TrimSpace(capability.Target))
 	}
-	return item
 }

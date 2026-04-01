@@ -48,6 +48,24 @@ func handleAuthLauncherRPCRequest(runtime AuthLauncherRuntime, request RPCReques
 		return callRPC(request, func(ctx context.Context) (any, error) {
 			return runtime.Handshake(ctx)
 		})
+	case "clawrise.capabilities.list":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			descriptor, err := runtime.DescribeAuthLauncher(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return CapabilityListResult{
+				Capabilities: []CapabilityDescriptor{{
+					Type:        CapabilityTypeAuthLauncher,
+					ID:          descriptor.ID,
+					Platforms:   append([]string(nil), descriptor.Platforms...),
+					ActionTypes: append([]string(nil), descriptor.ActionTypes...),
+					DisplayName: descriptor.DisplayName,
+					Description: descriptor.Description,
+					Priority:    descriptor.Priority,
+				}},
+			}, nil
+		})
 	case "clawrise.auth.launcher.describe":
 		return callRPC(request, func(ctx context.Context) (any, error) {
 			descriptor, err := runtime.DescribeAuthLauncher(ctx)

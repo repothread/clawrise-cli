@@ -330,3 +330,297 @@ done
 		t.Fatalf("Delete returned error: %v", err)
 	}
 }
+
+func TestProcessSessionStoreStatusLoadSaveAndDelete(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "session-store")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "session-store-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"session-demo","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.status"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"status":{"backend":"plugin.demo_session","supported":true,"readable":true,"writable":true,"secure":true}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.load"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"found":true,"session":{"account_name":"demo_account","platform":"demo","subject":"user","grant_type":"oauth_user","access_token":"demo-access-token"}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.save"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.delete"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write storage backend plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "session-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "storage_backend",
+      "target": "session_store",
+      "backend": "plugin.demo_session"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./session-store-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write storage backend manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	store := NewProcessSessionStore(manifest)
+	defer func() {
+		_ = store.Close()
+	}()
+
+	status, err := store.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !status.Supported || status.Backend != "plugin.demo_session" {
+		t.Fatalf("unexpected session store status: %+v", status)
+	}
+
+	loadResult, err := store.Load(context.Background(), SessionStoreLoadParams{
+		AccountName: "demo_account",
+	})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !loadResult.Found || loadResult.Session == nil || loadResult.Session.AccessToken != "demo-access-token" {
+		t.Fatalf("unexpected session load result: %+v", loadResult)
+	}
+
+	if err := store.Save(context.Background(), SessionStoreSaveParams{
+		Session: *loadResult.Session,
+	}); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	if err := store.Delete(context.Background(), SessionStoreDeleteParams{
+		AccountName: "demo_account",
+	}); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+}
+
+func TestProcessAuthFlowStoreStatusLoadSaveAndDelete(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "authflow-store")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "authflow-store-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"authflow-demo","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.status"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"status":{"backend":"plugin.demo_authflow","supported":true,"readable":true,"writable":true,"secure":true}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.load"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"found":true,"flow":{"id":"flow_demo","account_name":"demo_account","platform":"demo","method":"oauth_user","mode":"local_browser","state":"pending","created_at":"2026-03-28T10:00:00Z","updated_at":"2026-03-28T10:00:00Z","expires_at":"2026-03-28T10:10:00Z"}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.save"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.delete"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write storage backend plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "authflow-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "storage_backend",
+      "target": "authflow_store",
+      "backend": "plugin.demo_authflow"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./authflow-store-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write storage backend manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	store := NewProcessAuthFlowStore(manifest)
+	defer func() {
+		_ = store.Close()
+	}()
+
+	status, err := store.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !status.Supported || status.Backend != "plugin.demo_authflow" {
+		t.Fatalf("unexpected authflow store status: %+v", status)
+	}
+
+	loadResult, err := store.Load(context.Background(), AuthFlowStoreLoadParams{
+		FlowID: "flow_demo",
+	})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !loadResult.Found || loadResult.Flow == nil || loadResult.Flow.ID != "flow_demo" {
+		t.Fatalf("unexpected authflow load result: %+v", loadResult)
+	}
+
+	if err := store.Save(context.Background(), AuthFlowStoreSaveParams{
+		Flow: *loadResult.Flow,
+	}); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	if err := store.Delete(context.Background(), AuthFlowStoreDeleteParams{
+		FlowID: "flow_demo",
+	}); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+}
+
+func TestProcessGovernanceStoreStatusLoadSaveAndAppend(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "governance-store")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "governance-store-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"governance-demo","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.status"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"status":{"backend":"plugin.demo_governance","supported":true,"readable":true,"writable":true,"secure":true}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.idempotency.load"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"found":true,"record":{"key":"idem_demo","operation":"demo.page.update","input_hash":"hash_demo","status":"executed","request_id":"req_demo","created_at":"2026-03-28T10:00:00Z","updated_at":"2026-03-28T10:00:01Z","retry_count":1,"meta":{"platform":"demo","duration_ms":12,"retry_count":1,"dry_run":false}}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.idempotency.save"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.audit.append"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write storage backend plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "governance-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "storage_backend",
+      "target": "governance",
+      "backend": "plugin.demo_governance"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./governance-store-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write storage backend manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	store := NewProcessGovernanceStore(manifest)
+	defer func() {
+		_ = store.Close()
+	}()
+
+	status, err := store.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !status.Supported || status.Backend != "plugin.demo_governance" {
+		t.Fatalf("unexpected governance store status: %+v", status)
+	}
+
+	loadResult, err := store.LoadIdempotency(context.Background(), GovernanceIdempotencyLoadParams{
+		Key: "idem_demo",
+	})
+	if err != nil {
+		t.Fatalf("LoadIdempotency returned error: %v", err)
+	}
+	if !loadResult.Found || loadResult.Record == nil || loadResult.Record.Key != "idem_demo" {
+		t.Fatalf("unexpected governance load result: %+v", loadResult)
+	}
+
+	if err := store.SaveIdempotency(context.Background(), GovernanceIdempotencySaveParams{
+		Record: *loadResult.Record,
+	}); err != nil {
+		t.Fatalf("SaveIdempotency returned error: %v", err)
+	}
+
+	if err := store.AppendAudit(context.Background(), GovernanceAuditAppendParams{
+		Day: "2026-03-28",
+		Record: GovernanceAuditRecord{
+			Time:      "2026-03-28T10:00:02Z",
+			RequestID: "req_demo",
+			Operation: "demo.page.update",
+			OK:        true,
+			Meta: GovernanceMeta{
+				Platform:   "demo",
+				DurationMS: 12,
+				RetryCount: 1,
+				DryRun:     false,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("AppendAudit returned error: %v", err)
+	}
+}

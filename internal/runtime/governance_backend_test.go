@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/clawrise/clawrise-cli/internal/config"
 )
 
 type testGovernanceStore struct{}
@@ -38,7 +40,9 @@ func TestRegisterGovernanceStoreBackend(t *testing.T) {
 		rootDir:        runtimeRootDir,
 		idempotencyDir: filepath.Join(runtimeRootDir, "idempotency"),
 		auditDir:       filepath.Join(runtimeRootDir, "audit"),
-	}, backendName)
+	}, config.StoragePluginBinding{
+		Backend: backendName,
+	})
 	if store == nil {
 		t.Fatal("expected custom governance store to be opened")
 	}

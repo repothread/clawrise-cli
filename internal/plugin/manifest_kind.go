@@ -6,12 +6,13 @@ func SplitManifestsByKind(manifests []Manifest) ([]Manifest, []Manifest, []Manif
 	launchers := make([]Manifest, 0)
 	storageBackends := make([]Manifest, 0)
 	for _, manifest := range manifests {
-		switch manifest.Kind {
-		case ManifestKindProvider:
+		if manifest.SupportsKind(ManifestKindProvider) {
 			providers = append(providers, manifest)
-		case ManifestKindAuthLauncher:
+		}
+		if manifest.SupportsKind(ManifestKindAuthLauncher) {
 			launchers = append(launchers, manifest)
-		case ManifestKindStorageBackend:
+		}
+		if manifest.SupportsKind(ManifestKindStorageBackend) {
 			storageBackends = append(storageBackends, manifest)
 		}
 	}

@@ -54,14 +54,14 @@ func NewExecutorWithManager(store *config.Store, manager *pluginruntime.Manager)
 func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, error) {
 	startAt := e.now()
 	requestID := buildRequestID(startAt)
-	governance := newRuntimeGovernance(e.store.Path(), config.RuntimeConfig{}, e.now)
+	governance := newRuntimeGovernance(e.store.Path(), config.New(), e.now)
 	var input map[string]any
 
 	cfg, err := e.store.Load()
 	if err != nil {
 		return e.auditEnvelope(governance, e.buildFatalEnvelope(requestID, opts.DryRun, "", "", apperr.New("CONFIG_LOAD_FAILED", err.Error())), input), nil
 	}
-	governance = newRuntimeGovernance(e.store.Path(), cfg.Runtime, e.now)
+	governance = newRuntimeGovernance(e.store.Path(), cfg, e.now)
 
 	operation, err := ParseOperationWithPlatforms(opts.OperationInput, strings.TrimSpace(cfg.Defaults.Platform), knownPlatforms(e.registry))
 	if err != nil {
@@ -465,7 +465,12 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 		secrets[field] = value
 	}
 
-	sessionStore, err := authcache.OpenStore(configPath, cfg.Auth.SessionStore.Backend)
+	sessionBinding := config.ResolveStorageBinding(cfg, "session_store")
+	sessionStore, err := authcache.OpenStoreWithOptions(authcache.StoreOptions{
+		ConfigPath: configPath,
+		Backend:    sessionBinding.Backend,
+		Plugin:     sessionBinding.Plugin,
+	})
 	if err != nil {
 		return pluginruntime.AuthAccount{}, err
 	}
@@ -487,7 +492,12 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 
 func persistAuthPatches(cfg *config.Config, configPath string, accountName string, account config.Account, sessionPatch *pluginruntime.AuthSessionPayload, secretPatches map[string]string) error {
 	if sessionPatch != nil {
-		sessionStore, err := authcache.OpenStore(configPath, cfg.Auth.SessionStore.Backend)
+		sessionBinding := config.ResolveStorageBinding(cfg, "session_store")
+		sessionStore, err := authcache.OpenStoreWithOptions(authcache.StoreOptions{
+			ConfigPath: configPath,
+			Backend:    sessionBinding.Backend,
+			Plugin:     sessionBinding.Plugin,
+		})
 		if err != nil {
 			return err
 		}
@@ -502,14 +512,16 @@ func persistAuthPatches(cfg *config.Config, configPath string, accountName strin
 	}
 
 	if len(secretPatches) > 0 {
-		backend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
+		binding := config.ResolveStorageBinding(cfg, "secret_store")
+		backend := strings.TrimSpace(binding.Backend)
 		if backend == "" {
 			backend = "auto"
 		}
 		secretStore, err := secretstore.Open(secretstore.Options{
 			ConfigPath:      configPath,
 			Backend:         backend,
-			FallbackBackend: cfg.Auth.SecretStore.FallbackBackend,
+			FallbackBackend: binding.FallbackBackend,
+			Plugin:          binding.Plugin,
 		})
 		if err != nil {
 			return err

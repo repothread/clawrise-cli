@@ -27,6 +27,8 @@ func runConfig(args []string, store *config.Store, stdout io.Writer, manager *pl
 		return runConfigInit(args[1:], store, stdout, manager)
 	case "secret-store":
 		return runConfigSecretStore(args[1:], store, stdout)
+	case "provider":
+		return runConfigProvider(args[1:], store, stdout)
 	default:
 		return fmt.Errorf("unknown config command: %s", args[0])
 	}
@@ -109,6 +111,8 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer, manager
 func printConfigHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init --platform <name> [--preset <id>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config secret-store use <backend> [--fallback-backend <backend>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config provider use <platform> <plugin>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config provider unset <platform>")
 }
 
 func runConfigSecretStore(args []string, store *config.Store, stdout io.Writer) error {
@@ -179,6 +183,113 @@ func runConfigSecretStoreUse(args []string, store *config.Store, stdout io.Write
 
 func printConfigSecretStoreHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config secret-store use <backend> [--fallback-backend <backend>]")
+}
+
+func runConfigProvider(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printConfigProviderHelp(stdout)
+		return nil
+	}
+
+	switch strings.TrimSpace(args[0]) {
+	case "use":
+		return runConfigProviderUse(args[1:], store, stdout)
+	case "unset":
+		return runConfigProviderUnset(args[1:], store, stdout)
+	default:
+		return fmt.Errorf("unknown config provider command: %s", args[0])
+	}
+}
+
+func runConfigProviderUse(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: clawrise config provider use <platform> <plugin>")
+	}
+
+	platform := strings.TrimSpace(args[0])
+	pluginName := strings.TrimSpace(args[1])
+	if platform == "" || pluginName == "" {
+		return fmt.Errorf("platform and plugin must not be empty")
+	}
+
+	candidates, err := pluginruntime.DiscoverProviderCandidates()
+	if err != nil {
+		return err
+	}
+	matched := false
+	available := make([]string, 0)
+	for _, candidate := range candidates {
+		if candidate.Platform != platform {
+			continue
+		}
+		available = append(available, candidate.Plugin)
+		if candidate.Plugin == pluginName {
+			matched = true
+		}
+	}
+	if !matched {
+		if len(available) == 0 {
+			return fmt.Errorf("no provider plugin currently supports platform %s", platform)
+		}
+		sort.Strings(available)
+		return fmt.Errorf("plugin %s does not support platform %s; available plugins: %s", pluginName, platform, strings.Join(available, ", "))
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	cfg.Ensure()
+	cfg.Plugins.Bindings.Providers[platform] = config.ProviderPluginBinding{
+		Plugin: pluginName,
+	}
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"platform":    platform,
+			"plugin":      pluginName,
+		},
+	})
+}
+
+func runConfigProviderUnset(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: clawrise config provider unset <platform>")
+	}
+
+	platform := strings.TrimSpace(args[0])
+	if platform == "" {
+		return fmt.Errorf("platform must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	cfg.Ensure()
+	delete(cfg.Plugins.Bindings.Providers, platform)
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"platform":    platform,
+			"unset":       true,
+		},
+	})
+}
+
+func printConfigProviderHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config provider use <platform> <plugin>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config provider unset <platform>")
 }
 
 type initConfigOptions struct {

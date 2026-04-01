@@ -255,6 +255,92 @@ func TestRunConfigSecretStoreUseUpdatesBackend(t *testing.T) {
 	}
 }
 
+func TestRunConfigProviderUseUpdatesBinding(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+
+	pluginDir := filepath.Join(pluginRoot, "demo-provider", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo-provider",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-provider"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "provider", "use", "demo", "demo-provider"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if got := cfg.Plugins.Bindings.Providers["demo"].Plugin; got != "demo-provider" {
+		t.Fatalf("unexpected provider binding: %+v", cfg.Plugins.Bindings.Providers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"plugin": "demo-provider"`)) {
+		t.Fatalf("expected output to include provider plugin, got: %s", stdout.String())
+	}
+}
+
+func TestRunConfigProviderUnsetRemovesBinding(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Bindings.Providers["demo"] = config.ProviderPluginBinding{
+		Plugin: "demo-provider",
+	}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "provider", "unset", "demo"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	updatedCfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if _, exists := updatedCfg.Plugins.Bindings.Providers["demo"]; exists {
+		t.Fatalf("expected provider binding to be removed, got: %+v", updatedCfg.Plugins.Bindings.Providers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"unset": true`)) {
+		t.Fatalf("expected unset marker in output, got: %s", stdout.String())
+	}
+}
+
 func TestRunAccountAddBootstrapsConfigByDefaultForNotion(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)

@@ -6,6 +6,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
+	"github.com/clawrise/clawrise-cli/internal/authflow"
 	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
@@ -47,6 +48,11 @@ type HandshakeParams struct {
 type CoreVersion struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
+}
+
+// CapabilityListResult 描述 capability 列表响应。
+type CapabilityListResult struct {
+	Capabilities []CapabilityDescriptor `json:"capabilities"`
 }
 
 // OperationsListResult describes the operation list response payload.
@@ -402,4 +408,144 @@ type SecretStoreSetParams struct {
 type SecretStoreDeleteParams struct {
 	AccountName string `json:"account_name"`
 	Field       string `json:"field"`
+}
+
+// SessionStoreStatusResult 描述 session store 状态响应。
+type SessionStoreStatusResult struct {
+	Status StorageStatus `json:"status"`
+}
+
+// SessionStoreLoadParams 描述 session store 读取请求。
+type SessionStoreLoadParams struct {
+	AccountName string `json:"account_name"`
+}
+
+// SessionStoreLoadResult 描述 session store 读取结果。
+type SessionStoreLoadResult struct {
+	Found   bool               `json:"found"`
+	Session *authcache.Session `json:"session,omitempty"`
+}
+
+// SessionStoreSaveParams 描述 session store 写入请求。
+type SessionStoreSaveParams struct {
+	Session authcache.Session `json:"session"`
+}
+
+// SessionStoreDeleteParams 描述 session store 删除请求。
+type SessionStoreDeleteParams struct {
+	AccountName string `json:"account_name"`
+}
+
+// AuthFlowStoreStatusResult 描述 authflow store 状态响应。
+type AuthFlowStoreStatusResult struct {
+	Status StorageStatus `json:"status"`
+}
+
+// AuthFlowStoreLoadParams 描述 authflow store 读取请求。
+type AuthFlowStoreLoadParams struct {
+	FlowID string `json:"flow_id"`
+}
+
+// AuthFlowStoreLoadResult 描述 authflow store 读取结果。
+type AuthFlowStoreLoadResult struct {
+	Found bool           `json:"found"`
+	Flow  *authflow.Flow `json:"flow,omitempty"`
+}
+
+// AuthFlowStoreSaveParams 描述 authflow store 写入请求。
+type AuthFlowStoreSaveParams struct {
+	Flow authflow.Flow `json:"flow"`
+}
+
+// AuthFlowStoreDeleteParams 描述 authflow store 删除请求。
+type AuthFlowStoreDeleteParams struct {
+	FlowID string `json:"flow_id"`
+}
+
+// GovernanceStoreStatusResult 描述 governance store 状态响应。
+type GovernanceStoreStatusResult struct {
+	Status StorageStatus `json:"status"`
+}
+
+// GovernanceErrorBody 描述治理记录中的错误体。
+type GovernanceErrorBody struct {
+	Code         string `json:"code"`
+	Message      string `json:"message"`
+	Retryable    bool   `json:"retryable"`
+	UpstreamCode string `json:"upstream_code,omitempty"`
+	HTTPStatus   int    `json:"http_status,omitempty"`
+}
+
+// GovernanceMeta 描述治理记录中的元信息。
+type GovernanceMeta struct {
+	Platform   string `json:"platform"`
+	DurationMS int64  `json:"duration_ms"`
+	RetryCount int    `json:"retry_count"`
+	DryRun     bool   `json:"dry_run"`
+}
+
+// GovernanceContext 描述治理审计记录中的上下文。
+type GovernanceContext struct {
+	Platform string `json:"platform,omitempty"`
+	Subject  string `json:"subject,omitempty"`
+	Account  string `json:"account,omitempty"`
+}
+
+// GovernanceIdempotencyState 描述治理审计记录中的幂等状态。
+type GovernanceIdempotencyState struct {
+	Key       string `json:"key"`
+	Status    string `json:"status"`
+	Persisted bool   `json:"persisted,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// GovernanceIdempotencyRecord 描述幂等持久化记录。
+type GovernanceIdempotencyRecord struct {
+	Key        string               `json:"key"`
+	Operation  string               `json:"operation"`
+	InputHash  string               `json:"input_hash"`
+	Status     string               `json:"status"`
+	RequestID  string               `json:"request_id"`
+	CreatedAt  string               `json:"created_at"`
+	UpdatedAt  string               `json:"updated_at"`
+	RetryCount int                  `json:"retry_count"`
+	Data       any                  `json:"data,omitempty"`
+	Error      *GovernanceErrorBody `json:"error,omitempty"`
+	Meta       GovernanceMeta       `json:"meta"`
+}
+
+// GovernanceAuditRecord 描述审计持久化记录。
+type GovernanceAuditRecord struct {
+	Time          string                      `json:"time"`
+	RequestID     string                      `json:"request_id"`
+	Operation     string                      `json:"operation"`
+	Context       *GovernanceContext          `json:"context,omitempty"`
+	OK            bool                        `json:"ok"`
+	InputSummary  any                         `json:"input_summary,omitempty"`
+	OutputSummary any                         `json:"output_summary,omitempty"`
+	Error         *GovernanceErrorBody        `json:"error,omitempty"`
+	Meta          GovernanceMeta              `json:"meta"`
+	Idempotency   *GovernanceIdempotencyState `json:"idempotency,omitempty"`
+}
+
+// GovernanceIdempotencyLoadParams 描述幂等记录读取请求。
+type GovernanceIdempotencyLoadParams struct {
+	Key string `json:"key"`
+}
+
+// GovernanceIdempotencyLoadResult 描述幂等记录读取结果。
+type GovernanceIdempotencyLoadResult struct {
+	Found  bool                         `json:"found"`
+	Record *GovernanceIdempotencyRecord `json:"record,omitempty"`
+}
+
+// GovernanceIdempotencySaveParams 描述幂等记录写入请求。
+type GovernanceIdempotencySaveParams struct {
+	Record GovernanceIdempotencyRecord `json:"record"`
+}
+
+// GovernanceAuditAppendParams 描述审计记录追加请求。
+type GovernanceAuditAppendParams struct {
+	Day    string                `json:"day"`
+	Record GovernanceAuditRecord `json:"record"`
 }
