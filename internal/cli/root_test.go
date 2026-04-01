@@ -1231,8 +1231,72 @@ func TestRunPluginHelpFlag(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|info|remove|verify]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|info|remove|verify|upgrade]")) {
 		t.Fatalf("expected plugin help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunPluginUpgradeCommand(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	homeDir := t.TempDir()
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", homeDir)
+
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	writeManifest := func(version string) {
+		t.Helper()
+		manifest := `{
+  "schema_version": 1,
+  "name": "demo",
+  "version": "` + version + `",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`
+		if err := os.WriteFile(filepath.Join(sourceDir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(sourceDir, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("failed to write plugin binary: %v", err)
+		}
+	}
+
+	writeManifest("0.1.0")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := Run([]string{"plugin", "install", sourceDir}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	}); err != nil {
+		t.Fatalf("plugin install returned error: %v", err)
+	}
+
+	writeManifest("0.2.0")
+	stdout.Reset()
+	stderr.Reset()
+
+	if err := Run([]string{"plugin", "upgrade", "demo", "0.1.0"}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	}); err != nil {
+		t.Fatalf("plugin upgrade returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"to_version": "0.2.0"`)) {
+		t.Fatalf("expected plugin upgrade output to include upgraded version, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

@@ -25,6 +25,7 @@ func runPlugin(args []string, store *config.Store, stdout io.Writer, coreVersion
 		cfg = loaded
 	}
 	discoveryOptions := buildPluginDiscoveryOptions(cfg)
+	installOptions := buildPluginInstallOptions(cfg, coreVersion)
 
 	switch args[0] {
 	case "list":
@@ -42,7 +43,7 @@ func runPlugin(args []string, store *config.Store, stdout io.Writer, coreVersion
 		if len(args) != 2 {
 			return fmt.Errorf("usage: clawrise plugin install <package-or-source>")
 		}
-		result, err := pluginruntime.Install(strings.TrimSpace(args[1]))
+		result, err := pluginruntime.InstallWithOptions(strings.TrimSpace(args[1]), installOptions)
 		if err != nil {
 			return err
 		}
@@ -118,13 +119,32 @@ func runPlugin(args []string, store *config.Store, stdout io.Writer, coreVersion
 			return ExitError{Code: 1}
 		}
 		return nil
+	case "upgrade":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: clawrise plugin upgrade <name> <version>")
+		}
+		result, err := pluginruntime.UpgradeInstalled(args[1], args[2], installOptions)
+		if err != nil {
+			return err
+		}
+		return output.WriteJSON(stdout, map[string]any{
+			"ok":   true,
+			"data": result,
+		})
 	default:
 		return fmt.Errorf("unknown plugin command: %s", args[0])
 	}
 }
 
+func buildPluginInstallOptions(cfg *config.Config, coreVersion string) pluginruntime.InstallOptions {
+	return pluginruntime.InstallOptions{
+		CoreVersion:    strings.TrimSpace(coreVersion),
+		AllowedSources: config.ResolvePluginInstallAllowedSources(cfg),
+	}
+}
+
 func printPluginHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise plugin [list|install|info|remove|verify]")
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise plugin [list|install|info|remove|verify|upgrade]")
 	_, _ = fmt.Fprintln(stdout, "")
 	_, _ = fmt.Fprintln(stdout, "Examples:")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin list")
@@ -135,5 +155,6 @@ func printPluginHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install npm://@clawrise/clawrise-plugin-feishu")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin verify demo 0.1.0")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin verify --all")
+	_, _ = fmt.Fprintln(stdout, "  clawrise plugin upgrade demo 0.1.0")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin remove demo 0.1.0")
 }

@@ -53,6 +53,19 @@ func TestResolveEnabledPluginsNormalizesConfig(t *testing.T) {
 	}
 }
 
+func TestResolvePluginInstallAllowedSourcesNormalizesConfig(t *testing.T) {
+	cfg := New()
+	cfg.Plugins.Install.AllowedSources = []string{" https ", "npm", "https", "  ", "local"}
+
+	allowed := ResolvePluginInstallAllowedSources(cfg)
+	if len(allowed) != 3 {
+		t.Fatalf("unexpected allowed sources: %+v", allowed)
+	}
+	if allowed[0] != "https" || allowed[1] != "npm" || allowed[2] != "local" {
+		t.Fatalf("unexpected normalized allowed sources: %+v", allowed)
+	}
+}
+
 func TestSetAuthLauncherPreferenceMovesLauncherToFront(t *testing.T) {
 	cfg := New()
 	cfg.Ensure()

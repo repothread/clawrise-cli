@@ -504,7 +504,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"status":  "warn",
 			"message": "plugins were discovered, but none are currently selected after plugins.enabled and provider bindings are applied",
 		})
-		nextSteps = append(nextSteps, "update `plugins.enabled` or provider bindings so at least one plugin participates in runtime discovery")
+		nextSteps = append(nextSteps, "run `clawrise plugin list` and `clawrise config provider use <platform> <plugin>` so at least one plugin participates in runtime discovery")
 	}
 
 	defaultAccountOK := true
@@ -628,7 +628,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"status":  "warn",
 			"message": strings.Join(policyInspection.Warnings, "; "),
 		})
-		nextSteps = append(nextSteps, "review `runtime.policy.mode` and `runtime.policy.plugins` so the intended policy chain can be resolved")
+		nextSteps = append(nextSteps, "run `clawrise config policy mode <auto|manual|disabled>` or `clawrise config policy use <plugin> [--policy-id <id>]` to fix the active policy chain")
 	}
 	if len(auditInspection.Warnings) > 0 {
 		checks = append(checks, map[string]any{
@@ -636,7 +636,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"status":  "warn",
 			"message": strings.Join(auditInspection.Warnings, "; "),
 		})
-		nextSteps = append(nextSteps, "review `runtime.audit.mode` and `runtime.audit.sinks` so the intended audit sinks can be resolved")
+		nextSteps = append(nextSteps, "run `clawrise config audit mode <auto|manual|disabled>` or `clawrise config audit add ...` to fix the active audit sinks")
 	}
 
 	runtimeSummary := map[string]any{
@@ -745,7 +745,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")
 	_, _ = fmt.Fprintln(w, "  clawrise secret [put|delete]")
 	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store|provider|auth-launcher|policy|audit]")
-	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
+	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify|upgrade]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise docs generate [path] [--out-dir <dir>]")
 	_, _ = fmt.Fprintln(w, "  clawrise batch [--json <payload> | --input <path>]")

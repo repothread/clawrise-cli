@@ -131,6 +131,116 @@ func TestInstallHTTPSupport(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsHTTPByDefault(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	_, err := Install("http://plugins.example.com/demo-plugin.tar.gz")
+	if err == nil {
+		t.Fatal("expected install to reject http source by default")
+	}
+	if !strings.Contains(err.Error(), "install trust policy") {
+		t.Fatalf("expected trust policy error, got: %v", err)
+	}
+}
+
+func TestInstallAllowsHTTPWhenTrustPolicyIncludesHTTP(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	archivePath := filepath.Join(t.TempDir(), "demo-plugin.tar.gz")
+	if err := writeTestPluginArchive(archivePath); err != nil {
+		t.Fatalf("failed to write plugin archive: %v", err)
+	}
+
+	data, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("failed to read test archive: %v", err)
+	}
+
+	previousClient := pluginDownloadHTTPClient
+	pluginDownloadHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/gzip"},
+				},
+				Body: io.NopCloser(strings.NewReader(string(data))),
+			}, nil
+		}),
+	}
+	defer func() {
+		pluginDownloadHTTPClient = previousClient
+	}()
+
+	result, err := InstallWithOptions("http://plugins.example.com/demo-plugin.tar.gz", InstallOptions{
+		AllowedSources: []string{"http"},
+	})
+	if err != nil {
+		t.Fatalf("InstallWithOptions returned error: %v", err)
+	}
+	if result.Install == nil || result.Install.Source != "http://plugins.example.com/demo-plugin.tar.gz" {
+		t.Fatalf("unexpected install metadata: %+v", result.Install)
+	}
+}
+
+func TestInstallRejectsPluginThatRequiresNewerCore(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	if err := writeTestPluginSourceDir(sourceDir, "demo", "0.1.0", ",\n  \"min_core_version\": \"9.0.0\""); err != nil {
+		t.Fatalf("failed to write plugin source dir: %v", err)
+	}
+
+	_, err := InstallWithOptions(sourceDir, InstallOptions{
+		CoreVersion: "0.2.0",
+	})
+	if err == nil {
+		t.Fatal("expected install to reject plugin with newer min_core_version")
+	}
+	if !strings.Contains(err.Error(), "requires core version") {
+		t.Fatalf("expected min_core_version error, got: %v", err)
+	}
+}
+
+func TestUpgradeInstalledReinstallsFromRecordedSourceAndRemovesPreviousVersion(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	if err := writeTestPluginSourceDir(sourceDir, "demo", "0.1.0", ""); err != nil {
+		t.Fatalf("failed to write initial plugin source dir: %v", err)
+	}
+
+	if _, err := InstallLocal(sourceDir); err != nil {
+		t.Fatalf("InstallLocal returned error: %v", err)
+	}
+
+	if err := writeTestPluginSourceDir(sourceDir, "demo", "0.2.0", ""); err != nil {
+		t.Fatalf("failed to rewrite plugin source dir: %v", err)
+	}
+
+	result, err := UpgradeInstalled("demo", "0.1.0", InstallOptions{
+		CoreVersion: "0.2.0",
+	})
+	if err != nil {
+		t.Fatalf("UpgradeInstalled returned error: %v", err)
+	}
+	if !result.Upgraded || result.ToVersion != "0.2.0" || !result.RemovedPrevious {
+		t.Fatalf("unexpected upgrade result: %+v", result)
+	}
+
+	items, err := ListInstalled()
+	if err != nil {
+		t.Fatalf("ListInstalled returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].Version != "0.2.0" {
+		t.Fatalf("expected only upgraded version to remain installed, got: %+v", items)
+	}
+}
+
 func TestInstallStorageBackendPlugin(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -547,4 +657,27 @@ func writeTestPluginArchive(path string) error {
 		}
 	}
 	return nil
+}
+
+func writeTestPluginSourceDir(path string, name string, version string, extraFields string) error {
+	if err := os.MkdirAll(filepath.Join(path, "bin"), 0o755); err != nil {
+		return err
+	}
+
+	manifest := `{
+  "schema_version": 1,
+  "name": "` + name + `",
+  "version": "` + version + `",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }` + extraFields + `
+}`
+	if err := os.WriteFile(filepath.Join(path, "plugin.json"), []byte(manifest), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(path, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755)
 }

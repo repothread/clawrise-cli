@@ -2,26 +2,32 @@ package config
 
 import "strings"
 
-// PluginsConfig 描述 capability 级插件启用与绑定配置。
+// PluginsConfig describes capability-level plugin enablement, install, and binding settings.
 type PluginsConfig struct {
 	Enabled      map[string]string         `yaml:"enabled,omitempty"`
+	Install      PluginInstallConfig       `yaml:"install,omitempty"`
 	Bindings     PluginBindingsConfig      `yaml:"bindings,omitempty"`
 	PluginConfig map[string]map[string]any `yaml:"plugin_config,omitempty"`
 }
 
-// PluginBindingsConfig 描述各类 capability 的绑定规则。
+// PluginInstallConfig describes the baseline trust policy for plugin install sources.
+type PluginInstallConfig struct {
+	AllowedSources []string `yaml:"allowed_sources,omitempty"`
+}
+
+// PluginBindingsConfig describes binding rules for each capability class.
 type PluginBindingsConfig struct {
 	Providers     map[string]ProviderPluginBinding `yaml:"providers,omitempty"`
 	Storage       StorageBindingsConfig            `yaml:"storage,omitempty"`
 	AuthLaunchers map[string][]string              `yaml:"auth_launchers,omitempty"`
 }
 
-// ProviderPluginBinding 描述一个平台到 provider 插件的绑定。
+// ProviderPluginBinding describes the explicit plugin binding for one platform provider.
 type ProviderPluginBinding struct {
 	Plugin string `yaml:"plugin,omitempty"`
 }
 
-// StorageBindingsConfig 描述四类存储位点的绑定。
+// StorageBindingsConfig describes bindings for the four storage targets.
 type StorageBindingsConfig struct {
 	SecretStore   StoragePluginBinding `yaml:"secret_store,omitempty"`
 	SessionStore  StoragePluginBinding `yaml:"session_store,omitempty"`
@@ -29,14 +35,14 @@ type StorageBindingsConfig struct {
 	Governance    StoragePluginBinding `yaml:"governance,omitempty"`
 }
 
-// StoragePluginBinding 描述一个 storage capability 的绑定信息。
+// StoragePluginBinding describes one storage capability binding.
 type StoragePluginBinding struct {
 	Backend         string `yaml:"backend,omitempty"`
 	Plugin          string `yaml:"plugin,omitempty"`
 	FallbackBackend string `yaml:"fallback_backend,omitempty"`
 }
 
-// ResolveEnabledPlugins 返回归一化后的插件启用规则。
+// ResolveEnabledPlugins returns normalized plugin enablement rules.
 func ResolveEnabledPlugins(cfg *Config) map[string]string {
 	if cfg == nil || len(cfg.Plugins.Enabled) == 0 {
 		return nil
@@ -56,6 +62,15 @@ func ResolveEnabledPlugins(cfg *Config) map[string]string {
 	return items
 }
 
+// ResolvePluginInstallAllowedSources returns the normalized allowlist for plugin install sources.
+// An empty result means the runtime should fall back to its built-in default policy.
+func ResolvePluginInstallAllowedSources(cfg *Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	return normalizeStringList(cfg.Plugins.Install.AllowedSources)
+}
+
 // HasValue reports whether the binding carries any explicit configuration.
 func (b StoragePluginBinding) HasValue() bool {
 	return strings.TrimSpace(b.Backend) != "" ||
@@ -63,7 +78,7 @@ func (b StoragePluginBinding) HasValue() bool {
 		strings.TrimSpace(b.FallbackBackend) != ""
 }
 
-// ResolveStorageBinding 返回一个存储位点的最终绑定配置。
+// ResolveStorageBinding returns the resolved binding for one storage target.
 func ResolveStorageBinding(cfg *Config, target string) StoragePluginBinding {
 	if cfg == nil {
 		return StoragePluginBinding{}

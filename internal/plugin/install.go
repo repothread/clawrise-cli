@@ -23,6 +23,21 @@ const installMetadataFileName = "install.json"
 var pluginDownloadHTTPClient = &http.Client{Timeout: 60 * time.Second}
 var npmRegistryBaseURL = "https://registry.npmjs.org"
 
+const (
+	pluginSourceTypeLocal = "local"
+	pluginSourceTypeFile  = "file"
+	pluginSourceTypeHTTP  = "http"
+	pluginSourceTypeHTTPS = "https"
+	pluginSourceTypeNPM   = "npm"
+)
+
+var defaultAllowedInstallSources = []string{
+	pluginSourceTypeLocal,
+	pluginSourceTypeFile,
+	pluginSourceTypeHTTPS,
+	pluginSourceTypeNPM,
+}
+
 // InstalledPlugin describes one installed plugin package.
 type InstalledPlugin struct {
 	Name                    string                  `json:"name"`
@@ -48,6 +63,13 @@ type InstallResult struct {
 	Install  *InstallMetadata `json:"install,omitempty"`
 }
 
+// InstallOptions describes additional constraints applied to one plugin installation.
+type InstallOptions struct {
+	CoreVersion    string
+	AllowedSources []string
+	ExpectedName   string
+}
+
 // RemoveResult describes one plugin removal result.
 type RemoveResult struct {
 	Name    string           `json:"name"`
@@ -61,6 +83,19 @@ type InstallMetadata struct {
 	Source      string `json:"source"`
 	InstalledAt string `json:"installed_at"`
 	ChecksumSHA string `json:"checksum_sha256"`
+}
+
+// UpgradeResult describes one plugin upgrade result.
+type UpgradeResult struct {
+	Name            string           `json:"name"`
+	FromVersion     string           `json:"from_version"`
+	ToVersion       string           `json:"to_version"`
+	Source          string           `json:"source"`
+	Upgraded        bool             `json:"upgraded"`
+	Reinstalled     bool             `json:"reinstalled"`
+	RemovedPrevious bool             `json:"removed_previous"`
+	Path            string           `json:"path"`
+	Install         *InstallMetadata `json:"install,omitempty"`
 }
 
 // PluginInfo describes one installed plugin with full manifest and install metadata.
@@ -81,6 +116,11 @@ type PluginInfo struct {
 
 // Install installs one plugin from any supported source.
 func Install(source string) (InstallResult, error) {
+	return InstallWithOptions(source, InstallOptions{})
+}
+
+// InstallWithOptions installs one plugin from any supported source with explicit trust and compatibility options.
+func InstallWithOptions(source string, options InstallOptions) (InstallResult, error) {
 	root, err := pluginsRootDir()
 	if err != nil {
 		return InstallResult{}, err
@@ -92,6 +132,9 @@ func Install(source string) (InstallResult, error) {
 	source = strings.TrimSpace(source)
 	if source == "" {
 		return InstallResult{}, fmt.Errorf("plugin source is required")
+	}
+	if err := validateInstallSourcePolicy(source, options.AllowedSources); err != nil {
+		return InstallResult{}, err
 	}
 
 	tempDir, err := os.MkdirTemp("", "clawrise-plugin-install-*")
@@ -107,6 +150,9 @@ func Install(source string) (InstallResult, error) {
 
 	manifest, err := LoadManifest(filepath.Join(pluginDir, ManifestFileName))
 	if err != nil {
+		return InstallResult{}, err
+	}
+	if err := validateInstallManifest(manifest, options); err != nil {
 		return InstallResult{}, err
 	}
 	checksum, err := checksumTree(pluginDir)
@@ -143,7 +189,45 @@ func Install(source string) (InstallResult, error) {
 
 // InstallLocal installs one plugin from a local directory or tar.gz archive.
 func InstallLocal(source string) (InstallResult, error) {
-	return Install(source)
+	return InstallWithOptions(source, InstallOptions{})
+}
+
+// UpgradeInstalled upgrades one installed plugin by reinstalling from its recorded source.
+func UpgradeInstalled(name, version string, options InstallOptions) (UpgradeResult, error) {
+	info, err := InfoInstalled(name, version)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+	if info.Install == nil || strings.TrimSpace(info.Install.Source) == "" {
+		return UpgradeResult{}, fmt.Errorf("plugin %s@%s does not record an install source, so it cannot be upgraded automatically", info.Manifest.Name, info.Manifest.Version)
+	}
+
+	options.ExpectedName = info.Manifest.Name
+	installed, err := InstallWithOptions(info.Install.Source, options)
+	if err != nil {
+		return UpgradeResult{}, err
+	}
+
+	result := UpgradeResult{
+		Name:        info.Manifest.Name,
+		FromVersion: info.Manifest.Version,
+		ToVersion:   installed.Manifest.Version,
+		Source:      info.Install.Source,
+		Upgraded:    installed.Manifest.Version != info.Manifest.Version,
+		Reinstalled: installed.Manifest.Version == info.Manifest.Version,
+		Path:        installed.Path,
+		Install:     installed.Install,
+	}
+
+	// Remove the previous version after a successful upgrade so discovery does not pick multiple versions.
+	if installed.Manifest.Version != info.Manifest.Version {
+		if _, err := RemoveInstalled(info.Manifest.Name, info.Manifest.Version); err != nil {
+			return UpgradeResult{}, fmt.Errorf("plugin %s@%s upgraded to %s but failed to remove previous version: %w", info.Manifest.Name, info.Manifest.Version, installed.Manifest.Version, err)
+		}
+		result.RemovedPrevious = true
+	}
+
+	return result, nil
 }
 
 // ListInstalled returns all installed plugins under the default plugins root.
@@ -271,6 +355,70 @@ func pluginsRootDir() (string, error) {
 		return "", fmt.Errorf("failed to resolve user home directory: %w", err)
 	}
 	return filepath.Join(homeDir, ".clawrise", "plugins"), nil
+}
+
+func validateInstallSourcePolicy(source string, allowedSources []string) error {
+	sourceType := classifyInstallSource(source)
+	allowed := normalizeAllowedInstallSources(allowedSources)
+	if _, ok := allowed[sourceType]; ok {
+		return nil
+	}
+	return fmt.Errorf("plugin source type %s is not allowed by the current install trust policy", sourceType)
+}
+
+func normalizeAllowedInstallSources(values []string) map[string]struct{} {
+	if len(values) == 0 {
+		values = defaultAllowedInstallSources
+	}
+
+	items := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case pluginSourceTypeLocal, pluginSourceTypeFile, pluginSourceTypeHTTP, pluginSourceTypeHTTPS, pluginSourceTypeNPM:
+			items[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
+		}
+	}
+	if len(items) == 0 {
+		for _, value := range defaultAllowedInstallSources {
+			items[value] = struct{}{}
+		}
+	}
+	return items
+}
+
+func classifyInstallSource(source string) string {
+	source = strings.TrimSpace(source)
+	switch {
+	case strings.HasPrefix(source, "file://"):
+		return pluginSourceTypeFile
+	case strings.HasPrefix(source, "https://"):
+		return pluginSourceTypeHTTPS
+	case strings.HasPrefix(source, "http://"):
+		return pluginSourceTypeHTTP
+	case strings.HasPrefix(source, "npm://"):
+		return pluginSourceTypeNPM
+	case shouldResolveBareNPMPackageSpec(source):
+		return pluginSourceTypeNPM
+	default:
+		return pluginSourceTypeLocal
+	}
+}
+
+func validateInstallManifest(manifest Manifest, options InstallOptions) error {
+	expectedName := strings.TrimSpace(options.ExpectedName)
+	if expectedName != "" && manifest.Name != expectedName {
+		return fmt.Errorf("expected plugin source to resolve to %s, got %s", expectedName, manifest.Name)
+	}
+	if manifest.ProtocolVersion != ProtocolVersion {
+		return fmt.Errorf("plugin %s@%s uses protocol_version %d, but current core expects %d", manifest.Name, manifest.Version, manifest.ProtocolVersion, ProtocolVersion)
+	}
+
+	coreVersion := strings.TrimSpace(options.CoreVersion)
+	minCoreVersion := strings.TrimSpace(manifest.MinCoreVersion)
+	if compatible, checked := checkCoreVersionCompatibility(coreVersion, minCoreVersion); checked && !compatible {
+		return fmt.Errorf("plugin %s@%s requires core version %s or newer, current core is %s", manifest.Name, manifest.Version, minCoreVersion, coreVersion)
+	}
+	return nil
 }
 
 func materializeSource(source, tempDir string) (string, string, error) {
