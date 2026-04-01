@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// ServeAuditSinkRuntime 通过 stdio 暴露 audit sink plugin 协议。
+// ServeAuditSinkRuntime serves the audit sink plugin protocol over stdio.
 func ServeAuditSinkRuntime(runtime AuditSinkRuntime) error {
 	reader := bufio.NewScanner(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)

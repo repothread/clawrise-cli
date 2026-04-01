@@ -23,9 +23,9 @@ const (
 	CapabilityTypeAuthLauncher = "auth_launcher"
 	// CapabilityTypeStorageBackend 表示 storage backend 能力。
 	CapabilityTypeStorageBackend = "storage_backend"
-	// CapabilityTypePolicy 表示执行前策略判断能力。
+	// CapabilityTypePolicy marks one pre-execution policy capability.
 	CapabilityTypePolicy = "policy"
-	// CapabilityTypeAuditSink 表示审计事件扇出能力。
+	// CapabilityTypeAuditSink marks one audit event sink capability.
 	CapabilityTypeAuditSink = "audit_sink"
 )
 
@@ -63,9 +63,9 @@ func (c CapabilityDescriptor) Validate() error {
 			return err
 		}
 	case CapabilityTypePolicy:
-		// policy 可选按平台过滤；其余细节交给运行时方法定义。
+		// Policy capabilities may optionally filter by platform.
 	case CapabilityTypeAuditSink:
-		// audit sink 当前只需要 capability 标识即可。
+		// Audit sinks currently only require the capability marker itself.
 	default:
 		return fmt.Errorf("unsupported capability type: %s", capabilityType)
 	}

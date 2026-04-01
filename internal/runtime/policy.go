@@ -20,7 +20,7 @@ const (
 	policyDecisionAnnotate        = "annotate"
 )
 
-// evaluatePolicies 依次执行本地策略规则与外部 policy plugin。
+// evaluatePolicies runs local policy rules first and then external policy plugins.
 func (e *Executor) evaluatePolicies(ctx context.Context, cfg *config.Config, definition adapter.Definition, requestID string, operation string, input map[string]any, profile ExecutionProfile, dryRun bool) ([]string, *apperr.AppError) {
 	warnings, appErr := evaluateLocalPolicy(cfg.Runtime.Policy, operation)
 	if appErr != nil {
@@ -37,10 +37,10 @@ func (e *Executor) evaluatePolicies(ctx context.Context, cfg *config.Config, def
 
 func evaluateLocalPolicy(policy config.PolicyConfig, operation string) ([]string, *apperr.AppError) {
 	if matched, ok := firstMatchingOperationPattern(policy.DenyOperations, operation); ok {
-		return nil, apperr.New("POLICY_DENIED", fmt.Sprintf("本地策略拒绝执行 %s（命中规则 %s）", operation, matched))
+		return nil, apperr.New("POLICY_DENIED", fmt.Sprintf("local policy denied %s (matched rule %s)", operation, matched))
 	}
 	if matched, ok := firstMatchingOperationPattern(policy.RequireApprovalOperations, operation); ok {
-		return nil, apperr.New("POLICY_APPROVAL_REQUIRED", fmt.Sprintf("本地策略要求人工审批后才能执行 %s（命中规则 %s）", operation, matched))
+		return nil, apperr.New("POLICY_APPROVAL_REQUIRED", fmt.Sprintf("local policy requires manual approval before executing %s (matched rule %s)", operation, matched))
 	}
 
 	if len(policy.AnnotateOperations) == 0 {
@@ -64,7 +64,7 @@ func evaluateLocalPolicy(policy config.PolicyConfig, operation string) ([]string
 		}
 		message := strings.TrimSpace(policy.AnnotateOperations[pattern])
 		if message == "" {
-			message = fmt.Sprintf("本地策略对 %s 添加了标注（命中规则 %s）", operation, pattern)
+			message = fmt.Sprintf("local policy annotated %s (matched rule %s)", operation, pattern)
 		}
 		warnings = append(warnings, message)
 	}
@@ -103,7 +103,7 @@ func evaluatePluginPolicies(ctx context.Context, cfg *config.Config, definition 
 			},
 		})
 		if err != nil {
-			return warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("策略插件 %s 执行失败: %s", policyRuntimeLabel(runtime), err.Error()))
+			return warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("policy plugin %s failed: %s", policyRuntimeLabel(runtime), err.Error()))
 		}
 
 		switch normalizePolicyDecision(result.Decision) {
@@ -112,11 +112,11 @@ func evaluatePluginPolicies(ctx context.Context, cfg *config.Config, definition 
 		case policyDecisionAnnotate:
 			warnings = append(warnings, buildPolicyAnnotationWarning(runtime, result))
 		case policyDecisionDeny:
-			return warnings, apperr.New("POLICY_DENIED", buildPolicyDecisionMessage(runtime, result, "拒绝了当前请求"))
+			return warnings, apperr.New("POLICY_DENIED", buildPolicyDecisionMessage(runtime, result, "denied the current request"))
 		case policyDecisionRequireApproval:
-			return warnings, apperr.New("POLICY_APPROVAL_REQUIRED", buildPolicyDecisionMessage(runtime, result, "要求人工审批后再继续执行"))
+			return warnings, apperr.New("POLICY_APPROVAL_REQUIRED", buildPolicyDecisionMessage(runtime, result, "requires manual approval before continuing"))
 		default:
-			return warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("策略插件 %s 返回了不支持的 decision: %s", policyRuntimeLabel(runtime), strings.TrimSpace(result.Decision)))
+			return warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("policy plugin %s returned an unsupported decision: %s", policyRuntimeLabel(runtime), strings.TrimSpace(result.Decision)))
 		}
 	}
 	return warnings, nil
@@ -206,7 +206,7 @@ func buildPolicyDecisionMessage(runtime pluginruntime.PolicyRuntime, result plug
 	if message == "" {
 		message = fallback
 	}
-	return fmt.Sprintf("策略插件 %s%s", policyRuntimeLabel(runtime), messageWithChineseColon(message))
+	return fmt.Sprintf("policy plugin %s%s", policyRuntimeLabel(runtime), messageWithColon(message))
 }
 
 func buildPolicyAnnotationWarning(runtime pluginruntime.PolicyRuntime, result pluginruntime.PolicyEvaluateResult) string {
@@ -218,15 +218,15 @@ func buildPolicyAnnotationWarning(runtime pluginruntime.PolicyRuntime, result pl
 		}
 	}
 	if message == "" {
-		message = "添加了执行标注"
+		message = "added an execution annotation"
 	}
-	return fmt.Sprintf("策略插件 %s%s", policyRuntimeLabel(runtime), messageWithChineseColon(message))
+	return fmt.Sprintf("policy plugin %s%s", policyRuntimeLabel(runtime), messageWithColon(message))
 }
 
-func messageWithChineseColon(message string) string {
+func messageWithColon(message string) string {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return ""
 	}
-	return "：" + message
+	return ": " + message
 }

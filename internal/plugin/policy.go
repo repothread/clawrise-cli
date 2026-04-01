@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// PolicyRuntime 描述一个可参与执行前判断的策略运行时。
+// PolicyRuntime describes one policy runtime that can participate in pre-execution decisions.
 type PolicyRuntime interface {
 	Name() string
 	ID() string
@@ -17,13 +17,13 @@ type PolicyRuntime interface {
 	Close() error
 }
 
-// ProcessPolicy 使用 stdio JSON-RPC 调用一个外部 policy plugin。
+// ProcessPolicy executes JSON-RPC calls against one external policy plugin.
 type ProcessPolicy struct {
 	runtime    *ProcessRuntime
 	capability CapabilityDescriptor
 }
 
-// NewProcessPolicy 创建一个进程化的 policy plugin 客户端。
+// NewProcessPolicy creates one process-backed policy plugin client.
 func NewProcessPolicy(manifest Manifest, capability CapabilityDescriptor) *ProcessPolicy {
 	return &ProcessPolicy{
 		runtime:    NewProcessRuntime(manifest),
@@ -81,7 +81,7 @@ func (p *ProcessPolicy) Close() error {
 	return p.runtime.Close()
 }
 
-// DiscoverPolicyRuntimes 发现所有启用中的 policy capability。
+// DiscoverPolicyRuntimes discovers all enabled policy capabilities.
 func DiscoverPolicyRuntimes(options DiscoveryOptions) ([]PolicyRuntime, error) {
 	roots, err := DefaultDiscoveryRoots()
 	if err != nil {

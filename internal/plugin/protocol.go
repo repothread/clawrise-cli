@@ -551,7 +551,7 @@ type GovernanceAuditAppendParams struct {
 	Record GovernanceAuditRecord `json:"record"`
 }
 
-// PolicyEvaluationContext 描述策略判断所需的执行上下文。
+// PolicyEvaluationContext describes the execution context required for one policy decision.
 type PolicyEvaluationContext struct {
 	AccountName string `json:"account_name,omitempty"`
 	Platform    string `json:"platform,omitempty"`
@@ -559,7 +559,7 @@ type PolicyEvaluationContext struct {
 	AuthMethod  string `json:"auth_method,omitempty"`
 }
 
-// PolicyEvaluationRequest 描述一次待评估的执行请求。
+// PolicyEvaluationRequest describes one execution request to be evaluated by policy.
 type PolicyEvaluationRequest struct {
 	RequestID string                  `json:"request_id"`
 	Operation string                  `json:"operation"`
@@ -569,20 +569,20 @@ type PolicyEvaluationRequest struct {
 	Context   PolicyEvaluationContext `json:"context"`
 }
 
-// PolicyEvaluateParams 描述策略评估请求。
+// PolicyEvaluateParams describes one policy evaluation request.
 type PolicyEvaluateParams struct {
 	PolicyID string                  `json:"policy_id,omitempty"`
 	Request  PolicyEvaluationRequest `json:"request"`
 }
 
-// PolicyEvaluateResult 描述策略评估结果。
+// PolicyEvaluateResult describes one policy evaluation result.
 type PolicyEvaluateResult struct {
 	Decision    string         `json:"decision"`
 	Message     string         `json:"message,omitempty"`
 	Annotations map[string]any `json:"annotations,omitempty"`
 }
 
-// AuditEmitParams 描述审计事件投递请求。
+// AuditEmitParams describes one audit event delivery request.
 type AuditEmitParams struct {
 	SinkID string                `json:"sink_id,omitempty"`
 	Record GovernanceAuditRecord `json:"record"`

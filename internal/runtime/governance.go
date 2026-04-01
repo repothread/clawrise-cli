@@ -297,7 +297,7 @@ func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) 
 
 	warnings := make([]string, 0)
 	if err := g.store.AppendAuditRecord(g.now().UTC().Format("2006-01-02"), record); err != nil {
-		warnings = append(warnings, "写入治理审计记录失败: "+err.Error())
+		warnings = append(warnings, "failed to write governance audit record: "+err.Error())
 	}
 	warnings = append(warnings, g.emitAuditSinks(record)...)
 	return warnings

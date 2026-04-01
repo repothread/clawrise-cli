@@ -9,7 +9,7 @@ import (
 	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
-// auditSink 描述一个审计事件扇出目标。
+// auditSink describes one audit event fan-out target.
 type auditSink interface {
 	Name() string
 	Emit(ctx context.Context, record auditRecord) error
@@ -49,7 +49,7 @@ func (g *runtimeGovernance) emitAuditSinks(record auditRecord) []string {
 			continue
 		}
 		if err := sink.Emit(context.Background(), record); err != nil {
-			warnings = append(warnings, fmt.Sprintf("audit sink %s 投递失败: %s", sink.Name(), err.Error()))
+			warnings = append(warnings, fmt.Sprintf("failed to emit event to audit sink %s: %s", sink.Name(), err.Error()))
 		}
 	}
 	return warnings
@@ -76,7 +76,7 @@ func (s *pluginAuditSink) Emit(ctx context.Context, record auditRecord) error {
 		return nil
 	}
 	defer func() {
-		// 审计 sink 当前按次使用，发完即释放进程资源，避免长期悬挂。
+		// Audit sinks are currently used per emission and then closed to avoid lingering processes.
 		_ = s.runtime.Close()
 	}()
 

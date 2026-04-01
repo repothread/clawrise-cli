@@ -40,7 +40,7 @@ func (r *ProcessRuntime) Name() string {
 	return r.manifest.Name
 }
 
-// Manifest 返回当前进程运行时对应的 manifest。
+// Manifest returns the manifest associated with the current process runtime.
 func (r *ProcessRuntime) Manifest() Manifest {
 	return r.manifest
 }

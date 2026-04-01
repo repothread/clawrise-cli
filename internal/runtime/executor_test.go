@@ -1313,7 +1313,7 @@ func TestExecutorLocalPolicyRequiresApproval(t *testing.T) {
 		DefaultTimeout:  time.Second,
 		AllowedSubjects: []string{"integration"},
 		Spec: adapter.OperationSpec{
-			Summary: "测试本地策略审批。",
+			Summary: "Test local policy approval.",
 			Idempotency: adapter.IdempotencySpec{
 				Required: true,
 			},
@@ -1353,7 +1353,7 @@ func TestExecutorPluginPolicyAnnotatesExecution(t *testing.T) {
 while IFS= read -r line; do
   case "$line" in
     *'"method":"clawrise.policy.evaluate"'*)
-      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"需要人工复核输出"}}'"\n"
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"manual review of the output is recommended"}}'"\n"
       ;;
   esac
 done
@@ -1406,7 +1406,7 @@ done
 		DefaultTimeout:  time.Second,
 		AllowedSubjects: []string{"integration"},
 		Spec: adapter.OperationSpec{
-			Summary: "测试插件策略标注。",
+			Summary: "Test policy plugin annotation.",
 			Idempotency: adapter.IdempotencySpec{
 				Required: true,
 			},
@@ -1428,7 +1428,7 @@ done
 	if !envelope.OK {
 		t.Fatalf("expected policy annotation to keep execution successful, got: %+v", envelope.Error)
 	}
-	if len(envelope.Warnings) == 0 || !strings.Contains(envelope.Warnings[0], "需要人工复核输出") {
+	if len(envelope.Warnings) == 0 || !strings.Contains(envelope.Warnings[0], "manual review of the output is recommended") {
 		t.Fatalf("expected policy warning to be surfaced, got: %+v", envelope.Warnings)
 	}
 }
@@ -1501,7 +1501,7 @@ done
 		DefaultTimeout:  time.Second,
 		AllowedSubjects: []string{"integration"},
 		Spec: adapter.OperationSpec{
-			Summary: "测试审计扇出。",
+			Summary: "Test audit sink fan-out.",
 			Idempotency: adapter.IdempotencySpec{
 				Required: true,
 			},

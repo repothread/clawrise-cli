@@ -294,7 +294,7 @@ func TestProcessPolicyEvaluate(t *testing.T) {
 while IFS= read -r line; do
   case "$line" in
     *'"method":"clawrise.policy.evaluate"'*)
-      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"命中策略审计注释"}}'"\n"
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"matched policy annotation"}}'"\n"
       ;;
   esac
 done
@@ -340,7 +340,7 @@ done
 	if err != nil {
 		t.Fatalf("Evaluate returned error: %v", err)
 	}
-	if result.Decision != "annotate" || result.Message != "命中策略审计注释" {
+	if result.Decision != "annotate" || result.Message != "matched policy annotation" {
 		t.Fatalf("unexpected policy result: %+v", result)
 	}
 }

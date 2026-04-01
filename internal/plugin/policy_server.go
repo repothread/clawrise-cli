@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// ServePolicyRuntime 通过 stdio 暴露 policy plugin 协议。
+// ServePolicyRuntime serves the policy plugin protocol over stdio.
 func ServePolicyRuntime(runtime PolicyRuntime) error {
 	reader := bufio.NewScanner(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)

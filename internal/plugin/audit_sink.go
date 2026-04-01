@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// AuditSinkRuntime 描述一个可接收审计事件的运行时。
+// AuditSinkRuntime describes one runtime that can receive audit events.
 type AuditSinkRuntime interface {
 	Name() string
 	ID() string
@@ -16,13 +16,13 @@ type AuditSinkRuntime interface {
 	Close() error
 }
 
-// ProcessAuditSink 使用 stdio JSON-RPC 调用一个外部 audit sink plugin。
+// ProcessAuditSink executes JSON-RPC calls against one external audit sink plugin.
 type ProcessAuditSink struct {
 	runtime    *ProcessRuntime
 	capability CapabilityDescriptor
 }
 
-// NewProcessAuditSink 创建一个进程化的 audit sink plugin 客户端。
+// NewProcessAuditSink creates one process-backed audit sink plugin client.
 func NewProcessAuditSink(manifest Manifest, capability CapabilityDescriptor) *ProcessAuditSink {
 	return &ProcessAuditSink{
 		runtime:    NewProcessRuntime(manifest),
@@ -69,7 +69,7 @@ func (s *ProcessAuditSink) Close() error {
 	return s.runtime.Close()
 }
 
-// DiscoverAuditSinkRuntimes 发现所有启用中的 audit sink capability。
+// DiscoverAuditSinkRuntimes discovers all enabled audit sink capabilities.
 func DiscoverAuditSinkRuntimes(options DiscoveryOptions) ([]AuditSinkRuntime, error) {
 	roots, err := DefaultDiscoveryRoots()
 	if err != nil {

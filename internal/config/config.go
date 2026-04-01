@@ -120,7 +120,7 @@ type GovernanceConfig struct {
 	Plugin  string `yaml:"plugin,omitempty"`
 }
 
-// PolicyConfig 描述本地策略链的基础规则。
+// PolicyConfig describes the base local policy chain settings.
 type PolicyConfig struct {
 	DenyOperations            []string          `yaml:"deny_operations,omitempty"`
 	RequireApprovalOperations []string          `yaml:"require_approval_operations,omitempty"`

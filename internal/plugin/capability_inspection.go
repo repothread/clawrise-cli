@@ -9,13 +9,13 @@ import (
 	"strings"
 )
 
-// runtimeCapabilityInspection 描述一次运行时 capability 对账结果。
+// runtimeCapabilityInspection describes one manifest/runtime capability comparison result.
 type runtimeCapabilityInspection struct {
 	RuntimeCapabilities []CapabilityDescriptor
 	Warnings            []string
 }
 
-// inspectRuntimeCapabilities 尝试从插件进程读取 runtime capability，并与 manifest 做对账。
+// inspectRuntimeCapabilities attempts to load runtime capabilities and compare them with the manifest.
 func inspectRuntimeCapabilities(ctx context.Context, manifest Manifest) runtimeCapabilityInspection {
 	command := manifest.ResolveCommand()
 	if len(command) == 0 {
@@ -51,7 +51,7 @@ func inspectRuntimeCapabilities(ctx context.Context, manifest Manifest) runtimeC
 	}
 }
 
-// matchedProviderBindingPlatforms 返回当前插件命中的 provider binding 平台列表。
+// matchedProviderBindingPlatforms returns the provider-binding platforms matched by the current plugin.
 func matchedProviderBindingPlatforms(manifest Manifest, bindings map[string]string) []string {
 	if len(bindings) == 0 {
 		return nil
