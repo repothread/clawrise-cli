@@ -27,6 +27,7 @@ type Envelope struct {
 	Error       *ErrorBody        `json:"error"`
 	Meta        Meta              `json:"meta"`
 	Idempotency *IdempotencyState `json:"idempotency,omitempty"`
+	Policy      *PolicyResult     `json:"policy,omitempty"`
 	Warnings    []string          `json:"warnings,omitempty"`
 }
 
@@ -60,6 +61,22 @@ type IdempotencyState struct {
 	Status    string `json:"status"`
 	Persisted bool   `json:"persisted,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// PolicyResult stores the structured policy evaluation summary for one request.
+type PolicyResult struct {
+	FinalDecision string      `json:"final_decision"`
+	Hits          []PolicyHit `json:"hits,omitempty"`
+}
+
+// PolicyHit records one matched local rule or plugin policy decision.
+type PolicyHit struct {
+	SourceType  string         `json:"source_type"`
+	SourceName  string         `json:"source_name"`
+	Decision    string         `json:"decision"`
+	Message     string         `json:"message,omitempty"`
+	MatchedRule string         `json:"matched_rule,omitempty"`
+	Annotations map[string]any `json:"annotations,omitempty"`
 }
 
 // ExecutionProfile is the resolved execution identity at runtime.

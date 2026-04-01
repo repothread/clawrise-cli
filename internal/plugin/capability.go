@@ -27,6 +27,10 @@ const (
 	CapabilityTypePolicy = "policy"
 	// CapabilityTypeAuditSink marks one audit event sink capability.
 	CapabilityTypeAuditSink = "audit_sink"
+	// CapabilityTypeWorkflow marks one workflow planning capability.
+	CapabilityTypeWorkflow = "workflow"
+	// CapabilityTypeRegistrySource marks one plugin registry metadata source capability.
+	CapabilityTypeRegistrySource = "registry_source"
 )
 
 // CapabilityDescriptor 描述一个插件暴露的单个 capability。
@@ -66,6 +70,10 @@ func (c CapabilityDescriptor) Validate() error {
 		// Policy capabilities may optionally filter by platform.
 	case CapabilityTypeAuditSink:
 		// Audit sinks currently only require the capability marker itself.
+	case CapabilityTypeWorkflow:
+		// Workflow planners currently only require the capability marker itself.
+	case CapabilityTypeRegistrySource:
+		// Registry sources currently only require the capability marker itself.
 	default:
 		return fmt.Errorf("unsupported capability type: %s", capabilityType)
 	}

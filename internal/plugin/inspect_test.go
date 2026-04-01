@@ -77,3 +77,80 @@ done
 		t.Fatalf("unexpected inspection warnings: %+v", item.InspectionWarnings)
 	}
 }
+
+func TestInspectDiscoveryReportsCapabilityRoutes(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+
+	pluginDir := filepath.Join(pluginRoot, "demo-governance", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "demo-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"demo-governance","version":"0.1.0","platforms":[]}}'"\n"
+      ;;
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"policy","id":"review"},{"type":"audit_sink","id":"capture"}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write plugin executable: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(pluginDir, ManifestFileName), []byte(`{
+  "schema_version": 2,
+  "name": "demo-governance",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review"
+    },
+    {
+      "type": "audit_sink",
+      "id": "capture"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	report, err := InspectDiscoveryWithOptions(context.Background(), DiscoveryOptions{
+		PolicyMode: "manual",
+		PolicySelectors: []PolicyCapabilitySelector{
+			{Plugin: "demo-governance", PolicyID: "review"},
+		},
+		AuditMode: "manual",
+	})
+	if err != nil {
+		t.Fatalf("InspectDiscoveryWithOptions returned error: %v", err)
+	}
+	if len(report.Plugins) != 1 {
+		t.Fatalf("unexpected plugins: %+v", report.Plugins)
+	}
+
+	item := report.Plugins[0]
+	if len(item.CapabilityRoutes) != 2 {
+		t.Fatalf("expected capability routes, got: %+v", item)
+	}
+	policyRoute := findCapabilityRoute(t, item.CapabilityRoutes, CapabilityTypePolicy, "review")
+	if !policyRoute.Active || policyRoute.Source != "configured" {
+		t.Fatalf("unexpected policy route: %+v", policyRoute)
+	}
+	auditRoute := findCapabilityRoute(t, item.CapabilityRoutes, CapabilityTypeAuditSink, "capture")
+	if auditRoute.Active || auditRoute.Reason != "manual_mode_without_sink_selector" {
+		t.Fatalf("unexpected audit route: %+v", auditRoute)
+	}
+}

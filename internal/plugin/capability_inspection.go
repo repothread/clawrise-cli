@@ -176,6 +176,16 @@ func formatCapabilityDescriptor(item CapabilityDescriptor) string {
 		if strings.TrimSpace(item.ID) != "" {
 			parts = append(parts, "id="+strings.TrimSpace(item.ID))
 		}
+	case CapabilityTypeWorkflow:
+		parts = append(parts, "workflow")
+		if strings.TrimSpace(item.ID) != "" {
+			parts = append(parts, "id="+strings.TrimSpace(item.ID))
+		}
+	case CapabilityTypeRegistrySource:
+		parts = append(parts, "registry_source")
+		if strings.TrimSpace(item.ID) != "" {
+			parts = append(parts, "id="+strings.TrimSpace(item.ID))
+		}
 	default:
 		if strings.TrimSpace(item.Type) != "" {
 			parts = append(parts, strings.TrimSpace(item.Type))

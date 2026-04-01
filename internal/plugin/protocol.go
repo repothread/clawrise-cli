@@ -582,6 +582,97 @@ type PolicyEvaluateResult struct {
 	Annotations map[string]any `json:"annotations,omitempty"`
 }
 
+// WorkflowAvailableOperation describes one operation that can be referenced by a workflow plan.
+type WorkflowAvailableOperation struct {
+	Operation string `json:"operation"`
+	Platform  string `json:"platform,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+	Mutating  bool   `json:"mutating,omitempty"`
+}
+
+// WorkflowPlaybookReference describes one optional playbook input that a planner may use.
+type WorkflowPlaybookReference struct {
+	ID    string `json:"id,omitempty"`
+	Path  string `json:"path,omitempty"`
+	Title string `json:"title,omitempty"`
+}
+
+// WorkflowPlanRequest describes one planning request sent to a workflow plugin.
+type WorkflowPlanRequest struct {
+	Goal                string                       `json:"goal"`
+	Context             map[string]any               `json:"context,omitempty"`
+	Constraints         map[string]any               `json:"constraints,omitempty"`
+	AvailableOperations []WorkflowAvailableOperation `json:"available_operations,omitempty"`
+	Playbooks           []WorkflowPlaybookReference  `json:"playbooks,omitempty"`
+}
+
+// WorkflowPlanStep describes one structured step in a workflow plan.
+type WorkflowPlanStep struct {
+	Type                 string         `json:"type"`
+	Title                string         `json:"title,omitempty"`
+	Operation            string         `json:"operation,omitempty"`
+	Input                map[string]any `json:"input,omitempty"`
+	Note                 string         `json:"note,omitempty"`
+	RequiresConfirmation bool           `json:"requires_confirmation,omitempty"`
+}
+
+// WorkflowMissingInput describes one required input that the planner could not infer.
+type WorkflowMissingInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	StepIndex   int    `json:"step_index,omitempty"`
+}
+
+// WorkflowPlanParams describes one workflow planning request.
+type WorkflowPlanParams struct {
+	WorkflowID string              `json:"workflow_id,omitempty"`
+	Request    WorkflowPlanRequest `json:"request"`
+}
+
+// WorkflowPlanResult describes one structured workflow planning result.
+type WorkflowPlanResult struct {
+	Summary              string                 `json:"summary,omitempty"`
+	Steps                []WorkflowPlanStep     `json:"steps,omitempty"`
+	Warnings             []string               `json:"warnings,omitempty"`
+	MissingInputs        []WorkflowMissingInput `json:"missing_inputs,omitempty"`
+	RequiresConfirmation bool                   `json:"requires_confirmation,omitempty"`
+}
+
+// RegistryPluginSummary describes one plugin entry exposed by a registry source.
+type RegistryPluginSummary struct {
+	Name          string `json:"name"`
+	LatestVersion string `json:"latest_version,omitempty"`
+	Description   string `json:"description,omitempty"`
+}
+
+// RegistrySourceListParams describes one registry listing request.
+type RegistrySourceListParams struct {
+	SourceID string `json:"source_id,omitempty"`
+	Query    string `json:"query,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+// RegistrySourceListResult describes one registry listing response.
+type RegistrySourceListResult struct {
+	Plugins []RegistryPluginSummary `json:"plugins,omitempty"`
+}
+
+// RegistrySourceResolveParams describes one registry artifact resolution request.
+type RegistrySourceResolveParams struct {
+	SourceID  string `json:"source_id,omitempty"`
+	Reference string `json:"reference"`
+	Version   string `json:"version,omitempty"`
+}
+
+// RegistrySourceResolveResult describes the resolved installable artifact for one logical reference.
+type RegistrySourceResolveResult struct {
+	Name           string `json:"name,omitempty"`
+	Version        string `json:"version,omitempty"`
+	ArtifactURL    string `json:"artifact_url,omitempty"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
+	MetadataURL    string `json:"metadata_url,omitempty"`
+}
+
 // AuditEmitParams describes one audit event delivery request.
 type AuditEmitParams struct {
 	SinkID string                `json:"sink_id,omitempty"`

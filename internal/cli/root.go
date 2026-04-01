@@ -177,7 +177,56 @@ func buildPluginDiscoveryOptions(cfg *config.Config) pluginruntime.DiscoveryOpti
 		EnabledPlugins:          enabledPlugins,
 		ProviderBindings:        providerBindings,
 		AuthLauncherPreferences: config.ResolveAllAuthLauncherPreferences(cfg),
+		PolicyMode:              config.ResolvePolicyMode(cfg),
+		PolicySelectors:         buildPolicyCapabilitySelectors(config.ResolvePolicyPlugins(cfg)),
+		AuditMode:               config.ResolveAuditMode(cfg),
+		AuditSinks:              buildAuditSinkSelectors(config.ResolveAuditSinks(cfg)),
 	}
+}
+
+func buildPolicyCapabilitySelectors(items []config.PolicyPluginBinding) []pluginruntime.PolicyCapabilitySelector {
+	if len(items) == 0 {
+		return nil
+	}
+
+	selectors := make([]pluginruntime.PolicyCapabilitySelector, 0, len(items))
+	for _, item := range items {
+		selector := pluginruntime.PolicyCapabilitySelector{
+			Plugin:   strings.TrimSpace(item.Plugin),
+			PolicyID: strings.TrimSpace(item.PolicyID),
+		}
+		if selector.Plugin == "" && selector.PolicyID == "" {
+			continue
+		}
+		selectors = append(selectors, selector)
+	}
+	if len(selectors) == 0 {
+		return nil
+	}
+	return selectors
+}
+
+func buildAuditSinkSelectors(items []config.AuditSinkConfig) []pluginruntime.AuditSinkSelector {
+	if len(items) == 0 {
+		return nil
+	}
+
+	selectors := make([]pluginruntime.AuditSinkSelector, 0, len(items))
+	for _, item := range items {
+		selector := pluginruntime.AuditSinkSelector{
+			Type:   strings.TrimSpace(item.Type),
+			Plugin: strings.TrimSpace(item.Plugin),
+			SinkID: strings.TrimSpace(item.SinkID),
+		}
+		if selector.Type == "" && selector.Plugin == "" && selector.SinkID == "" {
+			continue
+		}
+		selectors = append(selectors, selector)
+	}
+	if len(selectors) == 0 {
+		return nil
+	}
+	return selectors
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {

@@ -282,6 +282,144 @@ done
 	}
 }
 
+func TestProcessWorkflowPlan(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "workflow")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "workflow-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.workflow.plan"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"summary":"sync notes and create a review event","steps":[{"type":"operation","title":"Update Notion page","operation":"notion.page.update","input":{"page_id":"page_demo"}},{"type":"approval","title":"Confirm calendar invite","requires_confirmation":true}],"warnings":["calendar availability is unknown"],"missing_inputs":[{"name":"calendar_id","description":"the target calendar","step_index":1}],"requires_confirmation":true}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write workflow plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "workflow-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "workflow",
+      "id": "planner",
+      "priority": 70
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./workflow-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+
+	runtime := NewProcessWorkflow(manifest, manifest.CapabilitiesByType(CapabilityTypeWorkflow)[0])
+	result, err := runtime.Plan(context.Background(), WorkflowPlanParams{
+		Request: WorkflowPlanRequest{
+			Goal: "sync notes",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+	if result.Summary != "sync notes and create a review event" {
+		t.Fatalf("unexpected workflow plan result: %+v", result)
+	}
+	if len(result.Steps) != 2 || result.Steps[0].Operation != "notion.page.update" {
+		t.Fatalf("unexpected workflow steps: %+v", result.Steps)
+	}
+	if !result.RequiresConfirmation || len(result.MissingInputs) != 1 || result.MissingInputs[0].Name != "calendar_id" {
+		t.Fatalf("unexpected workflow plan metadata: %+v", result)
+	}
+}
+
+func TestProcessRegistrySourceListAndResolve(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "registry")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "registry-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.registry_source.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"plugins":[{"name":"workflow-demo","latest_version":"0.2.0","description":"Demo workflow plugin"}]}}'"\n"
+      ;;
+    *'"method":"clawrise.registry_source.resolve"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"name":"workflow-demo","version":"0.2.0","artifact_url":"https://example.com/workflow-demo.tgz","checksum_sha256":"abc123","metadata_url":"https://example.com/workflow-demo.json"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write registry plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "registry-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "registry_source",
+      "id": "community",
+      "priority": 40
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./registry-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+
+	runtime := NewProcessRegistrySource(manifest, manifest.CapabilitiesByType(CapabilityTypeRegistrySource)[0])
+	listResult, err := runtime.List(context.Background(), RegistrySourceListParams{Query: "workflow"})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(listResult.Plugins) != 1 || listResult.Plugins[0].Name != "workflow-demo" {
+		t.Fatalf("unexpected registry list result: %+v", listResult)
+	}
+
+	resolveResult, err := runtime.Resolve(context.Background(), RegistrySourceResolveParams{
+		Reference: "workflow-demo",
+		Version:   "0.2.0",
+	})
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if resolveResult.ArtifactURL != "https://example.com/workflow-demo.tgz" || resolveResult.ChecksumSHA256 != "abc123" {
+		t.Fatalf("unexpected registry resolve result: %+v", resolveResult)
+	}
+}
+
 func TestProcessPolicyEvaluate(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "policy")

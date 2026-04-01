@@ -100,6 +100,10 @@ type DiscoveryOptions struct {
 	EnabledPlugins          map[string]string
 	ProviderBindings        map[string]string
 	AuthLauncherPreferences map[string][]string
+	PolicyMode              string
+	PolicySelectors         []PolicyCapabilitySelector
+	AuditMode               string
+	AuditSinks              []AuditSinkSelector
 }
 
 // NewManager creates one aggregated provider runtime manager.

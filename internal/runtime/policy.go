@@ -18,6 +18,13 @@ const (
 	policyDecisionDeny            = "deny"
 	policyDecisionRequireApproval = "require_approval"
 	policyDecisionAnnotate        = "annotate"
+
+	policySourceTypeLocal  = "local"
+	policySourceTypePlugin = "plugin"
+
+	policySourceLocalDenyOperations            = "runtime.policy.deny_operations"
+	policySourceLocalRequireApprovalOperations = "runtime.policy.require_approval_operations"
+	policySourceLocalAnnotateOperations        = "runtime.policy.annotate_operations"
 )
 
 // PolicySelectorView 描述一个来自配置文件的 policy selector。
@@ -59,30 +66,53 @@ type selectedPolicyRuntime struct {
 }
 
 // evaluatePolicies runs local policy rules first and then external policy plugins.
-func (e *Executor) evaluatePolicies(ctx context.Context, cfg *config.Config, definition adapter.Definition, requestID string, operation string, input map[string]any, profile ExecutionProfile, dryRun bool) ([]string, *apperr.AppError) {
-	warnings, appErr := evaluateLocalPolicy(cfg.Runtime.Policy, operation)
+func (e *Executor) evaluatePolicies(ctx context.Context, cfg *config.Config, definition adapter.Definition, requestID string, operation string, input map[string]any, profile ExecutionProfile, dryRun bool) (PolicyResult, []string, *apperr.AppError) {
+	result := newPolicyResult()
+
+	localResult, warnings, appErr := evaluateLocalPolicy(cfg.Runtime.Policy, operation)
+	result = mergePolicyResults(result, localResult)
 	if appErr != nil {
-		return warnings, appErr
+		return result, warnings, appErr
 	}
 
-	pluginWarnings, appErr := evaluatePluginPolicies(ctx, cfg, definition, requestID, operation, input, profile, dryRun)
+	pluginResult, pluginWarnings, appErr := evaluatePluginPolicies(ctx, cfg, definition, requestID, operation, input, profile, dryRun)
+	result = mergePolicyResults(result, pluginResult)
 	warnings = append(warnings, pluginWarnings...)
 	if appErr != nil {
-		return warnings, appErr
+		return result, warnings, appErr
 	}
-	return warnings, nil
+	return result, warnings, nil
 }
 
-func evaluateLocalPolicy(policy config.PolicyConfig, operation string) ([]string, *apperr.AppError) {
+func evaluateLocalPolicy(policy config.PolicyConfig, operation string) (PolicyResult, []string, *apperr.AppError) {
+	result := newPolicyResult()
 	if matched, ok := firstMatchingOperationPattern(policy.DenyOperations, operation); ok {
-		return nil, apperr.New("POLICY_DENIED", fmt.Sprintf("local policy denied %s (matched rule %s)", operation, matched))
+		message := fmt.Sprintf("local policy denied %s (matched rule %s)", operation, matched)
+		result.FinalDecision = policyDecisionDeny
+		result.Hits = append(result.Hits, PolicyHit{
+			SourceType:  policySourceTypeLocal,
+			SourceName:  policySourceLocalDenyOperations,
+			Decision:    policyDecisionDeny,
+			Message:     message,
+			MatchedRule: matched,
+		})
+		return result, nil, apperr.New("POLICY_DENIED", message)
 	}
 	if matched, ok := firstMatchingOperationPattern(policy.RequireApprovalOperations, operation); ok {
-		return nil, apperr.New("POLICY_APPROVAL_REQUIRED", fmt.Sprintf("local policy requires manual approval before executing %s (matched rule %s)", operation, matched))
+		message := fmt.Sprintf("local policy requires manual approval before executing %s (matched rule %s)", operation, matched)
+		result.FinalDecision = policyDecisionRequireApproval
+		result.Hits = append(result.Hits, PolicyHit{
+			SourceType:  policySourceTypeLocal,
+			SourceName:  policySourceLocalRequireApprovalOperations,
+			Decision:    policyDecisionRequireApproval,
+			Message:     message,
+			MatchedRule: matched,
+		})
+		return result, nil, apperr.New("POLICY_APPROVAL_REQUIRED", message)
 	}
 
 	if len(policy.AnnotateOperations) == 0 {
-		return nil, nil
+		return result, nil, nil
 	}
 
 	patterns := make([]string, 0, len(policy.AnnotateOperations))
@@ -104,15 +134,23 @@ func evaluateLocalPolicy(policy config.PolicyConfig, operation string) ([]string
 		if message == "" {
 			message = fmt.Sprintf("local policy annotated %s (matched rule %s)", operation, pattern)
 		}
+		result.Hits = append(result.Hits, PolicyHit{
+			SourceType:  policySourceTypeLocal,
+			SourceName:  policySourceLocalAnnotateOperations,
+			Decision:    policyDecisionAnnotate,
+			Message:     message,
+			MatchedRule: pattern,
+		})
 		warnings = append(warnings, message)
 	}
-	return warnings, nil
+	return result, warnings, nil
 }
 
-func evaluatePluginPolicies(ctx context.Context, cfg *config.Config, definition adapter.Definition, requestID string, operation string, input map[string]any, profile ExecutionProfile, dryRun bool) ([]string, *apperr.AppError) {
+func evaluatePluginPolicies(ctx context.Context, cfg *config.Config, definition adapter.Definition, requestID string, operation string, input map[string]any, profile ExecutionProfile, dryRun bool) (PolicyResult, []string, *apperr.AppError) {
+	resultSummary := newPolicyResult()
 	selections, selectionWarnings, err := resolveSelectedPolicyRuntimes(cfg)
 	if err != nil {
-		return nil, apperr.New("POLICY_EVALUATION_FAILED", err.Error())
+		return resultSummary, nil, apperr.New("POLICY_EVALUATION_FAILED", err.Error())
 	}
 	runtimes := policySelectionsToRuntimes(selections)
 	defer closePolicyRuntimes(runtimes)
@@ -140,23 +178,31 @@ func evaluatePluginPolicies(ctx context.Context, cfg *config.Config, definition 
 			},
 		})
 		if err != nil {
-			return warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("policy plugin %s failed: %s", policyRuntimeLabel(runtime), err.Error()))
+			return resultSummary, warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("policy plugin %s failed: %s", policyRuntimeLabel(runtime), err.Error()))
 		}
 
 		switch normalizePolicyDecision(result.Decision) {
 		case policyDecisionAllow:
 			continue
 		case policyDecisionAnnotate:
+			hitMessage := buildPluginPolicyHitMessage(runtime, result, "added an execution annotation")
+			resultSummary.Hits = append(resultSummary.Hits, buildPluginPolicyHit(runtime, policyDecisionAnnotate, hitMessage, result.Annotations))
 			warnings = append(warnings, buildPolicyAnnotationWarning(runtime, result))
 		case policyDecisionDeny:
-			return warnings, apperr.New("POLICY_DENIED", buildPolicyDecisionMessage(runtime, result, "denied the current request"))
+			hitMessage := buildPluginPolicyHitMessage(runtime, result, "denied the current request")
+			resultSummary.FinalDecision = policyDecisionDeny
+			resultSummary.Hits = append(resultSummary.Hits, buildPluginPolicyHit(runtime, policyDecisionDeny, hitMessage, result.Annotations))
+			return resultSummary, warnings, apperr.New("POLICY_DENIED", buildPolicyDecisionMessage(runtime, result, "denied the current request"))
 		case policyDecisionRequireApproval:
-			return warnings, apperr.New("POLICY_APPROVAL_REQUIRED", buildPolicyDecisionMessage(runtime, result, "requires manual approval before continuing"))
+			hitMessage := buildPluginPolicyHitMessage(runtime, result, "requires manual approval before continuing")
+			resultSummary.FinalDecision = policyDecisionRequireApproval
+			resultSummary.Hits = append(resultSummary.Hits, buildPluginPolicyHit(runtime, policyDecisionRequireApproval, hitMessage, result.Annotations))
+			return resultSummary, warnings, apperr.New("POLICY_APPROVAL_REQUIRED", buildPolicyDecisionMessage(runtime, result, "requires manual approval before continuing"))
 		default:
-			return warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("policy plugin %s returned an unsupported decision: %s", policyRuntimeLabel(runtime), strings.TrimSpace(result.Decision)))
+			return resultSummary, warnings, apperr.New("POLICY_EVALUATION_FAILED", fmt.Sprintf("policy plugin %s returned an unsupported decision: %s", policyRuntimeLabel(runtime), strings.TrimSpace(result.Decision)))
 		}
 	}
-	return warnings, nil
+	return resultSummary, warnings, nil
 }
 
 // InspectPolicyChain 返回当前配置下会参与执行的 policy 链摘要。
@@ -454,16 +500,7 @@ func buildPolicyDecisionMessage(runtime pluginruntime.PolicyRuntime, result plug
 }
 
 func buildPolicyAnnotationWarning(runtime pluginruntime.PolicyRuntime, result pluginruntime.PolicyEvaluateResult) string {
-	message := strings.TrimSpace(result.Message)
-	if message == "" && len(result.Annotations) > 0 {
-		encoded, err := json.Marshal(result.Annotations)
-		if err == nil {
-			message = string(encoded)
-		}
-	}
-	if message == "" {
-		message = "added an execution annotation"
-	}
+	message := buildPluginPolicyHitMessage(runtime, result, "added an execution annotation")
 	return fmt.Sprintf("policy plugin %s%s", policyRuntimeLabel(runtime), messageWithColon(message))
 }
 
@@ -473,4 +510,51 @@ func messageWithColon(message string) string {
 		return ""
 	}
 	return ": " + message
+}
+
+func newPolicyResult() PolicyResult {
+	return PolicyResult{FinalDecision: policyDecisionAllow}
+}
+
+func mergePolicyResults(base PolicyResult, next PolicyResult) PolicyResult {
+	if strings.TrimSpace(base.FinalDecision) == "" {
+		base.FinalDecision = policyDecisionAllow
+	}
+	if strings.TrimSpace(next.FinalDecision) != "" && next.FinalDecision != policyDecisionAllow {
+		base.FinalDecision = next.FinalDecision
+	}
+	if len(next.Hits) > 0 {
+		base.Hits = append(base.Hits, next.Hits...)
+	}
+	return base
+}
+
+func buildPluginPolicyHit(runtime pluginruntime.PolicyRuntime, decision string, message string, annotations map[string]any) PolicyHit {
+	sourceName := strings.TrimSpace(runtime.Name())
+	if sourceName == "" {
+		sourceName = policyRuntimeLabel(runtime)
+	}
+	return PolicyHit{
+		SourceType:  policySourceTypePlugin,
+		SourceName:  sourceName,
+		Decision:    decision,
+		Message:     strings.TrimSpace(message),
+		MatchedRule: strings.TrimSpace(runtime.ID()),
+		Annotations: cloneAnyMap(annotations),
+	}
+}
+
+func buildPluginPolicyHitMessage(runtime pluginruntime.PolicyRuntime, result pluginruntime.PolicyEvaluateResult, fallback string) string {
+	message := strings.TrimSpace(result.Message)
+	if message != "" {
+		return message
+	}
+	if len(result.Annotations) > 0 {
+		encoded, err := json.Marshal(result.Annotations)
+		if err == nil {
+			return string(encoded)
+		}
+	}
+	_ = runtime
+	return fallback
 }

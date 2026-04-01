@@ -126,3 +126,43 @@ func TestSplitManifestsByKindIncludesMultiCapabilityPlugin(t *testing.T) {
 		t.Fatalf("expected storage manifest, got: %+v", storageBackends)
 	}
 }
+
+func TestLoadManifestSupportsWorkflowAndRegistrySourceCapabilities(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "demo-suite",
+  "version": "0.3.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "workflow",
+      "id": "planner"
+    },
+    {
+      "type": "registry_source",
+      "id": "community"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-plugin"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+
+	capabilities := manifest.CapabilityList()
+	if len(capabilities) != 2 {
+		t.Fatalf("expected two capabilities, got: %+v", capabilities)
+	}
+	if capabilities[0].Type != CapabilityTypeRegistrySource || capabilities[1].Type != CapabilityTypeWorkflow {
+		t.Fatalf("unexpected capability normalization result: %+v", capabilities)
+	}
+}

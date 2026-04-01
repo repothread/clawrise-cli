@@ -329,6 +329,101 @@ func TestInstallNPMSupport(t *testing.T) {
 	}
 }
 
+func TestListAndInfoInstalledExposeCapabilityRoutes(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "demo-governance",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review"
+    },
+    {
+      "type": "audit_sink",
+      "id": "capture"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"policy","id":"review"},{"type":"audit_sink","id":"capture"}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(sourceDir, "bin", "demo-plugin"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write plugin binary: %v", err)
+	}
+
+	if _, err := InstallLocal(sourceDir); err != nil {
+		t.Fatalf("InstallLocal returned error: %v", err)
+	}
+
+	options := DiscoveryOptions{
+		PolicyMode: "manual",
+		PolicySelectors: []PolicyCapabilitySelector{
+			{Plugin: "demo-governance", PolicyID: "review"},
+		},
+		AuditMode: "manual",
+	}
+
+	items, err := ListInstalledWithOptions(options)
+	if err != nil {
+		t.Fatalf("ListInstalledWithOptions returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("unexpected installed plugins: %+v", items)
+	}
+	if len(items[0].CapabilityRoutes) != 2 {
+		t.Fatalf("expected two capability routes, got: %+v", items[0].CapabilityRoutes)
+	}
+	policyRoute := findCapabilityRoute(t, items[0].CapabilityRoutes, CapabilityTypePolicy, "review")
+	if !policyRoute.Active || policyRoute.Source != "configured" {
+		t.Fatalf("unexpected policy route: %+v", policyRoute)
+	}
+	auditRoute := findCapabilityRoute(t, items[0].CapabilityRoutes, CapabilityTypeAuditSink, "capture")
+	if auditRoute.Active || auditRoute.Reason != "manual_mode_without_sink_selector" {
+		t.Fatalf("unexpected audit route: %+v", auditRoute)
+	}
+
+	info, err := InfoInstalledWithOptions("demo-governance", "0.1.0", options)
+	if err != nil {
+		t.Fatalf("InfoInstalledWithOptions returned error: %v", err)
+	}
+	if len(info.CapabilityRoutes) != 2 {
+		t.Fatalf("expected two capability routes in info, got: %+v", info.CapabilityRoutes)
+	}
+}
+
+func findCapabilityRoute(t *testing.T, routes []CapabilityRouteStatus, capabilityType string, id string) CapabilityRouteStatus {
+	t.Helper()
+
+	for _, route := range routes {
+		if route.Type == capabilityType && route.ID == id {
+			return route
+		}
+	}
+	t.Fatalf("failed to find capability route %s/%s in %+v", capabilityType, id, routes)
+	return CapabilityRouteStatus{}
+}
+
 type roundTripFunc func(request *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {

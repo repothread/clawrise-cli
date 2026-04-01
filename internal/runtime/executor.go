@@ -126,10 +126,10 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		Subject:    account.Subject,
 		AuthMethod: strings.TrimSpace(account.Auth.Method),
 	}
-	policyWarnings, policyErr := e.evaluatePolicies(ctx, cfg, definition, requestID, canonicalOperation, input, executionProfile, opts.DryRun)
+	policyResult, policyWarnings, policyErr := e.evaluatePolicies(ctx, cfg, definition, requestID, canonicalOperation, input, executionProfile, opts.DryRun)
 	warnings = append(warnings, policyWarnings...)
 	if policyErr != nil {
-		return e.auditEnvelope(governance, withWarnings(e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, policyErr, executionProfile), warnings), input), nil
+		return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, policyErr, executionProfile), warnings, &policyResult), input), nil
 	}
 
 	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
@@ -151,7 +151,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		if idempotency != nil {
 			idempotency.Status = "dry_run"
 		}
-		return e.auditEnvelope(governance, withWarnings(e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, 0, nil, executionProfile), warnings), input), nil
+		return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, 0, nil, executionProfile), warnings, &policyResult), input), nil
 	}
 
 	timeout := definition.DefaultTimeout
@@ -165,27 +165,27 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	}
 
 	if definition.Handler == nil {
-		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), input), nil
+		return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), warnings, &policyResult), input), nil
 	}
 
 	var idempotencyRecord *persistedIdempotencyRecord
 	if idempotency != nil {
 		record, existed, err := governance.startIdempotency(idempotency, canonicalOperation, requestID, input)
 		if err != nil {
-			return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("IDEMPOTENCY_STORE_FAILED", err.Error()), executionProfile), input), nil
+			return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("IDEMPOTENCY_STORE_FAILED", err.Error()), executionProfile), warnings, &policyResult), input), nil
 		}
 		idempotencyRecord = record
 		if existed {
 			if appErr := governance.validateIdempotencyConflict(idempotency, record, canonicalOperation, input); appErr != nil {
-				return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, appErr, executionProfile), input), nil
+				return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, appErr, executionProfile), warnings, &policyResult), input), nil
 			}
 			if record.Status == "in_progress" {
 				idempotency.Status = record.Status
 				idempotency.Persisted = true
 				idempotency.UpdatedAt = record.UpdatedAt
-				return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, record.RetryCount, apperr.New("IDEMPOTENCY_IN_PROGRESS", "write request with the same idempotency key is already in progress"), executionProfile), input), nil
+				return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, record.RetryCount, apperr.New("IDEMPOTENCY_IN_PROGRESS", "write request with the same idempotency key is already in progress"), executionProfile), warnings, &policyResult), input), nil
 			}
-			return e.auditEnvelope(governance, governance.buildReplayEnvelope(startAt, requestID, executionProfile, idempotency, record), input), nil
+			return e.auditEnvelope(governance, withExecutionMetadata(governance.buildReplayEnvelope(startAt, requestID, executionProfile, idempotency, record), warnings, &policyResult), input), nil
 		}
 	}
 
@@ -214,7 +214,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		}
 	}
 
-	envelope := withWarnings(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, retryCount, appErr, executionProfile), warnings)
+	envelope := withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, retryCount, appErr, executionProfile), warnings, &policyResult)
 	if idempotencyRecord != nil {
 		if err := governance.finishIdempotency(idempotency, idempotencyRecord, envelope); err != nil {
 			idempotency.Persisted = false
@@ -289,12 +289,76 @@ func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelop
 	return envelope
 }
 
-func withWarnings(envelope Envelope, warnings []string) Envelope {
-	if len(warnings) == 0 {
-		return envelope
+func withExecutionMetadata(envelope Envelope, warnings []string, policy *PolicyResult) Envelope {
+	if len(warnings) > 0 {
+		envelope.Warnings = appendUniqueStrings(envelope.Warnings, warnings...)
 	}
-	envelope.Warnings = append([]string(nil), warnings...)
+	if policy != nil {
+		envelope.Policy = clonePolicyResult(policy)
+	}
 	return envelope
+}
+
+func clonePolicyResult(result *PolicyResult) *PolicyResult {
+	if result == nil {
+		return nil
+	}
+
+	cloned := &PolicyResult{
+		FinalDecision: strings.TrimSpace(result.FinalDecision),
+	}
+	if cloned.FinalDecision == "" {
+		cloned.FinalDecision = policyDecisionAllow
+	}
+	if len(result.Hits) > 0 {
+		cloned.Hits = make([]PolicyHit, 0, len(result.Hits))
+		for _, hit := range result.Hits {
+			cloned.Hits = append(cloned.Hits, PolicyHit{
+				SourceType:  strings.TrimSpace(hit.SourceType),
+				SourceName:  strings.TrimSpace(hit.SourceName),
+				Decision:    strings.TrimSpace(hit.Decision),
+				Message:     strings.TrimSpace(hit.Message),
+				MatchedRule: strings.TrimSpace(hit.MatchedRule),
+				Annotations: cloneAnyMap(hit.Annotations),
+			})
+		}
+	}
+	return cloned
+}
+
+func appendUniqueStrings(existing []string, values ...string) []string {
+	if len(values) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]struct{}, len(existing)+len(values))
+	items := make([]string, 0, len(existing)+len(values))
+	for _, value := range existing {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return items
 }
 
 func resolveAccountSelection(cfg *config.Config, platform string, explicitAccount string, explicitSubject string) (string, config.Account, *apperr.AppError) {

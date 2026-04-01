@@ -31,6 +31,7 @@ type InstalledPlugin struct {
 	Platforms               []string                `json:"platforms"`
 	StorageBackend          *StorageBackendManifest `json:"storage_backend,omitempty"`
 	Capabilities            []CapabilityDescriptor  `json:"capabilities,omitempty"`
+	CapabilityRoutes        []CapabilityRouteStatus `json:"capability_routes,omitempty"`
 	Enabled                 bool                    `json:"enabled"`
 	EnableRule              string                  `json:"enable_rule,omitempty"`
 	Selected                bool                    `json:"selected"`
@@ -64,17 +65,18 @@ type InstallMetadata struct {
 
 // PluginInfo describes one installed plugin with full manifest and install metadata.
 type PluginInfo struct {
-	Manifest                Manifest               `json:"manifest"`
-	Capabilities            []CapabilityDescriptor `json:"capabilities,omitempty"`
-	RuntimeCapabilities     []CapabilityDescriptor `json:"runtime_capabilities,omitempty"`
-	Warnings                []string               `json:"warnings,omitempty"`
-	Enabled                 bool                   `json:"enabled"`
-	EnableRule              string                 `json:"enable_rule,omitempty"`
-	Selected                bool                   `json:"selected"`
-	SelectionReason         string                 `json:"selection_reason,omitempty"`
-	MatchedProviderBindings []string               `json:"matched_provider_bindings,omitempty"`
-	Path                    string                 `json:"path"`
-	Install                 *InstallMetadata       `json:"install,omitempty"`
+	Manifest                Manifest                `json:"manifest"`
+	Capabilities            []CapabilityDescriptor  `json:"capabilities,omitempty"`
+	RuntimeCapabilities     []CapabilityDescriptor  `json:"runtime_capabilities,omitempty"`
+	CapabilityRoutes        []CapabilityRouteStatus `json:"capability_routes,omitempty"`
+	Warnings                []string                `json:"warnings,omitempty"`
+	Enabled                 bool                    `json:"enabled"`
+	EnableRule              string                  `json:"enable_rule,omitempty"`
+	Selected                bool                    `json:"selected"`
+	SelectionReason         string                  `json:"selection_reason,omitempty"`
+	MatchedProviderBindings []string                `json:"matched_provider_bindings,omitempty"`
+	Path                    string                  `json:"path"`
+	Install                 *InstallMetadata        `json:"install,omitempty"`
 }
 
 // Install installs one plugin from any supported source.
@@ -210,6 +212,7 @@ func InfoInstalledWithOptions(name, version string, options DiscoveryOptions) (P
 	info := PluginInfo{
 		Manifest:                manifest,
 		Capabilities:            cloneCapabilityList(manifest.CapabilityList()),
+		CapabilityRoutes:        inspectCapabilityRoutes(manifest, options),
 		Enabled:                 selectionState.Enabled,
 		EnableRule:              selectionState.EnableRule,
 		Selected:                selectionState.Selected,
@@ -314,6 +317,7 @@ func buildInstalledPlugin(manifest Manifest, metadata *InstallMetadata, options 
 		Platforms:               append([]string(nil), manifest.Platforms...),
 		StorageBackend:          cloneStorageBackendManifest(manifest.StorageBackend),
 		Capabilities:            cloneCapabilityList(manifest.CapabilityList()),
+		CapabilityRoutes:        inspectCapabilityRoutes(manifest, options),
 		Enabled:                 selectionState.Enabled,
 		EnableRule:              selectionState.EnableRule,
 		Selected:                selectionState.Selected,

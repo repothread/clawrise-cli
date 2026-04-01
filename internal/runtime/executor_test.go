@@ -1339,6 +1339,84 @@ func TestExecutorLocalPolicyRequiresApproval(t *testing.T) {
 	if envelope.Error == nil || envelope.Error.Code != "POLICY_APPROVAL_REQUIRED" {
 		t.Fatalf("unexpected policy error: %+v", envelope.Error)
 	}
+	if envelope.Policy == nil {
+		t.Fatalf("expected structured policy result, got: %+v", envelope)
+	}
+	if envelope.Policy.FinalDecision != "require_approval" {
+		t.Fatalf("unexpected final policy decision: %+v", envelope.Policy)
+	}
+	if len(envelope.Policy.Hits) != 1 {
+		t.Fatalf("expected one policy hit, got: %+v", envelope.Policy)
+	}
+	if envelope.Policy.Hits[0].SourceType != "local" || envelope.Policy.Hits[0].SourceName != "runtime.policy.require_approval_operations" {
+		t.Fatalf("unexpected policy hit source: %+v", envelope.Policy.Hits[0])
+	}
+	if envelope.Policy.Hits[0].MatchedRule != "demo.page.update" {
+		t.Fatalf("unexpected matched rule: %+v", envelope.Policy.Hits[0])
+	}
+}
+
+func TestExecutorLocalPolicyDenyProducesStructuredResult(t *testing.T) {
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Policy: config.PolicyConfig{
+				DenyOperations: []string{"demo.page.delete"},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.delete",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test local policy deny.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.delete",
+		DryRun:         true,
+		InputJSON:      `{"id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if envelope.OK {
+		t.Fatalf("expected deny policy to block execution: %+v", envelope)
+	}
+	if envelope.Error == nil || envelope.Error.Code != "POLICY_DENIED" {
+		t.Fatalf("unexpected policy error: %+v", envelope.Error)
+	}
+	if envelope.Policy == nil || envelope.Policy.FinalDecision != "deny" {
+		t.Fatalf("expected deny decision in structured policy result, got: %+v", envelope.Policy)
+	}
+	if len(envelope.Policy.Hits) != 1 || envelope.Policy.Hits[0].MatchedRule != "demo.page.delete" {
+		t.Fatalf("unexpected policy hits: %+v", envelope.Policy)
+	}
 }
 
 func TestExecutorPluginPolicyAnnotatesExecution(t *testing.T) {
@@ -1354,7 +1432,7 @@ func TestExecutorPluginPolicyAnnotatesExecution(t *testing.T) {
 while IFS= read -r line; do
   case "$line" in
     *'"method":"clawrise.policy.evaluate"'*)
-      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"manual review of the output is recommended"}}'"\n"
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"manual review of the output is recommended","annotations":{"reviewer":"ops","severity":"medium"}}}'"\n"
       ;;
   esac
 done
@@ -1431,6 +1509,21 @@ done
 	}
 	if len(envelope.Warnings) == 0 || !strings.Contains(envelope.Warnings[0], "manual review of the output is recommended") {
 		t.Fatalf("expected policy warning to be surfaced, got: %+v", envelope.Warnings)
+	}
+	if envelope.Policy == nil {
+		t.Fatalf("expected structured policy result, got: %+v", envelope)
+	}
+	if envelope.Policy.FinalDecision != "allow" {
+		t.Fatalf("unexpected final policy decision: %+v", envelope.Policy)
+	}
+	if len(envelope.Policy.Hits) != 1 {
+		t.Fatalf("expected one policy hit, got: %+v", envelope.Policy)
+	}
+	if envelope.Policy.Hits[0].SourceType != "plugin" || envelope.Policy.Hits[0].SourceName != "policy-demo" || envelope.Policy.Hits[0].MatchedRule != "review" {
+		t.Fatalf("unexpected policy hit source: %+v", envelope.Policy.Hits[0])
+	}
+	if envelope.Policy.Hits[0].Annotations["reviewer"] != "ops" {
+		t.Fatalf("expected policy annotations to be preserved, got: %+v", envelope.Policy.Hits[0].Annotations)
 	}
 }
 
@@ -1569,6 +1662,115 @@ done
 	}
 	if len(envelope.Warnings) == 0 || !strings.Contains(strings.Join(envelope.Warnings, " "), "selected policy executed") {
 		t.Fatalf("expected selected policy warning to be surfaced, got: %+v", envelope.Warnings)
+	}
+	if envelope.Policy == nil || len(envelope.Policy.Hits) != 1 || envelope.Policy.Hits[0].MatchedRule != "review" {
+		t.Fatalf("unexpected structured policy result: %+v", envelope.Policy)
+	}
+}
+
+func TestExecutorPolicyHitOrderKeepsLocalBeforePlugin(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	pluginDir := filepath.Join(pluginRoot, "policy-demo", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create policy plugin dir: %v", err)
+	}
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.policy.evaluate"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"plugin review is recommended"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(pluginDir, "policy-demo.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "policy-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 90,
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write policy plugin manifest: %v", err)
+	}
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Policy: config.PolicyConfig{
+				AnnotateOperations: map[string]string{
+					"demo.page.update": "local review is recommended",
+				},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test policy hit order.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		DryRun:         true,
+		InputJSON:      `{"id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected annotated execution to succeed, got: %+v", envelope.Error)
+	}
+	if envelope.Policy == nil || len(envelope.Policy.Hits) != 2 {
+		t.Fatalf("expected two ordered policy hits, got: %+v", envelope.Policy)
+	}
+	if envelope.Policy.Hits[0].SourceType != "local" || envelope.Policy.Hits[1].SourceType != "plugin" {
+		t.Fatalf("expected local hit before plugin hit, got: %+v", envelope.Policy.Hits)
+	}
+	if envelope.Policy.Hits[0].Message != "local review is recommended" || envelope.Policy.Hits[1].Message != "plugin review is recommended" {
+		t.Fatalf("unexpected policy hit messages: %+v", envelope.Policy.Hits)
 	}
 }
 

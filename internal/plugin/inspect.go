@@ -27,6 +27,7 @@ type DiscoveredPluginInspection struct {
 	Platforms               []string                `json:"platforms,omitempty"`
 	StorageBackend          *StorageBackendManifest `json:"storage_backend,omitempty"`
 	Capabilities            []CapabilityDescriptor  `json:"capabilities,omitempty"`
+	CapabilityRoutes        []CapabilityRouteStatus `json:"capability_routes,omitempty"`
 	Path                    string                  `json:"path,omitempty"`
 	Command                 []string                `json:"command,omitempty"`
 	CommandPath             string                  `json:"command_path,omitempty"`
@@ -147,6 +148,7 @@ func inspectManifest(ctx context.Context, root, manifestPath string, options Dis
 	item.Platforms = append([]string(nil), manifest.Platforms...)
 	item.StorageBackend = cloneStorageBackendManifest(manifest.StorageBackend)
 	item.Capabilities = cloneCapabilityList(manifest.CapabilityList())
+	item.CapabilityRoutes = inspectCapabilityRoutes(manifest, options)
 	item.Command = append([]string(nil), manifest.Entry.Command...)
 	item.CommandPath = manifest.ResolveCommand()[0]
 	selectionState := resolveManifestSelectionState(manifest, options)
@@ -186,7 +188,7 @@ func inspectManifest(ctx context.Context, root, manifestPath string, options Dis
 	capabilityInspection := inspectRuntimeCapabilities(ctx, manifest)
 	item.RuntimeCapabilities = capabilityInspection.RuntimeCapabilities
 	item.InspectionWarnings = append(item.InspectionWarnings, capabilityInspection.Warnings...)
-	if len(item.RuntimeCapabilities) > 0 && (len(manifest.CapabilitiesByType(CapabilityTypePolicy)) > 0 || len(manifest.CapabilitiesByType(CapabilityTypeAuditSink)) > 0) {
+	if len(item.RuntimeCapabilities) > 0 && manifestHasStandaloneRuntimeCapability(manifest) {
 		item.Healthy = true
 	}
 
@@ -284,4 +286,11 @@ func inspectStorageCapability(ctx context.Context, manifest Manifest, capability
 	default:
 		return false, fmt.Errorf("unsupported storage backend target: %s", strings.TrimSpace(capability.Target))
 	}
+}
+
+func manifestHasStandaloneRuntimeCapability(manifest Manifest) bool {
+	return len(manifest.CapabilitiesByType(CapabilityTypePolicy)) > 0 ||
+		len(manifest.CapabilitiesByType(CapabilityTypeAuditSink)) > 0 ||
+		len(manifest.CapabilitiesByType(CapabilityTypeWorkflow)) > 0 ||
+		len(manifest.CapabilitiesByType(CapabilityTypeRegistrySource)) > 0
 }
