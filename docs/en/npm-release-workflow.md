@@ -149,12 +149,14 @@ Where:
 The workflow does:
 
 1. resolve the release version
-2. run `go test ./...`
-3. build all platform bundles
-4. generate npm package directories
-5. upload archive artifacts and `SHA256SUMS`
-6. create or update the GitHub Release and upload archives
-7. publish npm packages through npm Trusted Publishing
+2. verify that the release commit still belongs to `origin/main`
+3. run `go test ./...`
+4. build all platform bundles
+5. generate npm package directories
+6. generate release notes and verify release artifact consistency
+7. upload archive artifacts and `SHA256SUMS`
+8. create or update the GitHub Release and upload archives
+9. publish npm packages through npm Trusted Publishing
 
 Supported workflow inputs and environment variables:
 
@@ -209,6 +211,7 @@ It checks:
 - `go test ./...`
 - multi-platform bundles and npm package directory generation
 - release notes generation
+- `scripts/release/verify-release-artifacts.mjs` for release metadata, bundled plugin manifests, archives, checksums, and release notes consistency
 - `npm pack` for the root package and the current platform package
 
 ## Release Notes

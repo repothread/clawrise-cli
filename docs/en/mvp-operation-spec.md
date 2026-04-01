@@ -58,7 +58,7 @@ Additional note:
 
 ## 3. MVP Scope
 
-P0 operations:
+Baseline operations:
 
 Feishu:
 
@@ -93,7 +93,7 @@ Notion:
 - `notion.block.update`
 - `notion.block.delete`
 
-P1 operations:
+Supplementary read operations:
 
 Feishu:
 
@@ -567,7 +567,7 @@ Allowed subject:
 
 ### feishu.contact.user.get
 
-P1 read operation.
+Supplementary read operation.
 
 Required fields:
 
@@ -870,7 +870,7 @@ Success output should include:
 
 ### notion.user.get
 
-P1 read operation.
+Supplementary read operation.
 
 Required fields:
 
@@ -880,7 +880,7 @@ Allowed subject:
 
 - `integration`
 
-## 6. Deferred Scope
+## 6. Out of Scope
 
 The following are out of MVP scope:
 
@@ -892,26 +892,3 @@ The following are out of MVP scope:
 - full Notion database query DSL mapping
 - transactional multi-write flows
 - cross-platform workflow orchestration
-
-## 7. Recommended Implementation Order
-
-1. input loading, output envelope, and error model
-2. `feishu.calendar.event.create`
-3. `feishu.calendar.event.list`
-4. `feishu.docs.document.get`
-5. `feishu.docs.document.list_blocks`
-6. `feishu.docs.block.get`
-7. `feishu.docs.block.list_children`
-8. `feishu.docs.block.get_descendants`
-9. `feishu.docs.block.update`
-10. `feishu.docs.block.batch_delete`
-11. `notion.search.query`
-12. `notion.data_source.query`
-13. `notion.page.create`
-14. `notion.page.get`
-15. `notion.page.markdown.get`
-16. `notion.page.markdown.update`
-17. idempotency and audit storage
-18. `notion.block.append`
-19. `feishu.docs.document.create`
-20. P1 read operations

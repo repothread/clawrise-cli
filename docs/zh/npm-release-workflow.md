@@ -149,12 +149,14 @@ export CLAWRISE_NPM_DIST_TAG=beta
 工作流会执行：
 
 1. 解析版本
-2. 运行 `go test ./...`
-3. 构建各平台 bundle
-4. 生成 npm 包目录
-5. 上传归档产物与 `SHA256SUMS`
-6. 创建或更新 GitHub Release，并上传归档文件
-7. 通过 npm Trusted Publishing 自动发布 npm 包
+2. 校验当前 release commit 仍然属于 `origin/main` 历史
+3. 运行 `go test ./...`
+4. 构建各平台 bundle
+5. 生成 npm 包目录
+6. 生成 release notes，并校验 release 产物一致性
+7. 上传归档产物与 `SHA256SUMS`
+8. 创建或更新 GitHub Release，并上传归档文件
+9. 通过 npm Trusted Publishing 自动发布 npm 包
 
 支持的工作流参数与环境变量：
 
@@ -209,6 +211,7 @@ bash ./scripts/release/check-release-ready.sh 1.2.3
 - `go test ./...`
 - 多平台 bundle 与 npm 包目录生成
 - release notes 生成
+- `scripts/release/verify-release-artifacts.mjs` 对 release metadata、内建 plugin manifest、归档、校验文件与 release notes 的一致性检查
 - 当前平台 npm 包是否能成功 `npm pack`
 
 ## Release Notes

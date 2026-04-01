@@ -1,17 +1,20 @@
 # Documentation Index
 
-## User And Usage
+## Setup And Usage
 
+- [AI Install Guide](./ai-install.md)
 - [Feishu User Auth Setup](./feishu-user-auth-setup.md)
-- [Roadmap](./roadmap.md)
-- [Runtime Policy And Audit Configuration](./runtime-policy-audit.md)
 - [Local Playbooks Index](../playbooks/index.yaml)
+- Community companion docs for runtime policy, audit, and plugin authoring are maintained in the separate `clawrise` project root markdown files.
+
+## Roadmaps
+
+- [Roadmap](./roadmap.md)
 
 ## Design And Specs
 
 - [CLI Layer Design](./cli-layer-design.md)
 - [Plugin System Design](./plugin-system-design.md)
-- [Plugin Author Guide](./plugin-author-guide.md)
 - [`spec` Subsystem Design](./spec-design.md)
 - [Auth Model](./auth-model.md)
 - [MVP Operation Spec](./mvp-operation-spec.md)

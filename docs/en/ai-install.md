@@ -1,6 +1,6 @@
 # Clawrise AI Install Guide
 
-Use this guide when an AI assistant needs to install the `clawrise` command and run setup for the current client.
+Use this guide when an AI assistant needs to install the published `clawrise` npm package and run the packaged `setup` wrapper for the current client.
 
 ## For Humans
 
@@ -45,25 +45,29 @@ command -v npx
 
 If `npm` is missing, stop and ask the user to install Node.js and npm first.
 
-### Step 2: Choose The Setup Command
+### Step 2: Choose The Setup Entry Point
 
-Use `clawrise setup ...` if the command is already installed.
+The published npm root package exposes `clawrise setup ...`.
+
+Raw `go run ./cmd/clawrise` executions and standalone development binaries expose the runtime commands directly and do not include this wrapper.
+
+Use `clawrise setup ...` if the published package is already installed.
 
 Otherwise use `npx @clawrise/clawrise-cli setup ...`.
 
 Setup is responsible for:
 
-- ensuring the `clawrise` command is installed on the host
+- ensuring the published `clawrise` command is installed on the host unless `--skip-cli-install` is used
 - installing `clawrise-core`
 - installing any requested platform skills
 - configuring default platform accounts when credentials are available
 
-Default account names:
+Default setup account names:
 
 - `notion_bot`
 - `feishu_bot`
 
-If no platform is specified, setup installs only `clawrise-core`.
+If no platform is specified, setup installs only `clawrise-core` and does not initialize a platform account.
 
 ### Step 3: Run Setup
 
@@ -97,6 +101,13 @@ clawrise setup codex
 clawrise setup claude-code notion
 clawrise setup openclaw feishu
 clawrise setup opencode notion
+```
+
+Platform-only examples:
+
+```bash
+clawrise setup notion
+clawrise setup feishu
 ```
 
 Project-local examples:
@@ -145,6 +156,10 @@ If the user only wants one platform skill:
 ```bash
 clawrise setup claude-code feishu
 ```
+
+If the user is running the repository directly with `go run ./cmd/clawrise` and expects `setup` to exist:
+
+- switch back to the published npm package entrypoint or use `npx @clawrise/clawrise-cli setup ...`
 
 ### Step 6: Reload The Client
 

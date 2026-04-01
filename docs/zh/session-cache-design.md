@@ -1,4 +1,4 @@
-# Clawrise Session / Token Cache 设计骨架
+# Clawrise Session / Token Cache 设计
 
 ## 1. 目标
 
@@ -107,9 +107,9 @@ Provider 差异：
   - refresh 成功后应保存新的 `access_token`
   - 如果上游返回新 `refresh_token`，也应一并替换
 
-## 7. 接入点
+## 7. 当前接入模型
 
-建议未来接入流程：
+当前建议接入流程：
 
 1. `runtime` 解析出最终 `account`
 2. 根据 `account` 和主配置路径构造 `auth.FileStore`
@@ -128,22 +128,22 @@ Provider 差异：
 
 ## 8. 并发与一致性
 
-第一阶段可接受的最小实现：
+当前基线：
 
 - 同一 account 采用单文件原子写
 - 通过 `write temp -> rename` 降低半写入风险
 
-第二阶段可以增加：
+进一步 hardening 可包括：
 
 - 文件锁
 - `updated_at` / `profile_fingerprint` 冲突检测
 - refresh 去重
 
-## 9. 未来命令
+## 9. 相关 CLI 接口
 
 当前版本不再提供单独的 session CLI 子命令。
 
-推荐通过下面的命令观察和驱动 session 生命周期：
+当前应通过下面的命令观察和驱动 session 生命周期：
 
 - `clawrise auth inspect <account>`
 - `clawrise auth check <account>`

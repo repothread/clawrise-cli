@@ -229,19 +229,19 @@ operation 文档应逐步转向从 provider 元数据和 catalog 生成，而不
 - runtime/catalog 漂移报告
 - 元数据完整性
 
-## 13. 下一步
+## 13. 当前维护重点
 
-在当前实现基础上，下一步主要是：
+当前 `spec` 的维护重点是：
 
-- 继续扩充 `spec export` 的消费场景
-- 让更多文档直接复用导出元数据
-- 保持 completion 与文档生成继续收敛到同一层事实源
+- 让 `spec export` 持续作为下游工具和文档生成可复用的元数据接口
+- 保持 completion 与生成文档消费同一层事实源
+- 在 plugin 能力继续扩展时，维持 runtime/catalog 漂移可观测性
 
-## 14. 完成标志
+## 14. 稳定性准则
 
-可以认为近期 `spec` 工作完成的标志是：
+当前 `spec` 设计应持续满足以下准则：
 
-- runtime 能力可通过 `list/get` 发现
-- runtime/catalog 漂移可通过 `status` 查看
-- `export` 可供机器消费者使用
-- completion 和文档不再依赖另一套手工维护的命令知识
+- runtime 能力持续可通过 `list/get` 发现
+- runtime/catalog 漂移持续可通过 `status` 查看
+- `export` 持续可供机器消费者使用
+- completion 和文档继续避免依赖另一套手工维护的命令知识

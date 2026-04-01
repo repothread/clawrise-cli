@@ -67,7 +67,10 @@ Recommended action:
 
 - keep the same version
 - rerun the publish script or rerun the workflow
-- `scripts/release/publish-npm.sh` skips existing versions and only publishes the missing packages
+- `scripts/release/publish-npm.sh` now prints a partial-release summary before publishing
+- if some platform packages already exist while the root package is still missing, the script treats that as a recoverable partial release and publishes only the missing packages
+- if the root package already exists while one or more platform packages are still missing, the script stops by default because that state is considered inconsistent
+- override that stop only for exceptional recovery with `CLAWRISE_RELEASE_ALLOW_INCONSISTENT_PUBLISH=1`
 
 ### 2. The root package was published with the wrong dist-tag
 

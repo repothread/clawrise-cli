@@ -1,10 +1,15 @@
 # 文档索引
 
-## 用户与使用
+## 安装与使用
 
+- [AI 安装引导](./ai-install.md)
 - [飞书用户授权凭证获取说明](./feishu-user-auth-setup.md)
-- [近期路线图](./roadmap.md)
 - [本地 Playbooks 索引](../playbooks/index.yaml)
+- 面向 runtime policy、audit 与插件作者的社区配套说明，现由独立 `clawrise` 项目的根目录 Markdown 文档承载。
+
+## 路线图
+
+- [近期路线图](./roadmap.md)
 
 ## 设计与规格
 

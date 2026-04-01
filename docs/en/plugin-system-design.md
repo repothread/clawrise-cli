@@ -25,23 +25,31 @@ As of the current repository state:
   - manifest parsing, plugin discovery, and external-process runtime exist
 - `M3` is complete:
   - first-party Feishu and Notion are exposed through plugin binaries
-- `M4` is partially complete:
-  - `plugin list/install/info/remove` exist
-  - local directory, `file://`, `https://`, direct npm package specs, and `npm://` installation are implemented
+- `M4` is largely complete:
+  - `plugin list/install/info/remove/verify/upgrade` exist
+  - local directory, `file://`, `https://`, direct npm package specs, `npm://`, and `registry://` installation are implemented
+  - capability-aware diagnostics for `inspect`, `verify`, `doctor`, and provider binding selection exist
+  - storage bindings, auth launcher preferences, and the newer config model are implemented
+  - install and upgrade validate `protocol_version` and `min_core_version` before activation
+  - install metadata records source, artifact URL, and checksums
+  - `plugin verify` emits structured trust results driven by `plugins.install.allowed_sources`, `plugins.install.allowed_hosts`, and `plugins.install.allowed_npm_scopes`
+  - `plugin upgrade` and `plugin upgrade --all` distinguish upgraded, unchanged, pinned-source, and downgrade-blocked states
 - `M5` first phase is complete:
   - `policy` and `audit_sink` capabilities are part of the execution path
   - structured policy output is written into the execution envelope
   - diagnostics explain active capability routes and selection reasons
-- the first authoring kit is now included:
-  - official `runtime.policy` and `runtime.audit` example configuration
-  - plugin author guides in `docs/en` and `docs/zh`
+- `M6` first phase is complete:
+  - `workflow.plan` protocol scaffolding exists as an extension capability
+  - `registry_source` protocol scaffolding already participates in `registry://` installation resolution
+- the repository still carries the first authoring kit baseline:
+  - `examples/config.example.yaml` includes `runtime.policy` and `runtime.audit` examples
   - minimal `policy` and `audit_sink` sample plugins
   - protocol compatibility fixtures and a verification script
-- the main remaining work is now concentrated in:
+- companion plugin authoring and runtime governance docs are maintained in the separate `clawrise` project root markdown files
+- the main remaining hardening work is now concentrated in:
   - release hardening
-  - trust policy
-  - upgrade workflow
-  - optional CLI write-back commands for `runtime.policy` and `runtime.audit`
+  - trust policy hardening
+  - upgrade workflow hardening
 
 ## 2. Non-goals
 
@@ -66,7 +74,7 @@ Clawrise should adopt:
 Distribution and runtime must stay decoupled:
 
 - runtime discovers plugins from local directories and manifests
-- distribution may support `file://`, `https://`, direct npm package specs, `npm://`, and future sources
+- distribution may support `file://`, `https://`, direct npm package specs, `npm://`, `registry://`, and future sources
 
 ## 4. Layering
 
@@ -464,9 +472,12 @@ The plugin mechanism must stay decoupled from package distribution.
 
 Recommended source schemes:
 
+- local directory
 - `file://`
 - `https://`
+- direct npm package specs
 - `npm://`
+- `registry://`
 - future `gh://`
 
 Examples:
@@ -476,6 +487,7 @@ clawrise plugin install file:///tmp/clawrise-plugin-feishu.tar.gz
 clawrise plugin install https://example.com/clawrise-plugin-feishu.tar.gz
 clawrise plugin install @clawrise/clawrise-plugin-feishu
 clawrise plugin install npm://@clawrise/clawrise-plugin-feishu
+clawrise plugin install registry://community/clawrise-plugin-feishu
 ```
 
 If `npm` is used:
@@ -680,74 +692,27 @@ Why:
 - first-party migration cost is lowest in Go
 - a language-neutral protocol keeps the ecosystem open
 
-## 17. Rollout Plan
+## 17. Phase Status Summary
 
-Suggested implementation phases:
-
-### 17.1 M1: Extract provider runtime abstraction
-
-Status:
-
-- completed
-
-- remove hard-coded provider construction from the core
-- introduce `ProviderRuntime`
-- use an in-process runtime shim only as a transition step while moving first-party providers out of the core
-
-### 17.2 M2: Implement local plugin protocol and discovery
-
-Status:
-
-- completed
-
-- implement `stdio + JSON-RPC`
-- implement manifest parsing
-- implement plugin discovery and lazy process startup
-- implement `handshake`, `operations.list`, and `execute`
-
-### 17.3 M3: Move Feishu / Notion into first-party plugins
-
-Status:
-
-- completed
-
-- reuse current adapter and registry logic
-- add per-provider plugin entry binaries
-- stop importing provider adapters directly from the core
-
-### 17.4 M4: Add installation and remote distribution
-
-Status:
-
-- partially completed
-
-- `clawrise plugin install`
-- `clawrise plugin list`
-- `clawrise plugin info`
-- `clawrise plugin remove`
-- support `file://`, `https://`, and `npm://`
-- add trust, verification, and upgrade policy
+- `M1` through `M3` are complete and define the current plugin-first baseline.
+- `M4` first operational phase is complete. Installation, verification, and upgrade are already part of the public CLI surface, while the remaining work is hardening around release and trust behavior.
+- `M5` first operational phase is complete. `policy` and `audit_sink` capabilities already participate in the execution path and in diagnostics.
+- `M6` first extension phase is complete. `workflow.plan` and `registry_source` now exist as protocol-level extension points, while higher-level orchestration remains optional rather than forced into the core runtime.
 
 ## 18. Direct Impact on the Current Repository
 
-The current hard-coded provider bootstrap lives in:
+The current repository already reflects this architecture in several concrete places:
 
-- `internal/cli/root.go`
+- `internal/cli/root.go` still owns the shared CLI bootstrap and cross-cutting runtime wiring
+- `spec` aggregates operations and catalog metadata from plugins instead of relying on static provider knowledge
+- first-party Feishu and Notion execution flows are routed through provider runtimes rather than direct in-core provider handlers
 
-The main refactor targets will be:
+## 19. Current Operational Baseline
 
-- remove provider registration from the core bootstrap path
-- let `spec` aggregate operations and catalogs from plugins
-- change runtime execution from direct local handlers to provider runtime calls
+The current operational baseline in this repository is:
 
-## 19. Minimal Shippable Scope
-
-If only one minimal production-ready version is implemented, the recommended scope is:
-
-- first-party plugins only
-- local-directory installation only
-- `binary + manifest` only
-- only the 5 core RPC methods
-- Feishu / Notion migrated first
-
-That scope is already enough to remove static provider coupling from the core and to create a stable foundation for future providers such as Google.
+- first-party Feishu and Notion ship as external plugin binaries
+- local and remote installation paths coexist, including direct npm package specs and `registry://`
+- the core/plugin contract is centered on `handshake`, `operations.list`, `catalog.get`, `execute`, and `health`
+- trust verification and upgrade behavior are part of the normal CLI surface
+- higher-level workflow planning remains optional and capability-driven instead of being forced into the core runtime

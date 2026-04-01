@@ -96,8 +96,7 @@ clawrise doctor
 ## Related Docs
 
 - [AI Installation Guide](docs/en/ai-install.md)
-- [Runtime Policy And Audit Configuration](docs/en/runtime-policy-audit.md)
-- [Plugin Author Guide](docs/en/plugin-author-guide.md)
+- Community companion docs for plugin authors and runtime governance now live in the separate `clawrise` project root markdown files.
 
 ## License
 
