@@ -478,7 +478,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"status":  "warn",
 			"message": "no discoverable plugins were found in the active plugin roots",
 		})
-		nextSteps = append(nextSteps, "run `clawrise plugin install <source>` to install at least one provider plugin")
+		nextSteps = append(nextSteps, "run `clawrise plugin install <package-or-source>` to install at least one provider plugin")
 	}
 
 	providerBindings := discoveryOptions.ProviderBindings
@@ -744,7 +744,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")
 	_, _ = fmt.Fprintln(w, "  clawrise secret [put|delete]")
-	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store|provider|auth-launcher]")
+	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store|provider|auth-launcher|policy|audit]")
 	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise docs generate [path] [--out-dir <dir>]")

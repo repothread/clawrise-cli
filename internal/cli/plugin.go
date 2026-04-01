@@ -40,7 +40,7 @@ func runPlugin(args []string, store *config.Store, stdout io.Writer, coreVersion
 		})
 	case "install":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: clawrise plugin install <source>")
+			return fmt.Errorf("usage: clawrise plugin install <package-or-source>")
 		}
 		result, err := pluginruntime.Install(strings.TrimSpace(args[1]))
 		if err != nil {
@@ -129,9 +129,10 @@ func printPluginHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Examples:")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin list")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin info demo 0.1.0")
+	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install @clawrise/clawrise-plugin-feishu")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install file:///tmp/demo-plugin.tar.gz")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install https://example.com/demo-plugin.tar.gz")
-	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install npm://@clawrise/plugin-feishu")
+	_, _ = fmt.Fprintln(stdout, "  clawrise plugin install npm://@clawrise/clawrise-plugin-feishu")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin verify demo 0.1.0")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin verify --all")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin remove demo 0.1.0")

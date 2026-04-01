@@ -31,6 +31,10 @@ func runConfig(args []string, store *config.Store, stdout io.Writer, manager *pl
 		return runConfigProvider(args[1:], store, stdout)
 	case "auth-launcher":
 		return runConfigAuthLauncher(args[1:], store, stdout, manager)
+	case "policy":
+		return runConfigPolicy(args[1:], store, stdout)
+	case "audit":
+		return runConfigAudit(args[1:], store, stdout)
 	default:
 		return fmt.Errorf("unknown config command: %s", args[0])
 	}
@@ -117,6 +121,16 @@ func printConfigHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "       clawrise config provider unset <platform>")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config auth-launcher prefer <action_type> <launcher_id>")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config auth-launcher unset <action_type> [launcher_id]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config policy mode <auto|manual|disabled>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config policy use <plugin> [--policy-id <id>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config policy remove <plugin> [--policy-id <id>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit mode <auto|manual|disabled>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit add stdout")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit add webhook <url> [--header <key=value>] [--timeout-ms <ms>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit add plugin <plugin> [--sink-id <id>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit remove stdout")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit remove webhook <url>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit remove plugin <plugin> [--sink-id <id>]")
 }
 
 func runConfigSecretStore(args []string, store *config.Store, stdout io.Writer) error {
@@ -429,6 +443,590 @@ func runConfigAuthLauncherUnset(args []string, store *config.Store, stdout io.Wr
 func printConfigAuthLauncherHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config auth-launcher prefer <action_type> <launcher_id>")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config auth-launcher unset <action_type> [launcher_id]")
+}
+
+func runConfigPolicy(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printConfigPolicyHelp(stdout)
+		return nil
+	}
+
+	switch strings.TrimSpace(args[0]) {
+	case "mode":
+		return runConfigPolicyMode(args[1:], store, stdout)
+	case "use":
+		return runConfigPolicyUse(args[1:], store, stdout)
+	case "remove":
+		return runConfigPolicyRemove(args[1:], store, stdout)
+	default:
+		return fmt.Errorf("unknown config policy command: %s", args[0])
+	}
+}
+
+func runConfigPolicyMode(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: clawrise config policy mode <auto|manual|disabled>")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	mode, err := config.SetPolicyMode(cfg, strings.TrimSpace(args[0]))
+	if err != nil {
+		return err
+	}
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"mode":        mode,
+		},
+	})
+}
+
+func runConfigPolicyUse(args []string, store *config.Store, stdout io.Writer) error {
+	flags := pflag.NewFlagSet("clawrise config policy use", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var policyID string
+	flags.StringVar(&policyID, "policy-id", "", "select a specific policy capability id")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 1 {
+		return fmt.Errorf("usage: clawrise config policy use <plugin> [--policy-id <id>]")
+	}
+
+	pluginName := strings.TrimSpace(flags.Args()[0])
+	policyID = strings.TrimSpace(policyID)
+	if pluginName == "" {
+		return fmt.Errorf("plugin must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	if err := validateDiscoveredPolicySelector(cfg, config.PolicyPluginBinding{
+		Plugin:   pluginName,
+		PolicyID: policyID,
+	}); err != nil {
+		return err
+	}
+
+	selectors := config.AddPolicyPluginBinding(cfg, config.PolicyPluginBinding{
+		Plugin:   pluginName,
+		PolicyID: policyID,
+	})
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"plugin":      pluginName,
+			"policy_id":   policyID,
+			"selectors":   selectors,
+		},
+	})
+}
+
+func runConfigPolicyRemove(args []string, store *config.Store, stdout io.Writer) error {
+	flags := pflag.NewFlagSet("clawrise config policy remove", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var policyID string
+	flags.StringVar(&policyID, "policy-id", "", "remove only the matching policy capability id")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 1 {
+		return fmt.Errorf("usage: clawrise config policy remove <plugin> [--policy-id <id>]")
+	}
+
+	pluginName := strings.TrimSpace(flags.Args()[0])
+	policyID = strings.TrimSpace(policyID)
+	if pluginName == "" {
+		return fmt.Errorf("plugin must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	selectors := config.RemovePolicyPluginBinding(cfg, config.PolicyPluginBinding{
+		Plugin:   pluginName,
+		PolicyID: policyID,
+	})
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"plugin":      pluginName,
+			"policy_id":   policyID,
+			"selectors":   selectors,
+			"unset":       true,
+		},
+	})
+}
+
+func printConfigPolicyHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config policy mode <auto|manual|disabled>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config policy use <plugin> [--policy-id <id>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config policy remove <plugin> [--policy-id <id>]")
+}
+
+func runConfigAudit(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) == 0 || isHelpToken(args[0]) {
+		printConfigAuditHelp(stdout)
+		return nil
+	}
+
+	switch strings.TrimSpace(args[0]) {
+	case "mode":
+		return runConfigAuditMode(args[1:], store, stdout)
+	case "add":
+		return runConfigAuditAdd(args[1:], store, stdout)
+	case "remove":
+		return runConfigAuditRemove(args[1:], store, stdout)
+	default:
+		return fmt.Errorf("unknown config audit command: %s", args[0])
+	}
+}
+
+func runConfigAuditMode(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: clawrise config audit mode <auto|manual|disabled>")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	mode, err := config.SetAuditMode(cfg, strings.TrimSpace(args[0]))
+	if err != nil {
+		return err
+	}
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+
+	return output.WriteJSON(stdout, map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"config_path": store.Path(),
+			"mode":        mode,
+		},
+	})
+}
+
+func runConfigAuditAdd(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: clawrise config audit add stdout | clawrise config audit add webhook <url> [--header <key=value>] [--timeout-ms <ms>] | clawrise config audit add plugin <plugin> [--sink-id <id>]")
+	}
+
+	switch strings.TrimSpace(args[0]) {
+	case "stdout":
+		return runConfigAuditAddStdout(args[1:], store, stdout)
+	case "webhook":
+		return runConfigAuditAddWebhook(args[1:], store, stdout)
+	case "plugin":
+		return runConfigAuditAddPlugin(args[1:], store, stdout)
+	default:
+		return fmt.Errorf("unknown config audit add target: %s", args[0])
+	}
+}
+
+func runConfigAuditAddStdout(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 0 {
+		return fmt.Errorf("usage: clawrise config audit add stdout")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	sinks, err := config.AddAuditSink(cfg, config.AuditSinkConfig{Type: config.AuditSinkTypeStdout})
+	if err != nil {
+		return err
+	}
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+	return writeAuditConfigResult(stdout, store.Path(), map[string]any{
+		"type":  config.AuditSinkTypeStdout,
+		"sinks": sinks,
+	})
+}
+
+func runConfigAuditAddWebhook(args []string, store *config.Store, stdout io.Writer) error {
+	flags := pflag.NewFlagSet("clawrise config audit add webhook", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var headerValues []string
+	var timeoutMS int
+	flags.StringArrayVar(&headerValues, "header", nil, "append one HTTP header in key=value form")
+	flags.IntVar(&timeoutMS, "timeout-ms", 0, "set webhook timeout in milliseconds")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 1 {
+		return fmt.Errorf("usage: clawrise config audit add webhook <url> [--header <key=value>] [--timeout-ms <ms>]")
+	}
+
+	headers, err := parseHeaderAssignments(headerValues)
+	if err != nil {
+		return err
+	}
+	webhookURL := strings.TrimSpace(flags.Args()[0])
+	if webhookURL == "" {
+		return fmt.Errorf("url must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	sinks, err := config.AddAuditSink(cfg, config.AuditSinkConfig{
+		Type:      config.AuditSinkTypeWebhook,
+		URL:       webhookURL,
+		Headers:   headers,
+		TimeoutMS: timeoutMS,
+	})
+	if err != nil {
+		return err
+	}
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+	return writeAuditConfigResult(stdout, store.Path(), map[string]any{
+		"type":       config.AuditSinkTypeWebhook,
+		"url":        webhookURL,
+		"headers":    headers,
+		"timeout_ms": timeoutMS,
+		"sinks":      sinks,
+	})
+}
+
+func runConfigAuditAddPlugin(args []string, store *config.Store, stdout io.Writer) error {
+	flags := pflag.NewFlagSet("clawrise config audit add plugin", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var sinkID string
+	flags.StringVar(&sinkID, "sink-id", "", "select a specific audit sink capability id")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 1 {
+		return fmt.Errorf("usage: clawrise config audit add plugin <plugin> [--sink-id <id>]")
+	}
+
+	pluginName := strings.TrimSpace(flags.Args()[0])
+	sinkID = strings.TrimSpace(sinkID)
+	if pluginName == "" {
+		return fmt.Errorf("plugin must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	if err := validateDiscoveredAuditSinkSelector(cfg, config.AuditSinkConfig{
+		Type:   config.AuditSinkTypePlugin,
+		Plugin: pluginName,
+		SinkID: sinkID,
+	}); err != nil {
+		return err
+	}
+
+	sinks, err := config.AddAuditSink(cfg, config.AuditSinkConfig{
+		Type:   config.AuditSinkTypePlugin,
+		Plugin: pluginName,
+		SinkID: sinkID,
+	})
+	if err != nil {
+		return err
+	}
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+	return writeAuditConfigResult(stdout, store.Path(), map[string]any{
+		"type":    config.AuditSinkTypePlugin,
+		"plugin":  pluginName,
+		"sink_id": sinkID,
+		"sinks":   sinks,
+	})
+}
+
+func runConfigAuditRemove(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: clawrise config audit remove stdout | clawrise config audit remove webhook <url> | clawrise config audit remove plugin <plugin> [--sink-id <id>]")
+	}
+
+	switch strings.TrimSpace(args[0]) {
+	case "stdout":
+		return runConfigAuditRemoveStdout(args[1:], store, stdout)
+	case "webhook":
+		return runConfigAuditRemoveWebhook(args[1:], store, stdout)
+	case "plugin":
+		return runConfigAuditRemovePlugin(args[1:], store, stdout)
+	default:
+		return fmt.Errorf("unknown config audit remove target: %s", args[0])
+	}
+}
+
+func runConfigAuditRemoveStdout(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 0 {
+		return fmt.Errorf("usage: clawrise config audit remove stdout")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	sinks := config.RemoveAuditSink(cfg, config.AuditSinkConfig{Type: config.AuditSinkTypeStdout})
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+	return writeAuditConfigResult(stdout, store.Path(), map[string]any{
+		"type":  config.AuditSinkTypeStdout,
+		"sinks": sinks,
+		"unset": true,
+	})
+}
+
+func runConfigAuditRemoveWebhook(args []string, store *config.Store, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: clawrise config audit remove webhook <url>")
+	}
+
+	webhookURL := strings.TrimSpace(args[0])
+	if webhookURL == "" {
+		return fmt.Errorf("url must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	sinks := config.RemoveAuditSink(cfg, config.AuditSinkConfig{
+		Type: config.AuditSinkTypeWebhook,
+		URL:  webhookURL,
+	})
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+	return writeAuditConfigResult(stdout, store.Path(), map[string]any{
+		"type":  config.AuditSinkTypeWebhook,
+		"url":   webhookURL,
+		"sinks": sinks,
+		"unset": true,
+	})
+}
+
+func runConfigAuditRemovePlugin(args []string, store *config.Store, stdout io.Writer) error {
+	flags := pflag.NewFlagSet("clawrise config audit remove plugin", pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+
+	var sinkID string
+	flags.StringVar(&sinkID, "sink-id", "", "remove only the matching audit sink capability id")
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if len(flags.Args()) != 1 {
+		return fmt.Errorf("usage: clawrise config audit remove plugin <plugin> [--sink-id <id>]")
+	}
+
+	pluginName := strings.TrimSpace(flags.Args()[0])
+	sinkID = strings.TrimSpace(sinkID)
+	if pluginName == "" {
+		return fmt.Errorf("plugin must not be empty")
+	}
+
+	cfg, err := store.Load()
+	if err != nil {
+		return err
+	}
+	sinks := config.RemoveAuditSink(cfg, config.AuditSinkConfig{
+		Type:   config.AuditSinkTypePlugin,
+		Plugin: pluginName,
+		SinkID: sinkID,
+	})
+	if err := store.Save(cfg); err != nil {
+		return err
+	}
+	return writeAuditConfigResult(stdout, store.Path(), map[string]any{
+		"type":    config.AuditSinkTypePlugin,
+		"plugin":  pluginName,
+		"sink_id": sinkID,
+		"sinks":   sinks,
+		"unset":   true,
+	})
+}
+
+func printConfigAuditHelp(stdout io.Writer) {
+	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config audit mode <auto|manual|disabled>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit add stdout")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit add webhook <url> [--header <key=value>] [--timeout-ms <ms>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit add plugin <plugin> [--sink-id <id>]")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit remove stdout")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit remove webhook <url>")
+	_, _ = fmt.Fprintln(stdout, "       clawrise config audit remove plugin <plugin> [--sink-id <id>]")
+}
+
+func validateDiscoveredPolicySelector(cfg *config.Config, selector config.PolicyPluginBinding) error {
+	runtimes, err := pluginruntime.DiscoverPolicyRuntimes(pluginruntime.DiscoveryOptions{
+		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
+	})
+	if err != nil {
+		return err
+	}
+
+	available := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		label := strings.TrimSpace(runtime.Name())
+		if policyID := strings.TrimSpace(runtime.ID()); policyID != "" {
+			label += "/" + policyID
+		}
+		available = append(available, label)
+
+		if selector.Plugin != "" && selector.Plugin != strings.TrimSpace(runtime.Name()) {
+			continue
+		}
+		if selector.PolicyID != "" && selector.PolicyID != strings.TrimSpace(runtime.ID()) {
+			continue
+		}
+		return nil
+	}
+	sort.Strings(available)
+	if len(available) == 0 {
+		return fmt.Errorf("no policy plugin capability is currently discoverable")
+	}
+	return fmt.Errorf("policy selector %s did not match any discovered policy capability; available capabilities: %s", formatPolicySelector(selector), strings.Join(available, ", "))
+}
+
+func validateDiscoveredAuditSinkSelector(cfg *config.Config, selector config.AuditSinkConfig) error {
+	runtimes, err := pluginruntime.DiscoverAuditSinkRuntimes(pluginruntime.DiscoveryOptions{
+		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
+	})
+	if err != nil {
+		return err
+	}
+
+	available := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		label := strings.TrimSpace(runtime.Name())
+		if sinkID := strings.TrimSpace(runtime.ID()); sinkID != "" {
+			label += "/" + sinkID
+		}
+		available = append(available, label)
+
+		if selector.Plugin != "" && selector.Plugin != strings.TrimSpace(runtime.Name()) {
+			continue
+		}
+		if selector.SinkID != "" && selector.SinkID != strings.TrimSpace(runtime.ID()) {
+			continue
+		}
+		return nil
+	}
+	sort.Strings(available)
+	if len(available) == 0 {
+		return fmt.Errorf("no audit sink capability is currently discoverable")
+	}
+	return fmt.Errorf("audit sink selector %s did not match any discovered audit sink capability; available capabilities: %s", formatAuditSinkSelector(selector), strings.Join(available, ", "))
+}
+
+func parseHeaderAssignments(values []string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	headers := make(map[string]string, len(values))
+	for _, item := range values {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+
+		index := strings.Index(item, "=")
+		if index <= 0 || index == len(item)-1 {
+			return nil, fmt.Errorf("header must use key=value form: %s", item)
+		}
+
+		key := strings.TrimSpace(item[:index])
+		value := strings.TrimSpace(item[index+1:])
+		if key == "" || value == "" {
+			return nil, fmt.Errorf("header must use key=value form: %s", item)
+		}
+		headers[key] = value
+	}
+	if len(headers) == 0 {
+		return nil, nil
+	}
+	return headers, nil
+}
+
+func writeAuditConfigResult(stdout io.Writer, configPath string, data map[string]any) error {
+	data["config_path"] = configPath
+	return output.WriteJSON(stdout, map[string]any{
+		"ok":   true,
+		"data": data,
+	})
+}
+
+func formatPolicySelector(selector config.PolicyPluginBinding) string {
+	switch {
+	case selector.Plugin != "" && selector.PolicyID != "":
+		return selector.Plugin + "/" + selector.PolicyID
+	case selector.Plugin != "":
+		return selector.Plugin
+	default:
+		return selector.PolicyID
+	}
+}
+
+func formatAuditSinkSelector(selector config.AuditSinkConfig) string {
+	switch {
+	case selector.Plugin != "" && selector.SinkID != "":
+		return selector.Plugin + "/" + selector.SinkID
+	case selector.Plugin != "":
+		return selector.Plugin
+	case selector.SinkID != "":
+		return selector.SinkID
+	default:
+		return selector.URL
+	}
 }
 
 type initConfigOptions struct {

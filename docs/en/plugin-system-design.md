@@ -27,8 +27,21 @@ As of the current repository state:
   - first-party Feishu and Notion are exposed through plugin binaries
 - `M4` is partially complete:
   - `plugin list/install/info/remove` exist
-  - local directory, `file://`, `https://`, and `npm://` installation are implemented
-  - release hardening, trust policy, and upgrade workflow still need more work
+  - local directory, `file://`, `https://`, direct npm package specs, and `npm://` installation are implemented
+- `M5` first phase is complete:
+  - `policy` and `audit_sink` capabilities are part of the execution path
+  - structured policy output is written into the execution envelope
+  - diagnostics explain active capability routes and selection reasons
+- the first authoring kit is now included:
+  - official `runtime.policy` and `runtime.audit` example configuration
+  - plugin author guides in `docs/en` and `docs/zh`
+  - minimal `policy` and `audit_sink` sample plugins
+  - protocol compatibility fixtures and a verification script
+- the main remaining work is now concentrated in:
+  - release hardening
+  - trust policy
+  - upgrade workflow
+  - optional CLI write-back commands for `runtime.policy` and `runtime.audit`
 
 ## 2. Non-goals
 
@@ -53,7 +66,7 @@ Clawrise should adopt:
 Distribution and runtime must stay decoupled:
 
 - runtime discovers plugins from local directories and manifests
-- distribution may support `file://`, `https://`, `npm://`, and future sources
+- distribution may support `file://`, `https://`, direct npm package specs, `npm://`, and future sources
 
 ## 4. Layering
 
@@ -461,7 +474,8 @@ Examples:
 ```bash
 clawrise plugin install file:///tmp/clawrise-plugin-feishu.tar.gz
 clawrise plugin install https://example.com/clawrise-plugin-feishu.tar.gz
-clawrise plugin install npm://@clawrise/plugin-feishu
+clawrise plugin install @clawrise/clawrise-plugin-feishu
+clawrise plugin install npm://@clawrise/clawrise-plugin-feishu
 ```
 
 If `npm` is used:

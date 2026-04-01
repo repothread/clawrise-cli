@@ -97,7 +97,7 @@ Current implementation status:
 
 - first-party Feishu and Notion are exposed through external provider plugin binaries
 - `clawrise plugin list`
-- `clawrise plugin install <source>`
+- `clawrise plugin install <package-or-source>`
 - `clawrise plugin info <name> <version>`
 - `clawrise plugin remove <name> <version>`
 - `clawrise spec list [path]`

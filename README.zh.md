@@ -96,6 +96,8 @@ clawrise doctor
 ## 相关文档
 
 - [AI 安装引导](docs/en/ai-install.md)
+- [Runtime Policy 与 Audit 配置说明](docs/zh/runtime-policy-audit.md)
+- [插件作者指南](docs/zh/plugin-author-guide.md)
 
 ## 许可证
 

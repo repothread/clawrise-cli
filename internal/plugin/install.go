@@ -296,6 +296,14 @@ func materializeSource(source, tempDir string) (string, string, error) {
 		pluginDir, _, err := materializeFileSource(archivePath, tempDir)
 		return pluginDir, resolvedSource, err
 	default:
+		if shouldResolveBareNPMPackageSpec(source) {
+			archivePath, resolvedSource, err := resolveNPMSource(source, tempDir)
+			if err != nil {
+				return "", "", err
+			}
+			pluginDir, _, err := materializeFileSource(archivePath, tempDir)
+			return pluginDir, resolvedSource, err
+		}
 		return materializeFileSource(source, tempDir)
 	}
 }
@@ -467,6 +475,29 @@ func resolveNPMSource(source, tempDir string) (string, string, error) {
 	return archivePath, source, nil
 }
 
+func shouldResolveBareNPMPackageSpec(source string) bool {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return false
+	}
+	if strings.HasSuffix(source, ".tar.gz") || strings.HasSuffix(source, ".tgz") {
+		return false
+	}
+	if filepath.IsAbs(source) || strings.HasPrefix(source, ".") || strings.HasPrefix(source, "~") {
+		return false
+	}
+	if strings.Contains(source, string(os.PathSeparator)) && !strings.HasPrefix(source, "@") {
+		return false
+	}
+	if strings.Contains(source, `\`) {
+		return false
+	}
+	if _, err := os.Stat(source); err == nil {
+		return false
+	}
+	return looksLikeNPMPackageSpec(source)
+}
+
 func parseNPMPackageSpec(spec string) (string, string) {
 	if spec == "" {
 		return "", ""
@@ -486,6 +517,45 @@ func parseNPMPackageSpec(spec string) (string, string) {
 		return spec, ""
 	}
 	return spec[:index], spec[index+1:]
+}
+
+func looksLikeNPMPackageSpec(spec string) bool {
+	packageName, _ := parseNPMPackageSpec(spec)
+	if packageName == "" {
+		return false
+	}
+
+	if strings.HasPrefix(packageName, "@") {
+		parts := strings.Split(packageName, "/")
+		if len(parts) != 2 {
+			return false
+		}
+		scope := strings.TrimPrefix(parts[0], "@")
+		return isValidNPMPackageNamePart(scope) && isValidNPMPackageNamePart(parts[1])
+	}
+
+	if strings.Contains(packageName, "/") {
+		return false
+	}
+	return isValidNPMPackageNamePart(packageName)
+}
+
+func isValidNPMPackageNamePart(part string) bool {
+	if part == "" {
+		return false
+	}
+
+	for _, ch := range part {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+		case ch >= 'A' && ch <= 'Z':
+		case ch >= '0' && ch <= '9':
+		case ch == '-', ch == '_', ch == '.', ch == '~':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func copyTree(source, target string) error {

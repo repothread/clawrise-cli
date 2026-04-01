@@ -156,3 +156,97 @@ func TestResolveAuditSinksNormalizesConfig(t *testing.T) {
 		t.Fatalf("unexpected plugin sink: %+v", sinks[1])
 	}
 }
+
+func TestSetPolicyModeValidatesInput(t *testing.T) {
+	cfg := New()
+
+	mode, err := SetPolicyMode(cfg, " manual ")
+	if err != nil {
+		t.Fatalf("SetPolicyMode returned error: %v", err)
+	}
+	if mode != RuntimeSelectionModeManual || cfg.Runtime.Policy.Mode != RuntimeSelectionModeManual {
+		t.Fatalf("unexpected policy mode result: %s %+v", mode, cfg.Runtime.Policy)
+	}
+
+	if _, err := SetPolicyMode(cfg, "sometimes"); err == nil {
+		t.Fatal("expected SetPolicyMode to reject an invalid mode")
+	}
+}
+
+func TestAddAndRemovePolicyPluginBinding(t *testing.T) {
+	cfg := New()
+
+	items := AddPolicyPluginBinding(cfg, PolicyPluginBinding{Plugin: " sample-policy ", PolicyID: " review "})
+	if len(items) != 1 || items[0].Plugin != "sample-policy" || items[0].PolicyID != "review" {
+		t.Fatalf("unexpected policy bindings after add: %+v", items)
+	}
+
+	items = AddPolicyPluginBinding(cfg, PolicyPluginBinding{Plugin: "sample-policy", PolicyID: "review"})
+	if len(items) != 1 {
+		t.Fatalf("expected duplicate add to be ignored, got: %+v", items)
+	}
+
+	items = RemovePolicyPluginBinding(cfg, PolicyPluginBinding{Plugin: "sample-policy"})
+	if len(items) != 0 {
+		t.Fatalf("expected bindings to be removed, got: %+v", items)
+	}
+}
+
+func TestSetAuditModeValidatesInput(t *testing.T) {
+	cfg := New()
+
+	mode, err := SetAuditMode(cfg, "disabled")
+	if err != nil {
+		t.Fatalf("SetAuditMode returned error: %v", err)
+	}
+	if mode != RuntimeSelectionModeDisabled || cfg.Runtime.Audit.Mode != RuntimeSelectionModeDisabled {
+		t.Fatalf("unexpected audit mode result: %s %+v", mode, cfg.Runtime.Audit)
+	}
+
+	if _, err := SetAuditMode(cfg, "on"); err == nil {
+		t.Fatal("expected SetAuditMode to reject an invalid mode")
+	}
+}
+
+func TestAddAndRemoveAuditSinks(t *testing.T) {
+	cfg := New()
+
+	sinks, err := AddAuditSink(cfg, AuditSinkConfig{Type: "stdout"})
+	if err != nil {
+		t.Fatalf("AddAuditSink returned error for stdout: %v", err)
+	}
+	if len(sinks) != 1 || sinks[0].Type != AuditSinkTypeStdout {
+		t.Fatalf("unexpected stdout sink state: %+v", sinks)
+	}
+
+	sinks, err = AddAuditSink(cfg, AuditSinkConfig{
+		Type:      "webhook",
+		URL:       " env:CLAWRISE_AUDIT_URL ",
+		Headers:   map[string]string{" Authorization ": " env:TOKEN "},
+		TimeoutMS: 3000,
+	})
+	if err != nil {
+		t.Fatalf("AddAuditSink returned error for webhook: %v", err)
+	}
+	if len(sinks) != 2 || sinks[1].Type != AuditSinkTypeWebhook || sinks[1].URL != "env:CLAWRISE_AUDIT_URL" {
+		t.Fatalf("unexpected webhook sink state: %+v", sinks)
+	}
+
+	sinks, err = AddAuditSink(cfg, AuditSinkConfig{Plugin: " audit-demo ", SinkID: " capture "})
+	if err != nil {
+		t.Fatalf("AddAuditSink returned error for plugin sink: %v", err)
+	}
+	if len(sinks) != 3 || sinks[2].Type != AuditSinkTypePlugin || sinks[2].Plugin != "audit-demo" || sinks[2].SinkID != "capture" {
+		t.Fatalf("unexpected plugin sink state: %+v", sinks)
+	}
+
+	sinks = RemoveAuditSink(cfg, AuditSinkConfig{Type: AuditSinkTypeWebhook, URL: "env:CLAWRISE_AUDIT_URL"})
+	if len(sinks) != 2 {
+		t.Fatalf("expected webhook sink to be removed, got: %+v", sinks)
+	}
+
+	sinks = RemoveAuditSink(cfg, AuditSinkConfig{Type: AuditSinkTypePlugin, Plugin: "audit-demo"})
+	if len(sinks) != 1 || sinks[0].Type != AuditSinkTypeStdout {
+		t.Fatalf("expected plugin sink to be removed, got: %+v", sinks)
+	}
+}

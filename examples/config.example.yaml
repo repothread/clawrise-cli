@@ -16,10 +16,34 @@ runtime:
     max_attempts: 1
     base_delay_ms: 200
     max_delay_ms: 1000
+  # Local policy rules can run without any external plugin.
+  # Uncomment the plugin selector block when a policy plugin is available in discovery roots.
+  policy:
+    mode: auto
+    require_approval_operations:
+      - feishu.calendar.event.delete
+    annotate_operations:
+      notion.page.update: "Set input.change_reason when updating shared knowledge content."
+    # plugins:
+    #   - plugin: sample-policy
+    #     policy_id: require_reason_for_mutations
+  # Audit sinks can mix builtin sinks and plugin sinks.
+  audit:
+    mode: manual
+    sinks:
+      - type: stdout
+      # - type: webhook
+      #   url: env:CLAWRISE_AUDIT_WEBHOOK_URL
+      #   headers:
+      #     Authorization: env:CLAWRISE_AUDIT_WEBHOOK_TOKEN
+      #   timeout_ms: 3000
+      # - type: plugin
+      #   plugin: sample-audit
+      #   sink_id: file_capture
 
 accounts:
   feishu_bot:
-    title: 飞书 Bot
+    title: Feishu Bot
     platform: feishu
     subject: bot
     auth:
@@ -30,7 +54,7 @@ accounts:
         app_secret: secret:feishu_bot:app_secret
 
   feishu_user_alice:
-    title: 飞书 Alice 用户态
+    title: Feishu Alice User
     platform: feishu
     subject: user
     auth:
@@ -56,7 +80,7 @@ accounts:
         token: secret:notion_bot:token
 
   notion_public_workspace_a:
-    title: Notion 公共 OAuth 工作区 A
+    title: Notion Public OAuth Workspace A
     platform: notion
     subject: integration
     auth:

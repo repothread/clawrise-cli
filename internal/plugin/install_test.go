@@ -273,7 +273,7 @@ func TestInstallNPMSupport(t *testing.T) {
 	pluginDownloadHTTPClient = &http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			switch request.URL.String() {
-			case "https://registry.example.com/@clawrise%2Fplugin-demo":
+			case "https://registry.example.com/@clawrise%2Fclawrise-plugin-demo":
 				payload, err := json.Marshal(map[string]any{
 					"dist-tags": map[string]any{
 						"latest": "0.2.0",
@@ -320,12 +320,86 @@ func TestInstallNPMSupport(t *testing.T) {
 		npmRegistryBaseURL = previousRegistryURL
 	}()
 
-	result, err := Install("npm://@clawrise/plugin-demo")
+	result, err := Install("npm://@clawrise/clawrise-plugin-demo")
 	if err != nil {
 		t.Fatalf("Install returned error: %v", err)
 	}
-	if result.Manifest.Name != "demo" || result.Install == nil || result.Install.Source != "npm://@clawrise/plugin-demo" {
+	if result.Manifest.Name != "demo" || result.Install == nil || result.Install.Source != "npm://@clawrise/clawrise-plugin-demo" {
 		t.Fatalf("unexpected npm install result: %+v", result)
+	}
+}
+
+func TestInstallAcceptsBareNPMPackageSpec(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	archivePath := filepath.Join(t.TempDir(), "demo-plugin.tar.gz")
+	if err := writeTestPluginArchive(archivePath); err != nil {
+		t.Fatalf("failed to write plugin archive: %v", err)
+	}
+
+	archiveData, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatalf("failed to read npm test archive: %v", err)
+	}
+
+	previousClient := pluginDownloadHTTPClient
+	pluginDownloadHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			switch request.URL.String() {
+			case "https://registry.example.com/@clawrise%2Fclawrise-plugin-demo":
+				payload, err := json.Marshal(map[string]any{
+					"dist-tags": map[string]any{
+						"latest": "0.2.0",
+					},
+					"versions": map[string]any{
+						"0.2.0": map[string]any{
+							"dist": map[string]any{
+								"tarball": "https://registry.example.com/tarballs/demo-plugin.tar.gz",
+							},
+						},
+					},
+				})
+				if err != nil {
+					t.Fatalf("failed to encode npm metadata payload: %v", err)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(payload))),
+				}, nil
+			case "https://registry.example.com/tarballs/demo-plugin.tar.gz":
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/gzip"},
+					},
+					Body: io.NopCloser(strings.NewReader(string(archiveData))),
+				}, nil
+			default:
+				t.Fatalf("unexpected npm test url: %s", request.URL.String())
+				return nil, nil
+			}
+		}),
+	}
+	defer func() {
+		pluginDownloadHTTPClient = previousClient
+	}()
+
+	previousRegistryURL := npmRegistryBaseURL
+	npmRegistryBaseURL = "https://registry.example.com"
+	defer func() {
+		npmRegistryBaseURL = previousRegistryURL
+	}()
+
+	result, err := Install("@clawrise/clawrise-plugin-demo")
+	if err != nil {
+		t.Fatalf("Install returned error: %v", err)
+	}
+	if result.Manifest.Name != "demo" || result.Install == nil || result.Install.Source != "@clawrise/clawrise-plugin-demo" {
+		t.Fatalf("unexpected bare npm install result: %+v", result)
 	}
 }
 
