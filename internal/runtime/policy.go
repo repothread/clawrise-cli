@@ -20,6 +20,44 @@ const (
 	policyDecisionAnnotate        = "annotate"
 )
 
+// PolicySelectorView 描述一个来自配置文件的 policy selector。
+type PolicySelectorView struct {
+	Plugin   string `json:"plugin,omitempty"`
+	PolicyID string `json:"policy_id,omitempty"`
+}
+
+// PolicyLocalSummary 描述本地 policy 规则摘要。
+type PolicyLocalSummary struct {
+	DenyOperations            []string          `json:"deny_operations,omitempty"`
+	RequireApprovalOperations []string          `json:"require_approval_operations,omitempty"`
+	AnnotateOperations        map[string]string `json:"annotate_operations,omitempty"`
+	RuleCount                 int               `json:"rule_count"`
+}
+
+// PolicyRuntimeSummary 描述一个实际参与链路的 policy runtime。
+type PolicyRuntimeSummary struct {
+	Plugin    string   `json:"plugin,omitempty"`
+	PolicyID  string   `json:"policy_id,omitempty"`
+	Label     string   `json:"label,omitempty"`
+	Platforms []string `json:"platforms,omitempty"`
+	Priority  int      `json:"priority,omitempty"`
+	Source    string   `json:"source,omitempty"`
+}
+
+// PolicyChainInspection 描述 policy 链的配置与实际生效结果。
+type PolicyChainInspection struct {
+	Mode              string                 `json:"mode"`
+	ConfiguredPlugins []PolicySelectorView   `json:"configured_plugins,omitempty"`
+	Local             PolicyLocalSummary     `json:"local"`
+	ActiveChain       []PolicyRuntimeSummary `json:"active_chain,omitempty"`
+	Warnings          []string               `json:"warnings,omitempty"`
+}
+
+type selectedPolicyRuntime struct {
+	Runtime pluginruntime.PolicyRuntime
+	Source  string
+}
+
 // evaluatePolicies runs local policy rules first and then external policy plugins.
 func (e *Executor) evaluatePolicies(ctx context.Context, cfg *config.Config, definition adapter.Definition, requestID string, operation string, input map[string]any, profile ExecutionProfile, dryRun bool) ([]string, *apperr.AppError) {
 	warnings, appErr := evaluateLocalPolicy(cfg.Runtime.Policy, operation)
@@ -72,15 +110,14 @@ func evaluateLocalPolicy(policy config.PolicyConfig, operation string) ([]string
 }
 
 func evaluatePluginPolicies(ctx context.Context, cfg *config.Config, definition adapter.Definition, requestID string, operation string, input map[string]any, profile ExecutionProfile, dryRun bool) ([]string, *apperr.AppError) {
-	runtimes, err := pluginruntime.DiscoverPolicyRuntimes(pluginruntime.DiscoveryOptions{
-		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
-	})
+	selections, selectionWarnings, err := resolveSelectedPolicyRuntimes(cfg)
 	if err != nil {
 		return nil, apperr.New("POLICY_EVALUATION_FAILED", err.Error())
 	}
+	runtimes := policySelectionsToRuntimes(selections)
 	defer closePolicyRuntimes(runtimes)
 
-	warnings := make([]string, 0)
+	warnings := append([]string(nil), selectionWarnings...)
 	for _, runtime := range runtimes {
 		if !policyRuntimeSupportsPlatform(runtime, profile.Platform) {
 			continue
@@ -120,6 +157,29 @@ func evaluatePluginPolicies(ctx context.Context, cfg *config.Config, definition 
 		}
 	}
 	return warnings, nil
+}
+
+// InspectPolicyChain 返回当前配置下会参与执行的 policy 链摘要。
+func InspectPolicyChain(cfg *config.Config) PolicyChainInspection {
+	if cfg == nil {
+		cfg = config.New()
+	}
+
+	inspection := PolicyChainInspection{
+		Mode:              config.ResolvePolicyMode(cfg),
+		ConfiguredPlugins: buildPolicySelectorViews(config.ResolvePolicyPlugins(cfg)),
+		Local:             summarizeLocalPolicy(cfg.Runtime.Policy),
+	}
+
+	selections, warnings, err := resolveSelectedPolicyRuntimes(cfg)
+	if err != nil {
+		inspection.Warnings = append(inspection.Warnings, "failed to discover policy plugins: "+err.Error())
+		return inspection
+	}
+
+	inspection.ActiveChain = summarizePolicySelections(selections)
+	inspection.Warnings = append(inspection.Warnings, warnings...)
+	return inspection
 }
 
 func firstMatchingOperationPattern(patterns []string, operation string) (string, bool) {
@@ -175,6 +235,190 @@ func closePolicyRuntimes(runtimes []pluginruntime.PolicyRuntime) {
 		}
 		_ = runtime.Close()
 	}
+}
+
+func resolveSelectedPolicyRuntimes(cfg *config.Config) ([]selectedPolicyRuntime, []string, error) {
+	if cfg == nil {
+		cfg = config.New()
+	}
+
+	mode := config.ResolvePolicyMode(cfg)
+	if mode == config.RuntimeSelectionModeDisabled {
+		return nil, nil, nil
+	}
+
+	runtimes, err := pluginruntime.DiscoverPolicyRuntimes(pluginruntime.DiscoveryOptions{
+		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	selectors := config.ResolvePolicyPlugins(cfg)
+	if len(selectors) == 0 {
+		if mode == config.RuntimeSelectionModeManual {
+			return nil, nil, nil
+		}
+		items := make([]selectedPolicyRuntime, 0, len(runtimes))
+		for _, runtime := range runtimes {
+			items = append(items, selectedPolicyRuntime{
+				Runtime: runtime,
+				Source:  "auto",
+			})
+		}
+		return items, nil, nil
+	}
+
+	selected := make([]selectedPolicyRuntime, 0, len(selectors))
+	warnings := make([]string, 0)
+	seen := make(map[string]struct{}, len(runtimes))
+	for _, selector := range selectors {
+		matches := matchPolicyRuntimes(runtimes, selector)
+		if len(matches) == 0 {
+			warnings = append(warnings, fmt.Sprintf("configured policy selector %s did not match any discovered policy capability", policySelectorLabel(selector)))
+			continue
+		}
+		for _, index := range matches {
+			runtime := runtimes[index]
+			key := policyRuntimeKey(runtime)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			selected = append(selected, selectedPolicyRuntime{
+				Runtime: runtime,
+				Source:  "configured",
+			})
+		}
+	}
+	return selected, warnings, nil
+}
+
+func matchPolicyRuntimes(runtimes []pluginruntime.PolicyRuntime, selector config.PolicyPluginBinding) []int {
+	matches := make([]int, 0)
+	for index, runtime := range runtimes {
+		if !policyRuntimeMatchesSelector(runtime, selector) {
+			continue
+		}
+		matches = append(matches, index)
+	}
+	return matches
+}
+
+func policyRuntimeMatchesSelector(runtime pluginruntime.PolicyRuntime, selector config.PolicyPluginBinding) bool {
+	if runtime == nil {
+		return false
+	}
+
+	pluginName := strings.TrimSpace(runtime.Name())
+	policyID := strings.TrimSpace(runtime.ID())
+	if selector.Plugin != "" && selector.Plugin != pluginName {
+		return false
+	}
+	if selector.PolicyID != "" && selector.PolicyID != policyID {
+		return false
+	}
+	return selector.Plugin != "" || selector.PolicyID != ""
+}
+
+func policySelectionsToRuntimes(items []selectedPolicyRuntime) []pluginruntime.PolicyRuntime {
+	if len(items) == 0 {
+		return nil
+	}
+	runtimes := make([]pluginruntime.PolicyRuntime, 0, len(items))
+	for _, item := range items {
+		if item.Runtime == nil {
+			continue
+		}
+		runtimes = append(runtimes, item.Runtime)
+	}
+	return runtimes
+}
+
+func summarizeLocalPolicy(policy config.PolicyConfig) PolicyLocalSummary {
+	ruleCount := 0
+	if len(policy.DenyOperations) > 0 {
+		ruleCount += len(policy.DenyOperations)
+	}
+	if len(policy.RequireApprovalOperations) > 0 {
+		ruleCount += len(policy.RequireApprovalOperations)
+	}
+	if len(policy.AnnotateOperations) > 0 {
+		ruleCount += len(policy.AnnotateOperations)
+	}
+
+	annotateOperations := make(map[string]string, len(policy.AnnotateOperations))
+	for pattern, message := range policy.AnnotateOperations {
+		pattern = strings.TrimSpace(pattern)
+		message = strings.TrimSpace(message)
+		if pattern == "" {
+			continue
+		}
+		annotateOperations[pattern] = message
+	}
+	if len(annotateOperations) == 0 {
+		annotateOperations = nil
+	}
+
+	return PolicyLocalSummary{
+		DenyOperations:            append([]string(nil), policy.DenyOperations...),
+		RequireApprovalOperations: append([]string(nil), policy.RequireApprovalOperations...),
+		AnnotateOperations:        annotateOperations,
+		RuleCount:                 ruleCount,
+	}
+}
+
+func buildPolicySelectorViews(selectors []config.PolicyPluginBinding) []PolicySelectorView {
+	if len(selectors) == 0 {
+		return nil
+	}
+	items := make([]PolicySelectorView, 0, len(selectors))
+	for _, selector := range selectors {
+		items = append(items, PolicySelectorView{
+			Plugin:   selector.Plugin,
+			PolicyID: selector.PolicyID,
+		})
+	}
+	return items
+}
+
+func summarizePolicySelections(selections []selectedPolicyRuntime) []PolicyRuntimeSummary {
+	if len(selections) == 0 {
+		return nil
+	}
+	items := make([]PolicyRuntimeSummary, 0, len(selections))
+	for _, selection := range selections {
+		if selection.Runtime == nil {
+			continue
+		}
+		items = append(items, PolicyRuntimeSummary{
+			Plugin:    strings.TrimSpace(selection.Runtime.Name()),
+			PolicyID:  strings.TrimSpace(selection.Runtime.ID()),
+			Label:     policyRuntimeLabel(selection.Runtime),
+			Platforms: append([]string(nil), selection.Runtime.Platforms()...),
+			Priority:  selection.Runtime.Priority(),
+			Source:    selection.Source,
+		})
+	}
+	return items
+}
+
+func policySelectorLabel(selector config.PolicyPluginBinding) string {
+	switch {
+	case selector.Plugin != "" && selector.PolicyID != "":
+		return selector.Plugin + "/" + selector.PolicyID
+	case selector.Plugin != "":
+		return selector.Plugin
+	default:
+		return selector.PolicyID
+	}
+}
+
+func policyRuntimeKey(runtime pluginruntime.PolicyRuntime) string {
+	if runtime == nil {
+		return ""
+	}
+	return strings.TrimSpace(runtime.Name()) + "|" + strings.TrimSpace(runtime.ID())
 }
 
 func normalizePolicyDecision(value string) string {

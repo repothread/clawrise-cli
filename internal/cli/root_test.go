@@ -1977,6 +1977,179 @@ func TestRunDoctorShowsResolvedAuthLauncherPreferences(t *testing.T) {
 	}
 }
 
+func TestRunDoctorShowsPolicyAndAuditChains(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CLAWRISE_TEST_NOTION_TOKEN", "notion-token")
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Defaults.Account = "demo_account"
+	cfg.Runtime.Policy = config.PolicyConfig{
+		Mode:           "manual",
+		DenyOperations: []string{"demo.page.delete"},
+		Plugins: []config.PolicyPluginBinding{
+			{Plugin: "policy-demo", PolicyID: "review"},
+		},
+	}
+	cfg.Runtime.Audit = config.AuditConfig{
+		Mode: "manual",
+		Sinks: []config.AuditSinkConfig{
+			{Type: "stdout"},
+			{Plugin: "audit-demo", SinkID: "capture"},
+		},
+	}
+	cfg.Accounts["demo_account"] = config.Account{
+		Platform: "notion",
+		Subject:  "integration",
+		Auth: config.AccountAuth{
+			Method:     "notion.internal_token",
+			SecretRefs: map[string]string{"token": "env:CLAWRISE_TEST_NOTION_TOKEN"},
+		},
+	}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	policyDir := filepath.Join(pluginRoot, "policy-demo", "0.1.0")
+	if err := os.MkdirAll(policyDir, 0o755); err != nil {
+		t.Fatalf("failed to create policy plugin dir: %v", err)
+	}
+	policyScript := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"policy-demo","version":"0.1.0","platforms":["demo"]}}'"\n"
+      ;;
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"policy","id":"review","priority":80,"platforms":["demo"]}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(policyDir, "policy-demo.sh"), []byte(policyScript), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(policyDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "policy-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 80,
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write policy plugin manifest: %v", err)
+	}
+
+	auditDir := filepath.Join(pluginRoot, "audit-demo", "0.1.0")
+	if err := os.MkdirAll(auditDir, 0o755); err != nil {
+		t.Fatalf("failed to create audit plugin dir: %v", err)
+	}
+	auditScript := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"audit-demo","version":"0.1.0","platforms":[]}}'"\n"
+      ;;
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"audit_sink","id":"capture","priority":50}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(auditDir, "audit-demo.sh"), []byte(auditScript), 0o755); err != nil {
+		t.Fatalf("failed to write audit plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(auditDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "audit-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./audit-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write audit plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &payload); decodeErr != nil {
+		t.Fatalf("failed to decode doctor output: %v", decodeErr)
+	}
+	data := payload["data"].(map[string]any)
+	runtimeData := data["runtime"].(map[string]any)
+
+	policyData, ok := runtimeData["policy"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected policy summary in doctor output, got: %+v", runtimeData)
+	}
+	activePolicy, ok := policyData["active_chain"].([]any)
+	if !ok || len(activePolicy) != 1 {
+		t.Fatalf("expected one active policy runtime, got: %+v", policyData)
+	}
+	firstPolicy := activePolicy[0].(map[string]any)
+	if firstPolicy["plugin"] != "policy-demo" || firstPolicy["policy_id"] != "review" {
+		t.Fatalf("unexpected policy chain item: %+v", firstPolicy)
+	}
+	localPolicy := policyData["local"].(map[string]any)
+	if localPolicy["rule_count"] != float64(1) {
+		t.Fatalf("expected local policy summary to report one rule, got: %+v", localPolicy)
+	}
+
+	auditData, ok := runtimeData["audit"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected audit summary in doctor output, got: %+v", runtimeData)
+	}
+	activeSinks, ok := auditData["active_sinks"].([]any)
+	if !ok || len(activeSinks) != 2 {
+		t.Fatalf("expected two active audit sinks, got: %+v", auditData)
+	}
+	firstSink := activeSinks[0].(map[string]any)
+	secondSink := activeSinks[1].(map[string]any)
+	if firstSink["type"] != "stdout" {
+		t.Fatalf("expected builtin stdout sink to appear first, got: %+v", firstSink)
+	}
+	if secondSink["plugin"] != "audit-demo" || secondSink["sink_id"] != "capture" {
+		t.Fatalf("unexpected plugin audit sink summary: %+v", secondSink)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunDoctorReportsDisabledPluginBinding(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	pluginRoot := t.TempDir()

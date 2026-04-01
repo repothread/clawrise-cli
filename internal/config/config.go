@@ -105,6 +105,7 @@ type RuntimeConfig struct {
 	Retry      RetryConfig      `yaml:"retry,omitempty"`
 	Governance GovernanceConfig `yaml:"governance,omitempty"`
 	Policy     PolicyConfig     `yaml:"policy,omitempty"`
+	Audit      AuditConfig      `yaml:"audit,omitempty"`
 }
 
 // RetryConfig describes automatic retry settings.
@@ -122,9 +123,33 @@ type GovernanceConfig struct {
 
 // PolicyConfig describes the base local policy chain settings.
 type PolicyConfig struct {
-	DenyOperations            []string          `yaml:"deny_operations,omitempty"`
-	RequireApprovalOperations []string          `yaml:"require_approval_operations,omitempty"`
-	AnnotateOperations        map[string]string `yaml:"annotate_operations,omitempty"`
+	Mode                      string                `yaml:"mode,omitempty"`
+	Plugins                   []PolicyPluginBinding `yaml:"plugins,omitempty"`
+	DenyOperations            []string              `yaml:"deny_operations,omitempty"`
+	RequireApprovalOperations []string              `yaml:"require_approval_operations,omitempty"`
+	AnnotateOperations        map[string]string     `yaml:"annotate_operations,omitempty"`
+}
+
+// PolicyPluginBinding 描述一个外部 policy capability 的选择器。
+type PolicyPluginBinding struct {
+	Plugin   string `yaml:"plugin,omitempty"`
+	PolicyID string `yaml:"policy_id,omitempty"`
+}
+
+// AuditConfig 描述审计扇出链的显式配置。
+type AuditConfig struct {
+	Mode  string            `yaml:"mode,omitempty"`
+	Sinks []AuditSinkConfig `yaml:"sinks,omitempty"`
+}
+
+// AuditSinkConfig 描述一个内建或外部审计 sink 的配置项。
+type AuditSinkConfig struct {
+	Type      string            `yaml:"type,omitempty"`
+	Plugin    string            `yaml:"plugin,omitempty"`
+	SinkID    string            `yaml:"sink_id,omitempty"`
+	URL       string            `yaml:"url,omitempty"`
+	Headers   map[string]string `yaml:"headers,omitempty"`
+	TimeoutMS int               `yaml:"timeout_ms,omitempty"`
 }
 
 // New returns an empty config.

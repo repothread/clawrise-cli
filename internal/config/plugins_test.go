@@ -97,3 +97,62 @@ func TestResolveAllAuthLauncherPreferencesNormalizesConfig(t *testing.T) {
 		t.Fatalf("unexpected normalized preferences: %+v", preferences)
 	}
 }
+
+func TestResolvePolicyPluginsNormalizesConfig(t *testing.T) {
+	cfg := New()
+	cfg.Runtime.Policy.Mode = " manual "
+	cfg.Runtime.Policy.Plugins = []PolicyPluginBinding{
+		{Plugin: " policy-a ", PolicyID: " review "},
+		{Plugin: "   "},
+		{PolicyID: " audit "},
+	}
+
+	if mode := ResolvePolicyMode(cfg); mode != RuntimeSelectionModeManual {
+		t.Fatalf("unexpected policy mode: %s", mode)
+	}
+	plugins := ResolvePolicyPlugins(cfg)
+	if len(plugins) != 2 {
+		t.Fatalf("unexpected normalized policy plugins: %+v", plugins)
+	}
+	if plugins[0].Plugin != "policy-a" || plugins[0].PolicyID != "review" {
+		t.Fatalf("unexpected first policy binding: %+v", plugins[0])
+	}
+	if plugins[1].Plugin != "" || plugins[1].PolicyID != "audit" {
+		t.Fatalf("unexpected second policy binding: %+v", plugins[1])
+	}
+}
+
+func TestResolveAuditSinksNormalizesConfig(t *testing.T) {
+	cfg := New()
+	cfg.Runtime.Audit.Mode = "manual"
+	cfg.Runtime.Audit.Sinks = []AuditSinkConfig{
+		{
+			Type:      " webhook ",
+			URL:       " env:CLAWRISE_AUDIT_URL ",
+			Headers:   map[string]string{" Authorization ": " env:CLAWRISE_AUDIT_TOKEN ", " ": "ignored"},
+			TimeoutMS: 2500,
+		},
+		{
+			Plugin: " audit-demo ",
+			SinkID: " capture ",
+		},
+		{},
+	}
+
+	if mode := ResolveAuditMode(cfg); mode != RuntimeSelectionModeManual {
+		t.Fatalf("unexpected audit mode: %s", mode)
+	}
+	sinks := ResolveAuditSinks(cfg)
+	if len(sinks) != 2 {
+		t.Fatalf("unexpected normalized audit sinks: %+v", sinks)
+	}
+	if sinks[0].Type != AuditSinkTypeWebhook || sinks[0].URL != "env:CLAWRISE_AUDIT_URL" {
+		t.Fatalf("unexpected webhook sink: %+v", sinks[0])
+	}
+	if sinks[0].Headers["Authorization"] != "env:CLAWRISE_AUDIT_TOKEN" {
+		t.Fatalf("unexpected webhook headers: %+v", sinks[0].Headers)
+	}
+	if sinks[1].Type != AuditSinkTypePlugin || sinks[1].Plugin != "audit-demo" || sinks[1].SinkID != "capture" {
+		t.Fatalf("unexpected plugin sink: %+v", sinks[1])
+	}
+}

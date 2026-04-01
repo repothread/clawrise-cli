@@ -28,8 +28,11 @@ type runtimeGovernance struct {
 	paths runtimePaths
 	store governanceStore
 	sinks []auditSink
-	retry retryPolicy
-	now   func() time.Time
+	// sinkWarnings 保存初始化 audit sink 时发现的配置或发现问题，
+	// 这样可以在不阻断主执行的前提下，把问题透传到最终 envelope。
+	sinkWarnings []string
+	retry        retryPolicy
+	now          func() time.Time
 }
 
 // runtimePaths describes local directories used by runtime governance data.
@@ -116,12 +119,14 @@ func newRuntimeGovernance(configPath string, cfg *config.Config, now func() time
 	paths := resolveRuntimePaths(configPath)
 	binding := config.ResolveStorageBinding(cfg, "governance")
 	enabledPlugins := config.ResolveEnabledPlugins(cfg)
+	sinks, sinkWarnings := openAuditSinks(cfg)
 	return &runtimeGovernance{
-		paths: paths,
-		store: openGovernanceStore(paths, binding, enabledPlugins),
-		sinks: openAuditSinks(cfg),
-		retry: resolveRetryPolicy(cfg.Runtime),
-		now:   now,
+		paths:        paths,
+		store:        openGovernanceStore(paths, binding, enabledPlugins),
+		sinks:        sinks,
+		sinkWarnings: append([]string(nil), sinkWarnings...),
+		retry:        resolveRetryPolicy(cfg.Runtime),
+		now:          now,
 	}
 }
 
@@ -296,6 +301,7 @@ func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) 
 	}
 
 	warnings := make([]string, 0)
+	warnings = append(warnings, g.sinkWarnings...)
 	if err := g.store.AppendAuditRecord(g.now().UTC().Format("2006-01-02"), record); err != nil {
 		warnings = append(warnings, "failed to write governance audit record: "+err.Error())
 	}

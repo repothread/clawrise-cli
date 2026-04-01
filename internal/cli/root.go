@@ -571,6 +571,25 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	if runtimeResolutionErr == nil {
 		runtimeRootDir = runtimeResolution.Path
 	}
+	policyInspection := runtime.InspectPolicyChain(cfg)
+	auditInspection := runtime.InspectAuditSinks(cfg)
+	if len(policyInspection.Warnings) > 0 {
+		checks = append(checks, map[string]any{
+			"code":    "POLICY_CHAIN_WARNING",
+			"status":  "warn",
+			"message": strings.Join(policyInspection.Warnings, "; "),
+		})
+		nextSteps = append(nextSteps, "review `runtime.policy.mode` and `runtime.policy.plugins` so the intended policy chain can be resolved")
+	}
+	if len(auditInspection.Warnings) > 0 {
+		checks = append(checks, map[string]any{
+			"code":    "AUDIT_SINK_WARNING",
+			"status":  "warn",
+			"message": strings.Join(auditInspection.Warnings, "; "),
+		})
+		nextSteps = append(nextSteps, "review `runtime.audit.mode` and `runtime.audit.sinks` so the intended audit sinks can be resolved")
+	}
+
 	runtimeSummary := map[string]any{
 		"registered_operation_count": 0,
 		"catalog_entry_count":        0,
@@ -595,6 +614,8 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"base_delay_ms": cfg.Runtime.Retry.BaseDelayMS,
 			"max_delay_ms":  cfg.Runtime.Retry.MaxDelayMS,
 		},
+		"policy": policyInspection,
+		"audit":  auditInspection,
 	}
 	if manager != nil {
 		runtimeSummary["registered_operation_count"] = len(manager.Registry().Definitions())
