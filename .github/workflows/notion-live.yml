@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-    paths:
+    paths: &notion_live_paths
       - .github/workflows/notion-live.yml
       - scripts/ci/run-notion-live.sh
       - cmd/clawrise/**
@@ -16,6 +16,10 @@ on:
       - internal/runtime/**
       - go.mod
       - go.sum
+  pull_request:
+    branches:
+      - main
+    paths: *notion_live_paths
   schedule:
     - cron: '17 2 * * *'
   workflow_dispatch:

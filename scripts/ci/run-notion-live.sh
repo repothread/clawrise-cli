@@ -3,7 +3,9 @@
 set -euo pipefail
 
 # 这组 live 测试专门跑 GitHub CI 的真实 Notion 联调。
-# 所有资源都挂在一次运行专属的临时页面下，结束后统一归档，避免污染固定 sandbox 页面。
+# 流程固定为：先确认当前 integration 可见页面与父页面，再创建一次运行专属子页面，
+# 所有写操作都限制在这个子页面内，结束后统一归档，避免污染固定 sandbox 页面。
+# 注意：Notion 对页面的“删除”公开语义本质上是归档 / 移入回收站，这里按该语义清理。
 
 log() {
   printf '[notion-live] %s\n' "$*"
@@ -140,6 +142,12 @@ write_json_file() {
 log "验证 Notion CI 账号鉴权"
 clawrise_json auth check notion_ci >/dev/null
 
+log "检查当前 integration 可访问页面，并确认父页面可访问"
+visible_pages_output="$(clawrise_json notion.search.query --json '{"filter":{"property":"object","value":"page"},"page_size":20}')"
+extract_json '.data.items | length >= 1' "${visible_pages_output}" >/dev/null
+parent_page_output="$(clawrise_json notion.page.get --json "{\"page_id\":\"${NOTION_PARENT_PAGE_ID}\"}")"
+extract_json '.data.page_id == "'"${NOTION_PARENT_PAGE_ID}"'"' "${parent_page_output}" >/dev/null
+
 create_run_page_input="${LIVE_ROOT}/create_run_page.json"
 write_json_file "${create_run_page_input}" "$(cat <<EOF
 {
@@ -192,6 +200,8 @@ user_me_output="$(clawrise_json notion.user.get --json '{"user_id":"me"}')"
 extract_json '.data.user_id' "${user_me_output}" >/dev/null
 user_list_output="$(clawrise_json notion.user.list --json '{"page_size":20}')"
 extract_json '.data.items | length >= 1' "${user_list_output}" >/dev/null
+page_search_output="$(clawrise_json notion.search.query --json "{\"query\":\"${RUN_TITLE}\",\"filter\":{\"property\":\"object\",\"value\":\"page\"},\"page_size\":10}")"
+extract_json '.data.items | map(select(.object == "page")) | length >= 1' "${page_search_output}" >/dev/null
 page_get_output="$(clawrise_json notion.page.get --json "{\"page_id\":\"${RUN_PAGE_ID}\"}")"
 extract_json '.data.page_id' "${page_get_output}" >/dev/null
 page_property_output="$(clawrise_json notion.page.property_item.get --json "{\"page_id\":\"${RUN_PAGE_ID}\",\"property_id\":\"title\"}")"

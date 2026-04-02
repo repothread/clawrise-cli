@@ -519,11 +519,20 @@ func inferTableWidth(children []map[string]any) int {
 	if !ok {
 		return 0
 	}
-	cells, ok := asArray(body["cells"])
-	if !ok {
+
+	// 这里同时兼容两种中间形态：
+	// 1. 运行时经过 JSON 反序列化后的 []any
+	// 2. 单测 / 本地构造阶段仍保持强类型的二维切片
+	switch cells := body["cells"].(type) {
+	case []any:
+		return len(cells)
+	case [][]map[string]any:
+		return len(cells)
+	case [][]any:
+		return len(cells)
+	default:
 		return 0
 	}
-	return len(cells)
 }
 
 func buildRichText(textInput any, richTextInput any) ([]map[string]any, *apperr.AppError) {
