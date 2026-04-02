@@ -108,6 +108,100 @@ func TestCreatePageSuccess(t *testing.T) {
 	}
 }
 
+func TestCreatePageSupportsProviderNativeChildren(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/pages" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode create page request: %v", err)
+			}
+			children := payload["children"].([]any)
+			heading := children[0].(map[string]any)["heading_1"].(map[string]any)
+			headingText := heading["rich_text"].([]any)[0].(map[string]any)["text"].(map[string]any)["content"]
+			if headingText != "Provider 标题" {
+				t.Fatalf("unexpected heading payload: %+v", heading)
+			}
+			paragraph := children[1].(map[string]any)["paragraph"].(map[string]any)
+			paragraphText := paragraph["rich_text"].([]any)[0].(map[string]any)["text"].(map[string]any)["content"]
+			if paragraphText != "Provider 正文" {
+				t.Fatalf("unexpected paragraph payload: %+v", paragraph)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":       "page_provider_123",
+				"url":      "https://www.notion.so/page_provider_123",
+				"in_trash": false,
+				"parent": map[string]any{
+					"type":    "page_id",
+					"page_id": "page_demo",
+				},
+				"properties": map[string]any{
+					"title": map[string]any{
+						"title": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "Provider 页面",
+								"text": map[string]any{
+									"content": "Provider 页面",
+								},
+							},
+						},
+					},
+				},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.CreatePage(context.Background(), testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_demo",
+		},
+		"title": "Provider 页面",
+		"children": []any{
+			map[string]any{
+				"type": "heading_1",
+				"heading_1": map[string]any{
+					"rich_text": []map[string]any{
+						{
+							"type": "text",
+							"text": map[string]any{
+								"content": "Provider 标题",
+							},
+						},
+					},
+				},
+			},
+			map[string]any{
+				"type": "paragraph",
+				"paragraph": map[string]any{
+					"rich_text": []map[string]any{
+						{
+							"type": "text",
+							"text": map[string]any{
+								"content": "Provider 正文",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("CreatePage returned error: %+v", appErr)
+	}
+	if data["page_id"] != "page_provider_123" {
+		t.Fatalf("unexpected page_id: %+v", data["page_id"])
+	}
+}
+
 func TestCreatePageWithOAuthRefreshableProfile(t *testing.T) {
 	t.Setenv("NOTION_CLIENT_ID", "client-id")
 	t.Setenv("NOTION_CLIENT_SECRET", "client-secret")
@@ -638,6 +732,81 @@ func TestAppendBlockChildrenSuccess(t *testing.T) {
 	}
 }
 
+func TestAppendBlockChildrenSupportsProviderNativeBodies(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/blocks/block_demo/children" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode append blocks request: %v", err)
+			}
+			children := payload["children"].([]any)
+			paragraph := children[0].(map[string]any)["paragraph"].(map[string]any)
+			paragraphText := paragraph["rich_text"].([]any)[0].(map[string]any)["text"].(map[string]any)["content"]
+			if paragraphText != "Provider 追加正文" {
+				t.Fatalf("unexpected paragraph payload: %+v", paragraph)
+			}
+			toDo := children[1].(map[string]any)["to_do"].(map[string]any)
+			toDoText := toDo["rich_text"].([]any)[0].(map[string]any)["text"].(map[string]any)["content"]
+			if toDoText != "Provider 待办" || toDo["checked"] != true {
+				t.Fatalf("unexpected to_do payload: %+v", toDo)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"results": []map[string]any{
+					{"id": "blk_provider_1"},
+					{"id": "blk_provider_2"},
+				},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.AppendBlockChildren(context.Background(), testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+		"children": []any{
+			map[string]any{
+				"type": "paragraph",
+				"paragraph": map[string]any{
+					"rich_text": []map[string]any{
+						{
+							"type": "text",
+							"text": map[string]any{
+								"content": "Provider 追加正文",
+							},
+						},
+					},
+				},
+			},
+			map[string]any{
+				"type": "to_do",
+				"to_do": map[string]any{
+					"checked": true,
+					"rich_text": []map[string]any{
+						{
+							"type": "text",
+							"text": map[string]any{
+								"content": "Provider 待办",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("AppendBlockChildren returned error: %+v", appErr)
+	}
+	if data["appended_count"] != 2 {
+		t.Fatalf("unexpected appended_count: %+v", data["appended_count"])
+	}
+}
+
 func TestGetBlockSuccess(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 
@@ -830,6 +999,75 @@ func TestUpdateBlockSuccess(t *testing.T) {
 		t.Fatalf("UpdateBlock returned error: %+v", appErr)
 	}
 	if data["plain_text"] != "更新后的正文" {
+		t.Fatalf("unexpected plain_text: %+v", data["plain_text"])
+	}
+}
+
+func TestUpdateBlockSupportsProviderNativeBlockWrapper(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/blocks/block_demo" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode update block request: %v", err)
+			}
+			paragraph := payload["paragraph"].(map[string]any)
+			richText := paragraph["rich_text"].([]any)
+			text := richText[0].(map[string]any)["text"].(map[string]any)["content"]
+			if text != "Provider 更新正文" {
+				t.Fatalf("unexpected payload text: %+v", paragraph)
+			}
+			if paragraph["color"] != "green_background" {
+				t.Fatalf("unexpected payload color: %+v", paragraph)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":           "block_demo",
+				"type":         "paragraph",
+				"has_children": false,
+				"in_trash":     false,
+				"paragraph": map[string]any{
+					"rich_text": []map[string]any{
+						{
+							"type":       "text",
+							"plain_text": "Provider 更新正文",
+							"text": map[string]any{
+								"content": "Provider 更新正文",
+							},
+						},
+					},
+				},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.UpdateBlock(context.Background(), testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+		"block": map[string]any{
+			"type": "paragraph",
+			"paragraph": map[string]any{
+				"color": "green_background",
+				"rich_text": []map[string]any{
+					{
+						"type": "text",
+						"text": map[string]any{
+							"content": "Provider 更新正文",
+						},
+					},
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("UpdateBlock returned error: %+v", appErr)
+	}
+	if data["plain_text"] != "Provider 更新正文" {
 		t.Fatalf("unexpected plain_text: %+v", data["plain_text"])
 	}
 }

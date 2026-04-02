@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"reflect"
 	"strings"
 	"time"
 
@@ -424,8 +425,26 @@ func asMap(value any) (map[string]any, bool) {
 }
 
 func asArray(value any) ([]any, bool) {
-	list, ok := value.([]any)
-	return list, ok
+	if list, ok := value.([]any); ok {
+		return list, true
+	}
+	if value == nil {
+		return nil, false
+	}
+	if _, ok := value.([]byte); ok {
+		return nil, false
+	}
+
+	typed := reflect.ValueOf(value)
+	if typed.Kind() != reflect.Slice {
+		return nil, false
+	}
+
+	items := make([]any, typed.Len())
+	for index := 0; index < typed.Len(); index++ {
+		items[index] = typed.Index(index).Interface()
+	}
+	return items, true
 }
 
 func asInt(value any) (int, bool) {

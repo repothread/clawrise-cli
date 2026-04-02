@@ -597,6 +597,11 @@ Optional fields:
 - `properties`
 - `children`
 
+Notes:
+
+- `children` accepts both shorthand top-level block fields and provider-native nested block bodies
+- when both shapes are present on the same block, the top-level fields take precedence
+
 Allowed subject:
 
 - `integration`
@@ -767,6 +772,11 @@ Required fields:
 - `block_id`
 - `children`
 
+Notes:
+
+- `children` accepts both shorthand top-level block fields and provider-native nested block bodies
+- when both shapes are present on the same block, the top-level fields take precedence
+
 Allowed subject:
 
 - `integration`
@@ -836,6 +846,12 @@ Required fields:
 
 - `block_id`
 - block payload
+
+Notes:
+
+- the block payload may be provided directly at the top level or under `block`
+- textual and structured block fields accept both shorthand top-level fields and provider-native nested block bodies
+- when both shapes are present on the same block, the top-level fields take precedence
 
 Allowed subject:
 

@@ -49,7 +49,27 @@ Playbook:
 
 - `docs/playbooks/en/notion-page-update.md`
 
-### 2. Query A Data Source
+### 2. Append Or Update Blocks Safely
+
+Start with:
+
+- `notion.page.create`
+- `notion.block.append`
+- `notion.block.update`
+- `notion.block.get`
+- `notion.page.markdown.get`
+
+Notes:
+
+- block writes support both shorthand top-level fields and provider-native nested block bodies
+- when both input shapes are present on the same block, top-level fields win
+- keep `--dry-run` in the loop until the payload shape is stable
+
+Playbook:
+
+- `docs/playbooks/en/notion-block-write.md`
+
+### 3. Query A Data Source
 
 Start with:
 

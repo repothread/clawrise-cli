@@ -7,6 +7,10 @@
 - `notion.page.get`
 - `notion.page.markdown.get`
 
+如果要做结构化 block 写入，请改看：
+
+- `docs/playbooks/zh/notion-block-write.md`
+
 适用场景：
 
 - 更新页面标题或属性

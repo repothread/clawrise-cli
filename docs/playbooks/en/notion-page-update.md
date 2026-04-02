@@ -7,6 +7,10 @@ Operations:
 - `notion.page.get`
 - `notion.page.markdown.get`
 
+For structural block writes, use:
+
+- `docs/playbooks/en/notion-block-write.md`
+
 ## Read the page first
 
 ```bash

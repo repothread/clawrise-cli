@@ -59,6 +59,9 @@ Both current Notion auth methods use the `integration` subject. Do not switch to
 - Prefer `--dry-run` for write operations
 - Read before write to avoid overwriting page or block content
 - Keep pages, blocks, comments, and data sources in Notion-native fields
+- Notion block writes accept both shorthand top-level fields and provider-native nested block bodies
+- When both block input shapes are present on the same block, top-level fields win
+- When reusing Notion block output across tools, preserving the provider-native nested block body is safe
 
 ## Read This Reference Only When The Task Matches
 

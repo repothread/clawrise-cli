@@ -695,6 +695,11 @@ MVP 限制：
 - `properties`
 - `children`
 
+说明：
+
+- `children` 中的 block 同时支持 shorthand 顶层字段和 provider-native 嵌套 block body
+- 同一个 block 同时出现两种形态时，以顶层字段为准
+
 允许主体：
 
 - `integration`
@@ -797,6 +802,11 @@ MVP 限制：
 - `block_id`
 - `children`
 
+说明：
+
+- `children` 中的 block 同时支持 shorthand 顶层字段和 provider-native 嵌套 block body
+- 同一个 block 同时出现两种形态时，以顶层字段为准
+
 允许主体：
 
 - `integration`
@@ -866,6 +876,12 @@ MVP 限制：
 
 - `block_id`
 - block 内容载荷
+
+说明：
+
+- block 内容既可以直接放在顶层，也可以放在 `block` 字段里
+- 文本类和结构化字段同时支持 shorthand 顶层字段与 provider-native 嵌套 block body
+- 同一个 block 同时出现两种形态时，以顶层字段为准
 
 允许主体：
 

@@ -160,6 +160,86 @@ func TestBuildBlockSupportsTableInferenceAndTableRowPlainText(t *testing.T) {
 	}
 }
 
+func TestBuildBlockSupportsProviderNativeBodies(t *testing.T) {
+	payload, appErr := buildBlock(map[string]any{
+		"type": "paragraph",
+		"paragraph": map[string]any{
+			"color": "blue_background",
+			"rich_text": []map[string]any{
+				{
+					"type": "text",
+					"text": map[string]any{
+						"content": "Provider 段落",
+					},
+				},
+			},
+			"children": []map[string]any{
+				{
+					"type": "to_do",
+					"to_do": map[string]any{
+						"checked": true,
+						"rich_text": []map[string]any{
+							{
+								"type": "text",
+								"text": map[string]any{
+									"content": "Provider 子项",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("buildBlock returned error: %+v", appErr)
+	}
+
+	body := payload["paragraph"].(map[string]any)
+	if body["color"] != "blue_background" {
+		t.Fatalf("unexpected paragraph body: %+v", body)
+	}
+	richText := body["rich_text"].([]map[string]any)
+	if richText[0]["text"].(map[string]any)["content"] != "Provider 段落" {
+		t.Fatalf("unexpected paragraph rich_text: %+v", richText)
+	}
+	children := body["children"].([]map[string]any)
+	toDo := children[0]["to_do"].(map[string]any)
+	if toDo["checked"] != true {
+		t.Fatalf("unexpected to_do body: %+v", toDo)
+	}
+	toDoRichText := toDo["rich_text"].([]map[string]any)
+	if toDoRichText[0]["text"].(map[string]any)["content"] != "Provider 子项" {
+		t.Fatalf("unexpected to_do rich_text: %+v", toDoRichText)
+	}
+}
+
+func TestBuildBlockTopLevelFieldsOverrideProviderNativeBodies(t *testing.T) {
+	payload, appErr := buildBlock(map[string]any{
+		"type": "paragraph",
+		"text": "顶层正文优先",
+		"paragraph": map[string]any{
+			"rich_text": []map[string]any{
+				{
+					"type": "text",
+					"text": map[string]any{
+						"content": "不应被保留",
+					},
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("buildBlock returned error: %+v", appErr)
+	}
+
+	body := payload["paragraph"].(map[string]any)
+	richText := body["rich_text"].([]map[string]any)
+	if richText[0]["text"].(map[string]any)["content"] != "顶层正文优先" {
+		t.Fatalf("unexpected rich_text precedence: %+v", richText)
+	}
+}
+
 func TestNormalizeNotionFileObjectAndHTTPErrorMapping(t *testing.T) {
 	emojiPayload, appErr := normalizeNotionFileObject("✅", true)
 	if appErr != nil {
