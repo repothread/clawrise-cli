@@ -266,8 +266,11 @@ func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppEr
 	if len(properties) > 0 {
 		payload["properties"] = properties
 	}
-	if archived, ok := asBool(input["archived"]); ok {
-		payload["archived"] = archived
+	if inTrash, ok := asBool(input["in_trash"]); ok {
+		payload["in_trash"] = inTrash
+	} else if archived, ok := asBool(input["archived"]); ok {
+		// archived 继续保留为兼容别名，但实际向新版 Notion API 发送 in_trash。
+		payload["in_trash"] = archived
 	}
 	if icon, exists := input["icon"]; exists {
 		normalized, appErr := normalizeNotionFileObject(icon, true)

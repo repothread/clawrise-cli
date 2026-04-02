@@ -70,8 +70,9 @@ func notionPageUpdateSpec() adapter.OperationSpec {
 		Summary: "Update a Notion page's properties or archive state.",
 		Input: adapter.InputSpec{
 			Required: []string{"page_id"},
-			Optional: []string{"title", "title_property", "properties", "archived", "icon", "cover"},
+			Optional: []string{"title", "title_property", "properties", "archived", "in_trash", "icon", "cover"},
 			Notes: []string{
+				"`in_trash` is the native field for current Notion API versions; `archived` remains accepted as a backward-compatible alias.",
 				"`--verify` and `--debug-provider-payload` are supported for this operation.",
 			},
 			Sample: map[string]any{

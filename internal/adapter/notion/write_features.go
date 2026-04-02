@@ -197,7 +197,8 @@ func (c *Client) verifyPageUpdate(ctx context.Context, profile ExecutionProfile,
 		})
 	}
 
-	if expectedArchived, ok := asBool(input["archived"]); ok {
+	expectedArchived, ok := expectedPageArchivedState(input)
+	if ok {
 		actualArchived, _ := asBool(pageData["archived"])
 		appendVerificationCheck(result, map[string]any{
 			"name":     "archived_matches",
@@ -208,6 +209,16 @@ func (c *Client) verifyPageUpdate(ctx context.Context, profile ExecutionProfile,
 	}
 
 	return result
+}
+
+func expectedPageArchivedState(input map[string]any) (bool, bool) {
+	if expectedInTrash, ok := asBool(input["in_trash"]); ok {
+		return expectedInTrash, true
+	}
+	if expectedArchived, ok := asBool(input["archived"]); ok {
+		return expectedArchived, true
+	}
+	return false, false
 }
 
 func (c *Client) verifyBlockAppend(ctx context.Context, profile ExecutionProfile, payload map[string]any, data map[string]any) map[string]any {

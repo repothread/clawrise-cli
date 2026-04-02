@@ -392,6 +392,13 @@ func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
 	if requests[0]["method"] != http.MethodPatch {
 		t.Fatalf("unexpected first provider debug entry: %+v", requests[0])
 	}
+	requestBody := requests[0]["request_body"].(map[string]any)
+	if requestBody["in_trash"] != true {
+		t.Fatalf("expected in_trash=true in update page request body, got: %+v", requestBody)
+	}
+	if _, exists := requestBody["archived"]; exists {
+		t.Fatalf("expected archived to be omitted from update page request body, got: %+v", requestBody)
+	}
 	encodedRequestBody, err := json.Marshal(requests[0]["request_body"])
 	if err != nil {
 		t.Fatalf("failed to encode request body: %v", err)

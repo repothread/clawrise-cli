@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestBuildUpdatePagePayloadSupportsArchivedIconAndCover(t *testing.T) {
+func TestBuildUpdatePagePayloadSupportsArchivedAliasIconAndCover(t *testing.T) {
 	// 页面更新是 live 测试里最常见的清理与装饰入口，这里把关键字段的构造补齐单测。
 	payload, appErr := buildUpdatePagePayload(map[string]any{
 		"title":    "已更新页面",
@@ -18,8 +18,8 @@ func TestBuildUpdatePagePayloadSupportsArchivedIconAndCover(t *testing.T) {
 		t.Fatalf("buildUpdatePagePayload returned error: %+v", appErr)
 	}
 
-	if payload["archived"] != true {
-		t.Fatalf("expected archived=true, got: %+v", payload)
+	if payload["in_trash"] != true {
+		t.Fatalf("expected in_trash=true, got: %+v", payload)
 	}
 	icon := payload["icon"].(map[string]any)
 	if icon["type"] != "emoji" || icon["emoji"] != "🧪" {
@@ -34,6 +34,18 @@ func TestBuildUpdatePagePayloadSupportsArchivedIconAndCover(t *testing.T) {
 	titleItems := titleProperty["title"].([]map[string]any)
 	if titleItems[0]["text"].(map[string]any)["content"] != "已更新页面" {
 		t.Fatalf("unexpected title payload: %+v", titleItems)
+	}
+}
+
+func TestBuildUpdatePagePayloadSupportsInTrashField(t *testing.T) {
+	payload, appErr := buildUpdatePagePayload(map[string]any{
+		"in_trash": true,
+	})
+	if appErr != nil {
+		t.Fatalf("buildUpdatePagePayload returned error: %+v", appErr)
+	}
+	if payload["in_trash"] != true {
+		t.Fatalf("expected in_trash=true, got: %+v", payload)
 	}
 }
 
