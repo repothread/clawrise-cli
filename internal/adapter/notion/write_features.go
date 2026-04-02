@@ -168,6 +168,48 @@ func (c *Client) verifyPageCreate(ctx context.Context, profile ExecutionProfile,
 	return result
 }
 
+func (c *Client) verifyPageUpdate(ctx context.Context, profile ExecutionProfile, input map[string]any, data map[string]any) map[string]any {
+	result := buildVerificationResult("page")
+	pageID, _ := asString(data["page_id"])
+	result["page_id"] = strings.TrimSpace(pageID)
+
+	pageData, appErr := c.GetPage(ctx, profile, map[string]any{
+		"page_id": pageID,
+	})
+	if appErr != nil {
+		appendVerificationError(result, appErr)
+		return result
+	}
+
+	appendVerificationCheck(result, map[string]any{
+		"name":    "page_exists",
+		"ok":      true,
+		"page_id": pageID,
+	})
+
+	if expectedTitle, ok := asString(input["title"]); ok && strings.TrimSpace(expectedTitle) != "" {
+		actualTitle, _ := asString(pageData["title"])
+		appendVerificationCheck(result, map[string]any{
+			"name":     "title_matches",
+			"ok":       strings.TrimSpace(expectedTitle) == strings.TrimSpace(actualTitle),
+			"expected": expectedTitle,
+			"actual":   actualTitle,
+		})
+	}
+
+	if expectedArchived, ok := asBool(input["archived"]); ok {
+		actualArchived, _ := asBool(pageData["archived"])
+		appendVerificationCheck(result, map[string]any{
+			"name":     "archived_matches",
+			"ok":       expectedArchived == actualArchived,
+			"expected": expectedArchived,
+			"actual":   actualArchived,
+		})
+	}
+
+	return result
+}
+
 func (c *Client) verifyBlockAppend(ctx context.Context, profile ExecutionProfile, payload map[string]any, data map[string]any) map[string]any {
 	result := buildVerificationResult("block_children")
 	childIDs, _ := data["child_ids"].([]string)

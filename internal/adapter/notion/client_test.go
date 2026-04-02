@@ -299,6 +299,108 @@ func TestCreatePageVerifyAfterWriteSuccess(t *testing.T) {
 	}
 }
 
+func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	ctx := adapter.WithRuntimeOptions(context.Background(), adapter.RuntimeOptions{
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+	})
+	ctx, _ = adapter.WithProviderDebugCapture(ctx)
+
+	client := newTestClient(t, &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/v1/pages/page_demo":
+				switch request.Method {
+				case http.MethodPatch:
+					return jsonResponse(t, http.StatusOK, map[string]any{
+						"id":       "page_demo",
+						"url":      "https://www.notion.so/page_demo",
+						"archived": true,
+						"parent": map[string]any{
+							"type":    "page_id",
+							"page_id": "parent_demo",
+						},
+						"properties": map[string]any{
+							"title": map[string]any{
+								"title": []map[string]any{
+									{
+										"type":       "text",
+										"plain_text": "已更新页面",
+										"text": map[string]any{
+											"content": "已更新页面",
+										},
+									},
+								},
+							},
+						},
+					}), nil
+				case http.MethodGet:
+					return jsonResponse(t, http.StatusOK, map[string]any{
+						"id":       "page_demo",
+						"url":      "https://www.notion.so/page_demo",
+						"archived": true,
+						"parent": map[string]any{
+							"type":    "page_id",
+							"page_id": "parent_demo",
+						},
+						"properties": map[string]any{
+							"title": map[string]any{
+								"title": []map[string]any{
+									{
+										"type":       "text",
+										"plain_text": "已更新页面",
+										"text": map[string]any{
+											"content": "已更新页面",
+										},
+									},
+								},
+							},
+						},
+					}), nil
+				default:
+					t.Fatalf("unexpected method: %s", request.Method)
+					return nil, nil
+				}
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	})
+
+	data, appErr := client.UpdatePage(ctx, testStaticProfile(), map[string]any{
+		"page_id":  "page_demo",
+		"title":    "已更新页面",
+		"archived": true,
+	})
+	if appErr != nil {
+		t.Fatalf("UpdatePage returned error: %+v", appErr)
+	}
+
+	verification := data["verification"].(map[string]any)
+	if verification["ok"] != true {
+		t.Fatalf("unexpected verification result: %+v", verification)
+	}
+
+	debugData := adapter.ProviderDebugFromContext(ctx)
+	requests := debugData["provider_requests"].([]map[string]any)
+	if len(requests) != 2 {
+		t.Fatalf("unexpected provider debug entries: %+v", debugData)
+	}
+	if requests[0]["method"] != http.MethodPatch {
+		t.Fatalf("unexpected first provider debug entry: %+v", requests[0])
+	}
+	encodedRequestBody, err := json.Marshal(requests[0]["request_body"])
+	if err != nil {
+		t.Fatalf("failed to encode request body: %v", err)
+	}
+	if strings.Contains(string(encodedRequestBody), "已更新页面") {
+		t.Fatalf("expected request body content to be redacted: %s", string(encodedRequestBody))
+	}
+}
+
 func TestCreatePageWithOAuthRefreshableProfile(t *testing.T) {
 	t.Setenv("NOTION_CLIENT_ID", "client-id")
 	t.Setenv("NOTION_CLIENT_SECRET", "client-secret")
@@ -998,6 +1100,13 @@ func TestAppendBlockChildrenVerifyAndDebugSuccess(t *testing.T) {
 	}
 	if requests[0]["path"] != "/v1/blocks/block_demo/children" {
 		t.Fatalf("unexpected first provider debug entry: %+v", requests[0])
+	}
+	encodedRequestBody, err := json.Marshal(requests[0]["request_body"])
+	if err != nil {
+		t.Fatalf("failed to encode request body: %v", err)
+	}
+	if strings.Contains(string(encodedRequestBody), "调试正文") || strings.Contains(string(encodedRequestBody), "调试待办") {
+		t.Fatalf("expected request body content to be redacted: %s", string(encodedRequestBody))
 	}
 }
 

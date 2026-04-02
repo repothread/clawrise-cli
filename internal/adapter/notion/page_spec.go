@@ -71,9 +71,22 @@ func notionPageUpdateSpec() adapter.OperationSpec {
 		Input: adapter.InputSpec{
 			Required: []string{"page_id"},
 			Optional: []string{"title", "title_property", "properties", "archived", "icon", "cover"},
+			Notes: []string{
+				"`--verify` and `--debug-provider-payload` are supported for this operation.",
+			},
 			Sample: map[string]any{
 				"page_id": "page_demo",
 				"title":   "Updated project notes",
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Update page properties",
+				Command: `clawrise notion.page.update --dry-run --json '{"page_id":"page_demo","title":"Updated project notes"}'`,
+			},
+			{
+				Title:   "Update page properties with provider payload debug and verification",
+				Command: `clawrise notion.page.update --debug-provider-payload --verify --json '{"page_id":"page_demo","title":"Updated project notes"}'`,
 			},
 		},
 	}

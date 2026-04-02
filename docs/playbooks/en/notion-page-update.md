@@ -27,6 +27,15 @@ clawrise notion.page.update --dry-run --json '{
 }'
 ```
 
+## Verify or inspect one property update
+
+```bash
+clawrise notion.page.update --debug-provider-payload --verify --json '{
+  "page_id":"page_demo",
+  "title":"Updated project notes"
+}'
+```
+
 ## Replace markdown content
 
 ```bash

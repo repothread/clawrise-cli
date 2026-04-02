@@ -489,7 +489,7 @@ func writeEnhancementWarnings(operation string, opts ExecuteOptions) []string {
 		case opts.DryRun:
 			warnings = append(warnings, "skipped --debug-provider-payload because --dry-run does not send upstream provider requests")
 		case !supportsProviderPayloadDebug(operation):
-			warnings = append(warnings, "operation "+operation+" currently ignores --debug-provider-payload; this flag is supported only for notion.page.create, notion.block.append, and notion.block.update")
+			warnings = append(warnings, "operation "+operation+" currently ignores --debug-provider-payload; this flag is supported only for notion.page.create, notion.page.update, notion.block.append, and notion.block.update")
 		}
 	}
 	if opts.VerifyAfterWrite {
@@ -497,7 +497,7 @@ func writeEnhancementWarnings(operation string, opts ExecuteOptions) []string {
 		case opts.DryRun:
 			warnings = append(warnings, "skipped --verify because --dry-run does not execute mutating operations")
 		case !supportsWriteVerification(operation):
-			warnings = append(warnings, "operation "+operation+" currently ignores --verify; this flag is supported only for notion.page.create, notion.block.append, and notion.block.update")
+			warnings = append(warnings, "operation "+operation+" currently ignores --verify; this flag is supported only for notion.page.create, notion.page.update, notion.block.append, and notion.block.update")
 		}
 	}
 	return warnings
@@ -505,7 +505,7 @@ func writeEnhancementWarnings(operation string, opts ExecuteOptions) []string {
 
 func supportsProviderPayloadDebug(operation string) bool {
 	switch strings.TrimSpace(operation) {
-	case "notion.page.create", "notion.block.append", "notion.block.update":
+	case "notion.page.create", "notion.page.update", "notion.block.append", "notion.block.update":
 		return true
 	default:
 		return false
@@ -514,7 +514,7 @@ func supportsProviderPayloadDebug(operation string) bool {
 
 func supportsWriteVerification(operation string) bool {
 	switch strings.TrimSpace(operation) {
-	case "notion.page.create", "notion.block.append", "notion.block.update":
+	case "notion.page.create", "notion.page.update", "notion.block.append", "notion.block.update":
 		return true
 	default:
 		return false

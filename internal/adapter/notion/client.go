@@ -123,9 +123,9 @@ func (c *Client) doJSONRequest(ctx context.Context, method, rawPath string, quer
 			"method":          method,
 			"path":            endpoint.Path,
 			"query":           endpoint.RawQuery,
-			"request_body":    cloneDebugValue(body),
+			"request_body":    adapter.RedactDebugValue(cloneDebugValue(body)),
 			"response_status": response.StatusCode,
-			"response_body":   decodeDebugResponseBody(responseBody),
+			"response_body":   adapter.RedactDebugValue(decodeDebugResponseBody(responseBody)),
 		})
 	}
 

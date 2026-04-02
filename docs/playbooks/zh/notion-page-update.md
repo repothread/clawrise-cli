@@ -35,7 +35,16 @@ clawrise notion.page.update --dry-run --json '{
 }'
 ```
 
-## 3. 用 markdown 替换正文
+## 3. 对属性更新做验证或查看上游载荷
+
+```bash
+clawrise notion.page.update --debug-provider-payload --verify --json '{
+  "page_id":"page_demo",
+  "title":"Updated project notes"
+}'
+```
+
+## 4. 用 markdown 替换正文
 
 ```bash
 clawrise notion.page.markdown.update --dry-run --json '{
@@ -54,3 +63,5 @@ clawrise notion.page.markdown.update --dry-run --json '{
 - 先运行 `clawrise spec get notion.page.markdown.update`
 - 先读后写，避免覆盖掉页面中已有内容
 - 若只改标题或属性，优先使用 `notion.page.update`
+- 需要写后确认结果时，在 `notion.page.update` 上加 `--verify`
+- 需要查看最终上游请求和响应时，在 `notion.page.update` 上加 `--debug-provider-payload`

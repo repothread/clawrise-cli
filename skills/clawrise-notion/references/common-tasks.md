@@ -49,6 +49,10 @@ Playbook:
 
 - `docs/playbooks/en/notion-page-update.md`
 
+Notes:
+
+- `notion.page.update` supports `--verify` and `--debug-provider-payload`
+
 ### 2. Append Or Update Blocks Safely
 
 Start with:

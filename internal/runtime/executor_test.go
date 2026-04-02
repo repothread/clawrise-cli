@@ -537,6 +537,108 @@ func TestExecutorExportsProviderDebugForSupportedNotionWrite(t *testing.T) {
 	}
 }
 
+func TestExecutorSupportsVerificationAndDebugForNotionPageUpdate(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				switch request.URL.Path {
+				case "/v1/pages/page_demo":
+					switch request.Method {
+					case http.MethodPatch, http.MethodGet:
+						return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+							"id":       "page_demo",
+							"url":      "https://www.notion.so/page_demo",
+							"in_trash": false,
+							"parent": map[string]any{
+								"type":    "page_id",
+								"page_id": "parent_demo",
+							},
+							"properties": map[string]any{
+								"title": map[string]any{
+									"title": []map[string]any{
+										{
+											"type":       "text",
+											"plain_text": "执行器更新验证",
+											"text": map[string]any{
+												"content": "执行器更新验证",
+											},
+										},
+									},
+								},
+							},
+						}), nil
+					default:
+						t.Fatalf("unexpected method: %s", request.Method)
+						return nil, nil
+					}
+				default:
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+					return nil, nil
+				}
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput:       "page.update",
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+		InputJSON:            `{"page_id":"page_demo","title":"执行器更新验证"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion page update success, got error: %+v", envelope.Error)
+	}
+	if envelope.Debug == nil {
+		t.Fatal("expected debug payload to be present")
+	}
+	data := envelope.Data.(map[string]any)
+	verification := data["verification"].(map[string]any)
+	if verification["ok"] != true {
+		t.Fatalf("unexpected verification result: %+v", verification)
+	}
+	requests := envelope.Debug["provider_requests"].([]map[string]any)
+	if len(requests) != 2 {
+		t.Fatalf("unexpected debug payload: %+v", envelope.Debug)
+	}
+}
+
 func TestExecutorExecutesNotionPageMarkdownGet(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

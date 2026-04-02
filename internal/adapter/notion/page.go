@@ -128,7 +128,11 @@ func (c *Client) UpdatePage(ctx context.Context, profile ExecutionProfile, input
 		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "page id is empty in Notion response")
 	}
 
-	return mapPageData(response), nil
+	data := mapPageData(response)
+	if verifyAfterWriteEnabled(ctx) {
+		data = attachVerification(data, c.verifyPageUpdate(ctx, profile, input, data))
+	}
+	return data, nil
 }
 
 // GetPageMarkdown reads page content or unknown subtrees in enhanced markdown form.
