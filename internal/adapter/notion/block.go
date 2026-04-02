@@ -154,11 +154,15 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfi
 		}
 	}
 
-	return map[string]any{
+	data := map[string]any{
 		"block_id":       blockID,
 		"appended_count": len(childIDs),
 		"child_ids":      childIDs,
-	}, nil
+	}
+	if verifyAfterWriteEnabled(ctx) {
+		data = attachVerification(data, c.verifyBlockAppend(ctx, profile, payload, data))
+	}
+	return data, nil
 }
 
 // UpdateBlock updates the content of the specified block.
@@ -196,7 +200,11 @@ func (c *Client) UpdateBlock(ctx context.Context, profile ExecutionProfile, inpu
 	if appErr != nil {
 		return nil, appErr
 	}
-	return normalizeBlockData(block), nil
+	data := normalizeBlockData(block)
+	if verifyAfterWriteEnabled(ctx) {
+		data = attachVerification(data, c.verifyBlockUpdate(ctx, profile, payload, data))
+	}
+	return data, nil
 }
 
 // DeleteBlock moves the specified block to the trash.

@@ -33,7 +33,7 @@ var (
 	specCompletionCommands       = []string{"list", "get", "status", "export"}
 	docsCompletionCommands       = []string{"generate"}
 	completionShells             = []string{"bash", "zsh", "fish"}
-	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
 	batchCompletionFlags         = []string{"--json", "--input", "--help", "-h"}
 	specExportCompletionFlags    = []string{"--format", "--out-dir", "--help", "-h"}
 	docsGenerateCompletionFlags  = []string{"--out-dir", "--help", "-h"}

@@ -64,6 +64,8 @@ Notes:
 - block writes support both shorthand top-level fields and provider-native nested block bodies
 - when both input shapes are present on the same block, top-level fields win
 - keep `--dry-run` in the loop until the payload shape is stable
+- add `--verify` on real writes when you need immediate read-after-write confirmation
+- add `--debug-provider-payload` when you need to inspect the final provider request and response
 
 Playbook:
 

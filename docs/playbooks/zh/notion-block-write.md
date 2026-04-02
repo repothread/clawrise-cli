@@ -99,12 +99,18 @@ clawrise notion.block.update --dry-run --json '{
 ## 7. 真正写入后做验证
 
 ```bash
-clawrise notion.block.get --json '{"block_id":"block_demo"}'
-clawrise notion.page.markdown.get --json '{"page_id":"page_demo"}'
+clawrise notion.block.append --verify --json '{
+  "block_id":"page_demo",
+  "children":[
+    {"type":"paragraph","text":"已验证写入"}
+  ]
+}'
 ```
 
 ## 使用建议
 
 - 在载荷形态稳定之前，始终把 `--dry-run` 放在回路里
+- 需要写后立即确认结果时，在支持的 Notion 写操作上加 `--verify`
+- 需要查看最终上游请求和响应时，在支持的 Notion 写操作上加 `--debug-provider-payload`
 - 如果你是在复用 Notion 读取结果或中间转换结果，保留 provider-native 嵌套 block body 是安全的
 - 如果任务本质上是 markdown 优先的整页编辑，优先考虑 `notion.page.markdown.update`

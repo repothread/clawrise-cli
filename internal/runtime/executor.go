@@ -119,6 +119,8 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("account %s with subject %s is not allowed to call %s", accountName, account.Subject, canonicalOperation)), ExecutionProfile{}), input), nil
 	}
 
+	warnings = append(warnings, writeEnhancementWarnings(canonicalOperation, opts)...)
+
 	executionProfile := ExecutionProfile{
 		Name:       accountName,
 		Account:    accountName,
@@ -194,6 +196,14 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		idempotencyKey = idempotency.Key
 	}
 
+	ctx = adapter.WithRuntimeOptions(ctx, adapter.RuntimeOptions{
+		DebugProviderPayload: opts.DebugProviderPayload && !opts.DryRun && supportsProviderPayloadDebug(canonicalOperation),
+		VerifyAfterWrite:     opts.VerifyAfterWrite && !opts.DryRun && supportsWriteVerification(canonicalOperation),
+	})
+	if opts.DebugProviderPayload && !opts.DryRun && supportsProviderPayloadDebug(canonicalOperation) {
+		ctx, _ = adapter.WithProviderDebugCapture(ctx)
+	}
+
 	retryCount := 0
 	var data map[string]any
 	for {
@@ -220,6 +230,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 			idempotency.Persisted = false
 		}
 	}
+	envelope.Debug = adapter.ProviderDebugFromContext(ctx)
 	return e.auditEnvelope(governance, envelope, input), nil
 }
 
@@ -469,6 +480,45 @@ func contains(values []string, target string) bool {
 func buildRequestID(now time.Time) string {
 	hash := sha256.Sum256([]byte(now.UTC().Format(time.RFC3339Nano)))
 	return "req_" + hex.EncodeToString(hash[:6])
+}
+
+func writeEnhancementWarnings(operation string, opts ExecuteOptions) []string {
+	warnings := make([]string, 0)
+	if opts.DebugProviderPayload {
+		switch {
+		case opts.DryRun:
+			warnings = append(warnings, "skipped --debug-provider-payload because --dry-run does not send upstream provider requests")
+		case !supportsProviderPayloadDebug(operation):
+			warnings = append(warnings, "operation "+operation+" currently ignores --debug-provider-payload; this flag is supported only for notion.page.create, notion.block.append, and notion.block.update")
+		}
+	}
+	if opts.VerifyAfterWrite {
+		switch {
+		case opts.DryRun:
+			warnings = append(warnings, "skipped --verify because --dry-run does not execute mutating operations")
+		case !supportsWriteVerification(operation):
+			warnings = append(warnings, "operation "+operation+" currently ignores --verify; this flag is supported only for notion.page.create, notion.block.append, and notion.block.update")
+		}
+	}
+	return warnings
+}
+
+func supportsProviderPayloadDebug(operation string) bool {
+	switch strings.TrimSpace(operation) {
+	case "notion.page.create", "notion.block.append", "notion.block.update":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsWriteVerification(operation string) bool {
+	switch strings.TrimSpace(operation) {
+	case "notion.page.create", "notion.block.append", "notion.block.update":
+		return true
+	default:
+		return false
+	}
 }
 
 // ExecuteContext is kept as a small seam for future adapter integration.

@@ -99,12 +99,18 @@ clawrise notion.block.update --dry-run --json '{
 ## Verify after the real write
 
 ```bash
-clawrise notion.block.get --json '{"block_id":"block_demo"}'
-clawrise notion.page.markdown.get --json '{"page_id":"page_demo"}'
+clawrise notion.block.append --verify --json '{
+  "block_id":"page_demo",
+  "children":[
+    {"type":"paragraph","text":"Verified write"}
+  ]
+}'
 ```
 
 ## Practical guidance
 
 - keep `--dry-run` in the loop until the payload shape is stable
+- add `--verify` on supported Notion writes when the agent needs an immediate read-after-write check
+- add `--debug-provider-payload` when the agent needs the final upstream request and response payloads in the execution envelope
 - if you are reusing block objects from another Notion read or transform step, keeping the provider-native nested body is safe
 - prefer `notion.page.markdown.update` when the task is really markdown-first page editing instead of structured block editing

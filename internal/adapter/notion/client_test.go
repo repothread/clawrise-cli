@@ -202,6 +202,103 @@ func TestCreatePageSupportsProviderNativeChildren(t *testing.T) {
 	}
 }
 
+func TestCreatePageVerifyAfterWriteSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	ctx := adapter.WithRuntimeOptions(context.Background(), adapter.RuntimeOptions{
+		VerifyAfterWrite: true,
+	})
+	client := newTestClient(t, &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/v1/pages":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":       "page_verify_123",
+					"url":      "https://www.notion.so/page_verify_123",
+					"in_trash": false,
+					"parent": map[string]any{
+						"type":    "page_id",
+						"page_id": "page_demo",
+					},
+					"properties": map[string]any{
+						"title": map[string]any{
+							"title": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "验证页面",
+									"text": map[string]any{
+										"content": "验证页面",
+									},
+								},
+							},
+						},
+					},
+				}), nil
+			case "/v1/pages/page_verify_123":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":       "page_verify_123",
+					"url":      "https://www.notion.so/page_verify_123",
+					"in_trash": false,
+					"parent": map[string]any{
+						"type":    "page_id",
+						"page_id": "page_demo",
+					},
+					"properties": map[string]any{
+						"title": map[string]any{
+							"title": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "验证页面",
+									"text": map[string]any{
+										"content": "验证页面",
+									},
+								},
+							},
+						},
+					},
+				}), nil
+			case "/v1/pages/page_verify_123/markdown":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"object":            "page_markdown",
+					"id":                "page_verify_123",
+					"markdown":          "# 验证标题\n\n验证正文",
+					"truncated":         false,
+					"unknown_block_ids": []string{},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	})
+
+	data, appErr := client.CreatePage(ctx, testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_demo",
+		},
+		"title": "验证页面",
+		"children": []any{
+			map[string]any{
+				"type": "heading_1",
+				"text": "验证标题",
+			},
+			map[string]any{
+				"type": "paragraph",
+				"text": "验证正文",
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("CreatePage returned error: %+v", appErr)
+	}
+
+	verification := data["verification"].(map[string]any)
+	if verification["ok"] != true {
+		t.Fatalf("unexpected verification result: %+v", verification)
+	}
+}
+
 func TestCreatePageWithOAuthRefreshableProfile(t *testing.T) {
 	t.Setenv("NOTION_CLIENT_ID", "client-id")
 	t.Setenv("NOTION_CLIENT_SECRET", "client-secret")
@@ -807,6 +904,103 @@ func TestAppendBlockChildrenSupportsProviderNativeBodies(t *testing.T) {
 	}
 }
 
+func TestAppendBlockChildrenVerifyAndDebugSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	ctx := adapter.WithRuntimeOptions(context.Background(), adapter.RuntimeOptions{
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+	})
+	ctx, _ = adapter.WithProviderDebugCapture(ctx)
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/v1/blocks/block_demo/children":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"results": []map[string]any{
+						{"id": "blk_debug_1"},
+						{"id": "blk_debug_2"},
+					},
+				}), nil
+			case "/v1/blocks/blk_debug_1":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":           "blk_debug_1",
+					"type":         "paragraph",
+					"has_children": false,
+					"in_trash":     false,
+					"paragraph": map[string]any{
+						"rich_text": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "调试正文",
+								"text": map[string]any{
+									"content": "调试正文",
+								},
+							},
+						},
+					},
+				}), nil
+			case "/v1/blocks/blk_debug_2":
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":           "blk_debug_2",
+					"type":         "to_do",
+					"has_children": false,
+					"in_trash":     false,
+					"to_do": map[string]any{
+						"checked": true,
+						"rich_text": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "调试待办",
+								"text": map[string]any{
+									"content": "调试待办",
+								},
+							},
+						},
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.AppendBlockChildren(ctx, testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+		"children": []any{
+			map[string]any{
+				"type": "paragraph",
+				"text": "调试正文",
+			},
+			map[string]any{
+				"type":    "to_do",
+				"text":    "调试待办",
+				"checked": true,
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("AppendBlockChildren returned error: %+v", appErr)
+	}
+
+	verification := data["verification"].(map[string]any)
+	if verification["ok"] != true {
+		t.Fatalf("unexpected verification result: %+v", verification)
+	}
+
+	debugData := adapter.ProviderDebugFromContext(ctx)
+	requests := debugData["provider_requests"].([]map[string]any)
+	if len(requests) != 3 {
+		t.Fatalf("unexpected provider debug entries: %+v", debugData)
+	}
+	if requests[0]["path"] != "/v1/blocks/block_demo/children" {
+		t.Fatalf("unexpected first provider debug entry: %+v", requests[0])
+	}
+}
+
 func TestGetBlockSuccess(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 
@@ -1069,6 +1263,80 @@ func TestUpdateBlockSupportsProviderNativeBlockWrapper(t *testing.T) {
 	}
 	if data["plain_text"] != "Provider 更新正文" {
 		t.Fatalf("unexpected plain_text: %+v", data["plain_text"])
+	}
+}
+
+func TestUpdateBlockVerifyAfterWriteSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	ctx := adapter.WithRuntimeOptions(context.Background(), adapter.RuntimeOptions{
+		VerifyAfterWrite: true,
+	})
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			switch request.URL.Path {
+			case "/v1/blocks/block_demo":
+				switch request.Method {
+				case http.MethodPatch:
+					return jsonResponse(t, http.StatusOK, map[string]any{
+						"id":           "block_demo",
+						"type":         "paragraph",
+						"has_children": false,
+						"in_trash":     false,
+						"paragraph": map[string]any{
+							"rich_text": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "验证更新正文",
+									"text": map[string]any{
+										"content": "验证更新正文",
+									},
+								},
+							},
+						},
+					}), nil
+				case http.MethodGet:
+					return jsonResponse(t, http.StatusOK, map[string]any{
+						"id":           "block_demo",
+						"type":         "paragraph",
+						"has_children": false,
+						"in_trash":     false,
+						"paragraph": map[string]any{
+							"rich_text": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "验证更新正文",
+									"text": map[string]any{
+										"content": "验证更新正文",
+									},
+								},
+							},
+						},
+					}), nil
+				default:
+					t.Fatalf("unexpected method: %s", request.Method)
+					return nil, nil
+				}
+			default:
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+				return nil, nil
+			}
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.UpdateBlock(ctx, testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+		"type":     "paragraph",
+		"text":     "验证更新正文",
+	})
+	if appErr != nil {
+		t.Fatalf("UpdateBlock returned error: %+v", appErr)
+	}
+
+	verification := data["verification"].(map[string]any)
+	if verification["ok"] != true {
+		t.Fatalf("unexpected verification result: %+v", verification)
 	}
 }
 

@@ -142,6 +142,46 @@ func TestExecutorReadOperationOmitsIdempotency(t *testing.T) {
 	}
 }
 
+func TestExecutorDryRunWarnsWhenWriteEnhancementsAreSkipped(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput:       "page.create",
+		DryRun:               true,
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+		InputJSON:            `{"title":"Dry Run","parent":{"type":"page_id","id":"page_demo"}}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected dry-run success, got error: %+v", envelope.Error)
+	}
+	joined := strings.Join(envelope.Warnings, " ")
+	if !strings.Contains(joined, "skipped --debug-provider-payload") || !strings.Contains(joined, "skipped --verify") {
+		t.Fatalf("expected dry-run enhancement warnings, got: %+v", envelope.Warnings)
+	}
+}
+
 func TestExecutorRejectsSubjectMismatch(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 
@@ -404,6 +444,96 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	data := envelope.Data.(map[string]any)
 	if data["title"] != "执行器验证" {
 		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
+func TestExecutorExportsProviderDebugForSupportedNotionWrite(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/pages" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"id":       "page_debug_demo",
+					"url":      "https://www.notion.so/page_debug_demo",
+					"in_trash": false,
+					"parent": map[string]any{
+						"type":    "page_id",
+						"page_id": "page_demo",
+					},
+					"properties": map[string]any{
+						"title": map[string]any{
+							"title": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "调试页面",
+									"text": map[string]any{
+										"content": "调试页面",
+									},
+								},
+							},
+						},
+					},
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput:       "page.create",
+		DebugProviderPayload: true,
+		InputJSON:            `{"title":"调试页面","parent":{"type":"page_id","id":"page_demo"}}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion execution success, got error: %+v", envelope.Error)
+	}
+	if envelope.Debug == nil {
+		t.Fatal("expected debug payload to be present")
+	}
+	requests := envelope.Debug["provider_requests"].([]map[string]any)
+	if len(requests) != 1 {
+		t.Fatalf("unexpected debug payload: %+v", envelope.Debug)
+	}
+	if requests[0]["path"] != "/v1/pages" {
+		t.Fatalf("unexpected debug request entry: %+v", requests[0])
 	}
 }
 

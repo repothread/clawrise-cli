@@ -117,6 +117,17 @@ func (c *Client) doJSONRequest(ctx context.Context, method, rawPath string, quer
 	if err != nil {
 		return nil, apperr.New("HTTP_READ_FAILED", fmt.Sprintf("failed to read Notion response: %v", err))
 	}
+	if providerDebugEnabled(ctx) {
+		adapter.AddProviderDebugEvent(ctx, map[string]any{
+			"provider":        "notion",
+			"method":          method,
+			"path":            endpoint.Path,
+			"query":           endpoint.RawQuery,
+			"request_body":    cloneDebugValue(body),
+			"response_status": response.StatusCode,
+			"response_body":   decodeDebugResponseBody(responseBody),
+		})
+	}
 
 	if response.StatusCode >= 400 {
 		return nil, normalizeNotionHTTPError(response.StatusCode, response.Header, responseBody)

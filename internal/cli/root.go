@@ -240,6 +240,8 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 	var inputFile string
 	var timeout time.Duration
 	var dryRun bool
+	var debugProviderPayload bool
+	var verifyAfterWrite bool
 	var idempotencyKey string
 	var outputFormat string
 	var quiet bool
@@ -250,6 +252,8 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 	flags.StringVar(&inputFile, "input", "", "read JSON input from a file")
 	flags.DurationVar(&timeout, "timeout", 0, "override the timeout for this call")
 	flags.BoolVar(&dryRun, "dry-run", false, "validate and resolve locally without executing the adapter")
+	flags.BoolVar(&debugProviderPayload, "debug-provider-payload", false, "include the final provider request and response payloads when supported")
+	flags.BoolVar(&verifyAfterWrite, "verify", false, "read back and verify the result after a successful write when supported")
 	flags.StringVar(&idempotencyKey, "idempotency-key", "", "set an explicit idempotency key")
 	flags.StringVar(&outputFormat, "output", "json", "set the output format, currently only json")
 	flags.BoolVar(&quiet, "quiet", false, "print only data on successful execution")
@@ -274,17 +278,19 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 	}
 
 	envelope, err := executor.ExecuteContext(context.Background(), runtime.ExecuteOptions{
-		OperationInput: positionals[0],
-		AccountName:    accountName,
-		SubjectName:    subjectName,
-		InputJSON:      inputJSON,
-		InputFile:      inputFile,
-		Timeout:        timeout,
-		DryRun:         dryRun,
-		IdempotencyKey: idempotencyKey,
-		Output:         outputFormat,
-		Quiet:          quiet,
-		Stdin:          readPipedInput(),
+		OperationInput:       positionals[0],
+		AccountName:          accountName,
+		SubjectName:          subjectName,
+		InputJSON:            inputJSON,
+		InputFile:            inputFile,
+		Timeout:              timeout,
+		DryRun:               dryRun,
+		DebugProviderPayload: debugProviderPayload,
+		VerifyAfterWrite:     verifyAfterWrite,
+		IdempotencyKey:       idempotencyKey,
+		Output:               outputFormat,
+		Quiet:                quiet,
+		Stdin:                readPipedInput(),
 	})
 	if err != nil {
 		return err

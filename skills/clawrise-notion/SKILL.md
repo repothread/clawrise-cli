@@ -62,6 +62,8 @@ Both current Notion auth methods use the `integration` subject. Do not switch to
 - Notion block writes accept both shorthand top-level fields and provider-native nested block bodies
 - When both block input shapes are present on the same block, top-level fields win
 - When reusing Notion block output across tools, preserving the provider-native nested block body is safe
+- Use `--verify` on supported Notion writes when the task needs read-after-write confirmation
+- Use `--debug-provider-payload` on supported Notion writes when the task needs the final upstream request and response payloads
 
 ## Read This Reference Only When The Task Matches
 
