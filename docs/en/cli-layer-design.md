@@ -97,7 +97,7 @@ Current implementation status:
 
 - first-party Feishu and Notion are exposed through external provider plugin binaries
 - `clawrise plugin list`
-- `clawrise plugin install <source>`
+- `clawrise plugin install <package-or-source>`
 - `clawrise plugin info <name> <version>`
 - `clawrise plugin remove <name> <version>`
 - `clawrise spec list [path]`
@@ -420,12 +420,12 @@ MVP platforms:
 - `feishu`
 - `notion`
 
-Recommended implementation sequence:
+Current architecture dependency order:
 
-1. build the runtime core
-2. define the provider runtime boundary
-3. ship first-party Feishu and Notion plugins
-4. add plugin discovery and installation
-5. extend to Google and other providers later
+1. runtime core
+2. provider runtime boundary
+3. first-party Feishu and Notion plugins
+4. plugin discovery and installation
+5. later provider expansion
 
 Detailed operation contracts are documented in [mvp-operation-spec.md](mvp-operation-spec.md).

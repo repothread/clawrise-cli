@@ -38,18 +38,25 @@ func ResolveSecret(raw string) (string, error) {
 			return "", err
 		}
 
-		backend := "encrypted_file"
-		fallbackBackend := ""
+		binding := StoragePluginBinding{
+			Backend: "encrypted_file",
+		}
+		cfg := New()
 		cfgStore := NewStore(configPath)
-		if cfg, loadErr := cfgStore.Load(); loadErr == nil {
-			backend = strings.TrimSpace(cfg.Auth.SecretStore.Backend)
-			fallbackBackend = strings.TrimSpace(cfg.Auth.SecretStore.FallbackBackend)
+		if loadedCfg, loadErr := cfgStore.Load(); loadErr == nil {
+			cfg = loadedCfg
+			binding = ResolveStorageBinding(cfg, "secret_store")
+		}
+		if strings.TrimSpace(binding.Backend) == "" {
+			binding.Backend = "encrypted_file"
 		}
 
 		store, err := secretstore.Open(secretstore.Options{
 			ConfigPath:      configPath,
-			Backend:         backend,
-			FallbackBackend: fallbackBackend,
+			Backend:         binding.Backend,
+			FallbackBackend: binding.FallbackBackend,
+			Plugin:          binding.Plugin,
+			EnabledPlugins:  ResolveEnabledPlugins(cfg),
 		})
 		if err != nil {
 			return "", err

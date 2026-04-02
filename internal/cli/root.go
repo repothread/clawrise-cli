@@ -60,7 +60,7 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runAccount(args[1:], store, deps.Stdout, manager)
 	case "subject":
@@ -72,20 +72,20 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runDoctor(store, deps.Stdout, manager)
 	case "plugin":
-		return runPlugin(args[1:], deps.Stdout, deps.Version)
+		return runPlugin(args[1:], store, deps.Stdout, deps.Version)
 	case "spec":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runSpec(args[1:], deps.Stdout, metadataService.Spec())
 	case "docs":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
@@ -96,7 +96,7 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runAuth(args[1:], store, deps.Stdout, manager)
 	case "secret":
@@ -110,25 +110,25 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps)
+			manager, _ = resolvePluginManager(deps, store)
 		}
 		return runConfig(args[1:], store, deps.Stdout, manager)
 	case "completion":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runCompletion(args[1:], deps.Stdout, metadataService.Spec())
 	case "batch":
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
 		executor := runtime.NewExecutorWithManager(store, manager)
 		return runBatch(args[1:], deps.Stdout, deps.Stderr, executor)
 	default:
-		manager, err := resolvePluginManager(deps)
+		manager, err := resolvePluginManager(deps, store)
 		if err != nil {
 			return err
 		}
@@ -137,15 +137,96 @@ func Run(args []string, deps Dependencies) error {
 	}
 }
 
-func resolvePluginManager(deps Dependencies) (*pluginruntime.Manager, error) {
+func resolvePluginManager(deps Dependencies, store *config.Store) (*pluginruntime.Manager, error) {
 	if deps.PluginManager != nil {
 		return deps.PluginManager, nil
 	}
-	return newDefaultPluginManager()
+	return newDefaultPluginManager(store)
 }
 
-func newDefaultPluginManager() (*pluginruntime.Manager, error) {
-	return pluginruntime.NewDiscoveredManager(context.Background())
+func newDefaultPluginManager(store *config.Store) (*pluginruntime.Manager, error) {
+	cfg := config.New()
+	if store != nil {
+		loaded, err := store.Load()
+		if err != nil {
+			return nil, err
+		}
+		cfg = loaded
+	}
+
+	return pluginruntime.NewDiscoveredManagerWithOptions(context.Background(), buildPluginDiscoveryOptions(cfg))
+}
+
+func buildPluginDiscoveryOptions(cfg *config.Config) pluginruntime.DiscoveryOptions {
+	if cfg == nil {
+		cfg = config.New()
+	}
+
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
+	providerBindings := make(map[string]string)
+	for platform, binding := range cfg.Plugins.Bindings.Providers {
+		platform = strings.TrimSpace(platform)
+		pluginName := strings.TrimSpace(binding.Plugin)
+		if platform == "" || pluginName == "" {
+			continue
+		}
+		providerBindings[platform] = pluginName
+	}
+
+	return pluginruntime.DiscoveryOptions{
+		EnabledPlugins:          enabledPlugins,
+		ProviderBindings:        providerBindings,
+		AuthLauncherPreferences: config.ResolveAllAuthLauncherPreferences(cfg),
+		PolicyMode:              config.ResolvePolicyMode(cfg),
+		PolicySelectors:         buildPolicyCapabilitySelectors(config.ResolvePolicyPlugins(cfg)),
+		AuditMode:               config.ResolveAuditMode(cfg),
+		AuditSinks:              buildAuditSinkSelectors(config.ResolveAuditSinks(cfg)),
+	}
+}
+
+func buildPolicyCapabilitySelectors(items []config.PolicyPluginBinding) []pluginruntime.PolicyCapabilitySelector {
+	if len(items) == 0 {
+		return nil
+	}
+
+	selectors := make([]pluginruntime.PolicyCapabilitySelector, 0, len(items))
+	for _, item := range items {
+		selector := pluginruntime.PolicyCapabilitySelector{
+			Plugin:   strings.TrimSpace(item.Plugin),
+			PolicyID: strings.TrimSpace(item.PolicyID),
+		}
+		if selector.Plugin == "" && selector.PolicyID == "" {
+			continue
+		}
+		selectors = append(selectors, selector)
+	}
+	if len(selectors) == 0 {
+		return nil
+	}
+	return selectors
+}
+
+func buildAuditSinkSelectors(items []config.AuditSinkConfig) []pluginruntime.AuditSinkSelector {
+	if len(items) == 0 {
+		return nil
+	}
+
+	selectors := make([]pluginruntime.AuditSinkSelector, 0, len(items))
+	for _, item := range items {
+		selector := pluginruntime.AuditSinkSelector{
+			Type:   strings.TrimSpace(item.Type),
+			Plugin: strings.TrimSpace(item.Plugin),
+			SinkID: strings.TrimSpace(item.SinkID),
+		}
+		if selector.Type == "" && selector.Plugin == "" && selector.SinkID == "" {
+			continue
+		}
+		selectors = append(selectors, selector)
+	}
+	if len(selectors) == 0 {
+		return nil
+	}
+	return selectors
 }
 
 func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
@@ -368,8 +449,21 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	if err != nil {
 		return err
 	}
+	discoveryOptions := buildPluginDiscoveryOptions(cfg)
 
-	discovery, err := pluginruntime.InspectDiscovery(context.Background())
+	discovery, err := pluginruntime.InspectDiscoveryWithOptions(context.Background(), discoveryOptions)
+	if err != nil {
+		return err
+	}
+	providerCandidates, err := pluginruntime.DiscoverProviderCandidatesWithOptions(discoveryOptions)
+	if err != nil {
+		return err
+	}
+	discoveryRoots, err := pluginruntime.DefaultDiscoveryRoots()
+	if err != nil {
+		return err
+	}
+	discoveredManifests, err := pluginruntime.DiscoverManifests(discoveryRoots)
 	if err != nil {
 		return err
 	}
@@ -384,7 +478,33 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 			"status":  "warn",
 			"message": "no discoverable plugins were found in the active plugin roots",
 		})
-		nextSteps = append(nextSteps, "run `clawrise plugin install <source>` to install at least one provider plugin")
+		nextSteps = append(nextSteps, "run `clawrise plugin install <package-or-source>` to install at least one provider plugin")
+	}
+
+	providerBindings := discoveryOptions.ProviderBindings
+	providerConflicts, selectedProviders := summarizeProviderCandidates(providerCandidates, providerBindings)
+	if providerErr := pluginruntime.ValidateProviderBindingsWithEnabledRules(discoveredManifests, providerBindings, discoveryOptions.EnabledPlugins); providerErr != nil {
+		checks = append(checks, map[string]any{
+			"code":    "PROVIDER_BINDING_INVALID",
+			"status":  "warn",
+			"message": providerErr.Error(),
+		})
+		nextSteps = append(nextSteps, "run `clawrise config provider use <platform> <plugin>` to select the expected provider plugin explicitly")
+	}
+
+	selectedPlugins := 0
+	for _, item := range discovery.Plugins {
+		if item.Selected {
+			selectedPlugins++
+		}
+	}
+	if len(discovery.Plugins) > 0 && selectedPlugins == 0 {
+		checks = append(checks, map[string]any{
+			"code":    "NO_SELECTED_PLUGINS",
+			"status":  "warn",
+			"message": "plugins were discovered, but none are currently selected after plugins.enabled and provider bindings are applied",
+		})
+		nextSteps = append(nextSteps, "run `clawrise plugin list` and `clawrise config provider use <platform> <plugin>` so at least one plugin participates in runtime discovery")
 	}
 
 	defaultAccountOK := true
@@ -500,23 +620,57 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 	if runtimeResolutionErr == nil {
 		runtimeRootDir = runtimeResolution.Path
 	}
+	policyInspection := runtime.InspectPolicyChain(cfg)
+	auditInspection := runtime.InspectAuditSinks(cfg)
+	if len(policyInspection.Warnings) > 0 {
+		checks = append(checks, map[string]any{
+			"code":    "POLICY_CHAIN_WARNING",
+			"status":  "warn",
+			"message": strings.Join(policyInspection.Warnings, "; "),
+		})
+		nextSteps = append(nextSteps, "run `clawrise config policy mode <auto|manual|disabled>` or `clawrise config policy use <plugin> [--policy-id <id>]` to fix the active policy chain")
+	}
+	if len(auditInspection.Warnings) > 0 {
+		checks = append(checks, map[string]any{
+			"code":    "AUDIT_SINK_WARNING",
+			"status":  "warn",
+			"message": strings.Join(auditInspection.Warnings, "; "),
+		})
+		nextSteps = append(nextSteps, "run `clawrise config audit mode <auto|manual|disabled>` or `clawrise config audit add ...` to fix the active audit sinks")
+	}
+
 	runtimeSummary := map[string]any{
 		"registered_operation_count": 0,
 		"catalog_entry_count":        0,
+		"enabled_plugins":            discoveryOptions.EnabledPlugins,
+		"provider_bindings":          providerBindings,
+		"provider_candidates":        providerCandidates,
+		"provider_conflicts":         providerConflicts,
+		"selected_providers":         selectedProviders,
 		"storage": map[string]any{
 			"root_dir":        runtimeRootDir,
 			"idempotency_dir": filepath.Join(runtimeRootDir, "idempotency"),
 			"audit_dir":       filepath.Join(runtimeRootDir, "audit"),
+			"bindings": map[string]any{
+				"secret_store":   config.ResolveStorageBinding(cfg, "secret_store"),
+				"session_store":  config.ResolveStorageBinding(cfg, "session_store"),
+				"authflow_store": config.ResolveStorageBinding(cfg, "authflow_store"),
+				"governance":     config.ResolveStorageBinding(cfg, "governance"),
+			},
 		},
 		"retry_policy": map[string]any{
 			"max_attempts":  cfg.Runtime.Retry.MaxAttempts,
 			"base_delay_ms": cfg.Runtime.Retry.BaseDelayMS,
 			"max_delay_ms":  cfg.Runtime.Retry.MaxDelayMS,
 		},
+		"policy": policyInspection,
+		"audit":  auditInspection,
 	}
 	if manager != nil {
 		runtimeSummary["registered_operation_count"] = len(manager.Registry().Definitions())
 		runtimeSummary["catalog_entry_count"] = len(manager.CatalogEntries())
+		runtimeSummary["auth_launchers"] = manager.AuthLaunchers()
+		runtimeSummary["auth_launcher_preferences"] = summarizeAuthLauncherPreferences(cfg, manager)
 	}
 
 	playbookValidation := map[string]any{
@@ -590,8 +744,8 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
 	_, _ = fmt.Fprintln(w, "  clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")
 	_, _ = fmt.Fprintln(w, "  clawrise secret [put|delete]")
-	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store]")
-	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify]")
+	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store|provider|auth-launcher|policy|audit]")
+	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify|upgrade]")
 	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
 	_, _ = fmt.Fprintln(w, "  clawrise docs generate [path] [--out-dir <dir>]")
 	_, _ = fmt.Fprintln(w, "  clawrise batch [--json <payload> | --input <path>]")
@@ -606,6 +760,140 @@ func printPlatformHelp(stdout io.Writer) {
 
 func printSubjectHelp(stdout io.Writer) {
 	_, _ = fmt.Fprintln(stdout, "Usage: clawrise subject [use|current|unset|list]")
+}
+
+type providerConflictView struct {
+	Platform string   `json:"platform"`
+	Plugins  []string `json:"plugins"`
+	Binding  string   `json:"binding,omitempty"`
+	Resolved bool     `json:"resolved"`
+}
+
+type selectedProviderView struct {
+	Platform string `json:"platform"`
+	Plugin   string `json:"plugin"`
+	Source   string `json:"source"`
+}
+
+type authLauncherPreferenceView struct {
+	Configured []string                               `json:"configured,omitempty"`
+	Resolved   []pluginruntime.AuthLauncherDescriptor `json:"resolved,omitempty"`
+}
+
+func summarizeProviderCandidates(candidates []pluginruntime.ProviderCandidate, bindings map[string]string) ([]providerConflictView, []selectedProviderView) {
+	grouped := make(map[string][]string)
+	for _, candidate := range candidates {
+		platform := strings.TrimSpace(candidate.Platform)
+		pluginName := strings.TrimSpace(candidate.Plugin)
+		if platform == "" || pluginName == "" {
+			continue
+		}
+		grouped[platform] = append(grouped[platform], pluginName)
+	}
+
+	platforms := make([]string, 0, len(grouped))
+	for platform := range grouped {
+		platforms = append(platforms, platform)
+	}
+	sort.Strings(platforms)
+
+	conflicts := make([]providerConflictView, 0)
+	selected := make([]selectedProviderView, 0, len(platforms))
+	for _, platform := range platforms {
+		plugins := uniqueSortedStrings(grouped[platform])
+		binding := strings.TrimSpace(bindings[platform])
+		if len(plugins) > 1 {
+			conflicts = append(conflicts, providerConflictView{
+				Platform: platform,
+				Plugins:  plugins,
+				Binding:  binding,
+				Resolved: binding != "",
+			})
+		}
+
+		switch {
+		case binding != "":
+			selected = append(selected, selectedProviderView{
+				Platform: platform,
+				Plugin:   binding,
+				Source:   "binding",
+			})
+		case len(plugins) == 1:
+			selected = append(selected, selectedProviderView{
+				Platform: platform,
+				Plugin:   plugins[0],
+				Source:   "single_candidate",
+			})
+		}
+	}
+
+	return conflicts, selected
+}
+
+func summarizeAuthLauncherPreferences(cfg *config.Config, manager *pluginruntime.Manager) map[string]authLauncherPreferenceView {
+	if cfg == nil {
+		cfg = config.New()
+	}
+
+	actionSet := make(map[string]struct{})
+	for actionType := range config.ResolveAllAuthLauncherPreferences(cfg) {
+		actionSet[actionType] = struct{}{}
+	}
+	if manager != nil {
+		for _, launcher := range manager.AuthLaunchers() {
+			for _, actionType := range launcher.ActionTypes {
+				actionType = strings.TrimSpace(actionType)
+				if actionType == "" {
+					continue
+				}
+				actionSet[actionType] = struct{}{}
+			}
+		}
+	}
+
+	if len(actionSet) == 0 {
+		return nil
+	}
+
+	actionTypes := make([]string, 0, len(actionSet))
+	for actionType := range actionSet {
+		actionTypes = append(actionTypes, actionType)
+	}
+	sort.Strings(actionTypes)
+
+	items := make(map[string]authLauncherPreferenceView, len(actionTypes))
+	for _, actionType := range actionTypes {
+		view := authLauncherPreferenceView{
+			Configured: config.ResolveAuthLauncherPreferences(cfg, actionType),
+		}
+		if manager != nil {
+			view.Resolved = manager.RankAuthLaunchersForAction(actionType)
+		}
+		items[actionType] = view
+	}
+	return items
+}
+
+func uniqueSortedStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+	sort.Strings(items)
+	return items
 }
 
 // isHelpToken keeps help-token detection consistent across subcommands.

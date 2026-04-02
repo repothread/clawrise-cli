@@ -16,12 +16,15 @@ type SecretStorePluginRuntime interface {
 // ProcessSecretStore 使用 stdio JSON-RPC 调用一个外部 secret store plugin。
 type ProcessSecretStore struct {
 	runtime *ProcessRuntime
+	backend string
 }
 
 // NewProcessSecretStore 创建一个进程化的外部 secret store plugin 客户端。
 func NewProcessSecretStore(manifest Manifest) *ProcessSecretStore {
+	capability, _ := findStorageCapability(manifest, "secret_store", "")
 	return &ProcessSecretStore{
 		runtime: NewProcessRuntime(manifest),
+		backend: capability.Backend,
 	}
 }
 
@@ -31,6 +34,10 @@ func (s *ProcessSecretStore) Name() string {
 
 func (s *ProcessSecretStore) Handshake(ctx context.Context) (HandshakeResult, error) {
 	return s.runtime.Handshake(ctx)
+}
+
+func (s *ProcessSecretStore) Backend() string {
+	return s.backend
 }
 
 func (s *ProcessSecretStore) DescribeStorageBackend(ctx context.Context) (StorageBackendDescriptor, error) {

@@ -48,6 +48,22 @@ func handleSecretStoreRPCRequest(runtime SecretStorePluginRuntime, request RPCRe
 		return callRPC(request, func(ctx context.Context) (any, error) {
 			return runtime.Handshake(ctx)
 		})
+	case "clawrise.capabilities.list":
+		return callRPC(request, func(ctx context.Context) (any, error) {
+			descriptor, err := runtime.DescribeStorageBackend(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return CapabilityListResult{
+				Capabilities: []CapabilityDescriptor{{
+					Type:        CapabilityTypeStorageBackend,
+					Target:      descriptor.Target,
+					Backend:     descriptor.Backend,
+					DisplayName: descriptor.DisplayName,
+					Description: descriptor.Description,
+				}},
+			}, nil
+		})
 	case "clawrise.storage.backend.describe":
 		return callRPC(request, func(ctx context.Context) (any, error) {
 			descriptor, err := runtime.DescribeStorageBackend(ctx)

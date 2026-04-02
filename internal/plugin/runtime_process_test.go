@@ -59,6 +59,65 @@ done
 	}
 }
 
+func TestProcessRuntimeListCapabilities(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "demo-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"provider","platforms":["demo"]},{"type":"storage_backend","target":"session_store","backend":"plugin.demo_session"}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write demo plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "provider",
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessRuntime(manifest)
+
+	capabilities, err := runtime.ListCapabilities(context.Background())
+	if err != nil {
+		t.Fatalf("ListCapabilities returned error: %v", err)
+	}
+	if len(capabilities) != 2 {
+		t.Fatalf("unexpected capabilities: %+v", capabilities)
+	}
+	if capabilities[0].Type != CapabilityTypeProvider || capabilities[1].Target != "session_store" {
+		t.Fatalf("unexpected capability payload: %+v", capabilities)
+	}
+}
+
 func TestProcessRuntimeListCatalogExecuteAndHealth(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "demo")
@@ -223,6 +282,266 @@ done
 	}
 }
 
+func TestProcessWorkflowPlan(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "workflow")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "workflow-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.workflow.plan"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"summary":"sync notes and create a review event","steps":[{"type":"operation","title":"Update Notion page","operation":"notion.page.update","input":{"page_id":"page_demo"}},{"type":"approval","title":"Confirm calendar invite","requires_confirmation":true}],"warnings":["calendar availability is unknown"],"missing_inputs":[{"name":"calendar_id","description":"the target calendar","step_index":1}],"requires_confirmation":true}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write workflow plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "workflow-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "workflow",
+      "id": "planner",
+      "priority": 70
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./workflow-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+
+	runtime := NewProcessWorkflow(manifest, manifest.CapabilitiesByType(CapabilityTypeWorkflow)[0])
+	result, err := runtime.Plan(context.Background(), WorkflowPlanParams{
+		Request: WorkflowPlanRequest{
+			Goal: "sync notes",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+	if result.Summary != "sync notes and create a review event" {
+		t.Fatalf("unexpected workflow plan result: %+v", result)
+	}
+	if len(result.Steps) != 2 || result.Steps[0].Operation != "notion.page.update" {
+		t.Fatalf("unexpected workflow steps: %+v", result.Steps)
+	}
+	if !result.RequiresConfirmation || len(result.MissingInputs) != 1 || result.MissingInputs[0].Name != "calendar_id" {
+		t.Fatalf("unexpected workflow plan metadata: %+v", result)
+	}
+}
+
+func TestProcessRegistrySourceListAndResolve(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "registry")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "registry-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.registry_source.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"plugins":[{"name":"workflow-demo","latest_version":"0.2.0","description":"Demo workflow plugin"}]}}'"\n"
+      ;;
+    *'"method":"clawrise.registry_source.resolve"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"name":"workflow-demo","version":"0.2.0","artifact_url":"https://example.com/workflow-demo.tgz","checksum_sha256":"abc123","metadata_url":"https://example.com/workflow-demo.json"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write registry plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "registry-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "registry_source",
+      "id": "community",
+      "priority": 40
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./registry-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+
+	runtime := NewProcessRegistrySource(manifest, manifest.CapabilitiesByType(CapabilityTypeRegistrySource)[0])
+	listResult, err := runtime.List(context.Background(), RegistrySourceListParams{Query: "workflow"})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(listResult.Plugins) != 1 || listResult.Plugins[0].Name != "workflow-demo" {
+		t.Fatalf("unexpected registry list result: %+v", listResult)
+	}
+
+	resolveResult, err := runtime.Resolve(context.Background(), RegistrySourceResolveParams{
+		Reference: "workflow-demo",
+		Version:   "0.2.0",
+	})
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if resolveResult.ArtifactURL != "https://example.com/workflow-demo.tgz" || resolveResult.ChecksumSHA256 != "abc123" {
+		t.Fatalf("unexpected registry resolve result: %+v", resolveResult)
+	}
+}
+
+func TestProcessPolicyEvaluate(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "policy")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "policy-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.policy.evaluate"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"matched policy annotation"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "policy-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 80
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessPolicy(manifest, manifest.CapabilitiesByType(CapabilityTypePolicy)[0])
+
+	result, err := runtime.Evaluate(context.Background(), PolicyEvaluateParams{
+		Request: PolicyEvaluationRequest{
+			RequestID: "req_demo",
+			Operation: "demo.page.update",
+			Mutating:  true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if result.Decision != "annotate" || result.Message != "matched policy annotation" {
+		t.Fatalf("unexpected policy result: %+v", result)
+	}
+}
+
+func TestProcessAuditSinkEmit(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "audit-sink")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "audit-sink-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.audit.emit"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write audit sink plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "audit-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./audit-sink-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessAuditSink(manifest, manifest.CapabilitiesByType(CapabilityTypeAuditSink)[0])
+
+	if err := runtime.Emit(context.Background(), AuditEmitParams{
+		Record: GovernanceAuditRecord{
+			RequestID: "req_demo",
+			Operation: "demo.page.update",
+			OK:        true,
+		},
+	}); err != nil {
+		t.Fatalf("Emit returned error: %v", err)
+	}
+}
+
 func TestProcessSecretStoreDescribeStatusAndCRUD(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "secret-store")
@@ -328,5 +647,392 @@ done
 		Field:       "token",
 	}); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
+	}
+}
+
+func TestProcessSessionStoreStatusLoadSaveAndDelete(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "session-store")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "session-store-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"session-demo","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.status"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"status":{"backend":"plugin.demo_session","supported":true,"readable":true,"writable":true,"secure":true}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.load"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"found":true,"session":{"account_name":"demo_account","platform":"demo","subject":"user","grant_type":"oauth_user","access_token":"demo-access-token"}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.save"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.session.delete"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write storage backend plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "session-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "storage_backend",
+      "target": "session_store",
+      "backend": "plugin.demo_session"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./session-store-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write storage backend manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	store := NewProcessSessionStore(manifest)
+	defer func() {
+		_ = store.Close()
+	}()
+
+	status, err := store.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !status.Supported || status.Backend != "plugin.demo_session" {
+		t.Fatalf("unexpected session store status: %+v", status)
+	}
+
+	loadResult, err := store.Load(context.Background(), SessionStoreLoadParams{
+		AccountName: "demo_account",
+	})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !loadResult.Found || loadResult.Session == nil || loadResult.Session.AccessToken != "demo-access-token" {
+		t.Fatalf("unexpected session load result: %+v", loadResult)
+	}
+
+	if err := store.Save(context.Background(), SessionStoreSaveParams{
+		Session: *loadResult.Session,
+	}); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	if err := store.Delete(context.Background(), SessionStoreDeleteParams{
+		AccountName: "demo_account",
+	}); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+}
+
+func TestProcessAuthFlowStoreStatusLoadSaveAndDelete(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "authflow-store")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "authflow-store-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"authflow-demo","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.status"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"status":{"backend":"plugin.demo_authflow","supported":true,"readable":true,"writable":true,"secure":true}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.load"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"found":true,"flow":{"id":"flow_demo","account_name":"demo_account","platform":"demo","method":"oauth_user","mode":"local_browser","state":"pending","created_at":"2026-03-28T10:00:00Z","updated_at":"2026-03-28T10:00:00Z","expires_at":"2026-03-28T10:10:00Z"}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.save"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.authflow.delete"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write storage backend plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "authflow-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "storage_backend",
+      "target": "authflow_store",
+      "backend": "plugin.demo_authflow"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./authflow-store-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write storage backend manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	store := NewProcessAuthFlowStore(manifest)
+	defer func() {
+		_ = store.Close()
+	}()
+
+	status, err := store.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !status.Supported || status.Backend != "plugin.demo_authflow" {
+		t.Fatalf("unexpected authflow store status: %+v", status)
+	}
+
+	loadResult, err := store.Load(context.Background(), AuthFlowStoreLoadParams{
+		FlowID: "flow_demo",
+	})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !loadResult.Found || loadResult.Flow == nil || loadResult.Flow.ID != "flow_demo" {
+		t.Fatalf("unexpected authflow load result: %+v", loadResult)
+	}
+
+	if err := store.Save(context.Background(), AuthFlowStoreSaveParams{
+		Flow: *loadResult.Flow,
+	}); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	if err := store.Delete(context.Background(), AuthFlowStoreDeleteParams{
+		FlowID: "flow_demo",
+	}); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+}
+
+func TestProcessGovernanceStoreStatusLoadSaveAndAppend(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "governance-store")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "governance-store-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"governance-demo","version":"0.1.0"}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.status"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"status":{"backend":"plugin.demo_governance","supported":true,"readable":true,"writable":true,"secure":true}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.idempotency.load"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"found":true,"record":{"key":"idem_demo","operation":"demo.page.update","input_hash":"hash_demo","status":"executed","request_id":"req_demo","created_at":"2026-03-28T10:00:00Z","updated_at":"2026-03-28T10:00:01Z","retry_count":1,"meta":{"platform":"demo","duration_ms":12,"retry_count":1,"dry_run":false}}}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.idempotency.save"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+    *'"method":"clawrise.storage.governance.audit.append"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write storage backend plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 2,
+  "name": "governance-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "storage_backend",
+      "target": "governance",
+      "backend": "plugin.demo_governance"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./governance-store-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write storage backend manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	store := NewProcessGovernanceStore(manifest)
+	defer func() {
+		_ = store.Close()
+	}()
+
+	status, err := store.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !status.Supported || status.Backend != "plugin.demo_governance" {
+		t.Fatalf("unexpected governance store status: %+v", status)
+	}
+
+	loadResult, err := store.LoadIdempotency(context.Background(), GovernanceIdempotencyLoadParams{
+		Key: "idem_demo",
+	})
+	if err != nil {
+		t.Fatalf("LoadIdempotency returned error: %v", err)
+	}
+	if !loadResult.Found || loadResult.Record == nil || loadResult.Record.Key != "idem_demo" {
+		t.Fatalf("unexpected governance load result: %+v", loadResult)
+	}
+
+	if err := store.SaveIdempotency(context.Background(), GovernanceIdempotencySaveParams{
+		Record: *loadResult.Record,
+	}); err != nil {
+		t.Fatalf("SaveIdempotency returned error: %v", err)
+	}
+
+	if err := store.AppendAudit(context.Background(), GovernanceAuditAppendParams{
+		Day: "2026-03-28",
+		Record: GovernanceAuditRecord{
+			Time:      "2026-03-28T10:00:02Z",
+			RequestID: "req_demo",
+			Operation: "demo.page.update",
+			OK:        true,
+			Meta: GovernanceMeta{
+				Platform:   "demo",
+				DurationMS: 12,
+				RetryCount: 1,
+				DryRun:     false,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("AppendAudit returned error: %v", err)
+	}
+}
+
+func TestNewDiscoveredManagerWithOptionsFiltersDisabledProviders(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	writeProviderDiscoveryTestPlugin(t, pluginRoot, "demo-a", "demo.a.echo")
+	writeProviderDiscoveryTestPlugin(t, pluginRoot, "demo-b", "demo.b.echo")
+
+	manager, err := NewDiscoveredManagerWithOptions(context.Background(), DiscoveryOptions{
+		EnabledPlugins: map[string]string{
+			"demo-a": "disabled",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewDiscoveredManagerWithOptions returned error: %v", err)
+	}
+
+	if _, ok := manager.Registry().Resolve("demo.b.echo"); !ok {
+		t.Fatalf("expected enabled provider operation to be registered")
+	}
+	if _, ok := manager.Registry().Resolve("demo.a.echo"); ok {
+		t.Fatalf("did not expect disabled provider operation to be registered")
+	}
+}
+
+func TestNewDiscoveredManagerWithOptionsRejectsBindingToDisabledProvider(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	writeProviderDiscoveryTestPlugin(t, pluginRoot, "demo-a", "demo.a.echo")
+
+	_, err := NewDiscoveredManagerWithOptions(context.Background(), DiscoveryOptions{
+		EnabledPlugins: map[string]string{
+			"demo-a": "disabled",
+		},
+		ProviderBindings: map[string]string{
+			"demo": "demo-a",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected disabled provider binding to be rejected")
+	}
+	if err.Error() != "provider binding for platform demo points to demo-a, but the plugin is disabled by plugins.enabled" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func writeProviderDiscoveryTestPlugin(t *testing.T, root string, pluginName string, operation string) {
+	t.Helper()
+
+	pluginDir := filepath.Join(root, pluginName, "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, pluginName+".sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"` + pluginName + `","version":"0.1.0","platforms":["demo"]}}'"\n"
+      ;;
+    *'"method":"clawrise.operations.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"operations":[{"operation":"` + operation + `","platform":"demo","mutating":false,"default_timeout_ms":1000,"allowed_subjects":["integration"],"spec":{"summary":"Echo one demo payload.","dry_run_supported":true,"input":{"sample":{"message":"hello"}}}}]}}'"\n"
+      ;;
+    *'"method":"clawrise.catalog.get"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"entries":[{"operation":"` + operation + `"}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write provider plugin: %v", err)
+	}
+
+	manifest := `{
+  "schema_version": 1,
+  "name": "` + pluginName + `",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./` + pluginName + `.sh"]
+  }
+}`
+	if err := os.WriteFile(filepath.Join(pluginDir, ManifestFileName), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("failed to write provider manifest: %v", err)
 	}
 }

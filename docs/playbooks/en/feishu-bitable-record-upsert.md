@@ -24,7 +24,7 @@ clawrise feishu.bitable.record.create --dry-run --json '{
   "table_id":"tbl_demo",
   "fields":{
     "Title":"Task A",
-    "Status":"Todo"
+    "Status":"Open"
   }
 }'
 ```

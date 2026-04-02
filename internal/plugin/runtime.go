@@ -75,7 +75,8 @@ type HealthResult struct {
 
 // ManagerOptions describes optional manager capabilities.
 type ManagerOptions struct {
-	AuthLaunchers []AuthLauncherRuntime
+	AuthLaunchers           []AuthLauncherRuntime
+	AuthLauncherPreferences map[string][]string
 }
 
 type authLauncherRegistration struct {
@@ -91,6 +92,18 @@ type Manager struct {
 	operationRuntimes map[string]Runtime
 	platformRuntimes  map[string]Runtime
 	authLaunchers     []authLauncherRegistration
+	launcherPrefs     map[string][]string
+}
+
+// DiscoveryOptions 描述从本地发现插件时的附加路由偏好。
+type DiscoveryOptions struct {
+	EnabledPlugins          map[string]string
+	ProviderBindings        map[string]string
+	AuthLauncherPreferences map[string][]string
+	PolicyMode              string
+	PolicySelectors         []PolicyCapabilitySelector
+	AuditMode               string
+	AuditSinks              []AuditSinkSelector
 }
 
 // NewManager creates one aggregated provider runtime manager.
@@ -191,6 +204,7 @@ func NewManagerWithOptions(ctx context.Context, runtimes []Runtime, options Mana
 		operationRuntimes: operationRuntimes,
 		platformRuntimes:  platformRuntimes,
 		authLaunchers:     authLaunchers,
+		launcherPrefs:     cloneStringSliceMap(options.AuthLauncherPreferences),
 	}, nil
 }
 
@@ -326,13 +340,7 @@ func (m *Manager) LaunchAuth(ctx context.Context, params AuthLaunchParams) (Auth
 		}, nil
 	}
 
-	candidates := make([]authLauncherRegistration, 0)
-	for _, launcher := range m.authLaunchers {
-		if !launcherSupportsAction(launcher.descriptor, params.Context.Platform, params.Action.Type) {
-			continue
-		}
-		candidates = append(candidates, launcher)
-	}
+	candidates := m.matchingAuthLaunchers(params.Action.Type, params.Context.Platform)
 	if len(candidates) == 0 {
 		return AuthLaunchResult{
 			Handled: false,
@@ -341,12 +349,7 @@ func (m *Manager) LaunchAuth(ctx context.Context, params AuthLaunchParams) (Auth
 		}, nil
 	}
 
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].descriptor.Priority == candidates[j].descriptor.Priority {
-			return candidates[i].order < candidates[j].order
-		}
-		return candidates[i].descriptor.Priority > candidates[j].descriptor.Priority
-	})
+	m.sortAuthLaunchers(params.Action.Type, candidates)
 
 	var launchErr error
 	for _, launcher := range candidates {
@@ -381,9 +384,31 @@ func (m *Manager) LaunchAuth(ctx context.Context, params AuthLaunchParams) (Auth
 	}, launchErr
 }
 
+// RankAuthLaunchersForAction returns the resolved launcher order for one action type.
+func (m *Manager) RankAuthLaunchersForAction(actionType string) []AuthLauncherDescriptor {
+	candidates := m.matchingAuthLaunchers(actionType, "")
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	m.sortAuthLaunchers(actionType, candidates)
+
+	items := make([]AuthLauncherDescriptor, 0, len(candidates))
+	for _, launcher := range candidates {
+		items = append(items, launcher.descriptor)
+	}
+	return items
+}
+
 // NewDiscoveredManager creates a manager backed by discovered provider plugins
 // and available auth launchers.
 func NewDiscoveredManager(ctx context.Context) (*Manager, error) {
+	return NewDiscoveredManagerWithOptions(ctx, DiscoveryOptions{})
+}
+
+// NewDiscoveredManagerWithOptions creates a manager backed by discovered plugins
+// with explicit provider bindings and launcher preferences.
+func NewDiscoveredManagerWithOptions(ctx context.Context, options DiscoveryOptions) (*Manager, error) {
 	roots, err := DefaultDiscoveryRoots()
 	if err != nil {
 		return nil, err
@@ -392,12 +417,18 @@ func NewDiscoveredManager(ctx context.Context) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	providerManifests, launcherManifests, _ := SplitManifestsByKind(manifests)
+	enabledManifests := filterManifestsByEnabledRules(manifests, options.EnabledPlugins)
+	if err := ValidateProviderBindingsWithEnabledRules(manifests, options.ProviderBindings, options.EnabledPlugins); err != nil {
+		return nil, err
+	}
+	providerManifests, launcherManifests, _ := SplitManifestsByKind(enabledManifests)
+	providerManifests = applyProviderBindings(providerManifests, options.ProviderBindings)
 	launchers := append([]AuthLauncherRuntime{
 		NewSystemAuthLauncherRuntime(),
 	}, NewProcessAuthLaunchers(launcherManifests)...)
 	return NewManagerWithOptions(ctx, NewProcessRuntimes(providerManifests), ManagerOptions{
-		AuthLaunchers: launchers,
+		AuthLaunchers:           launchers,
+		AuthLauncherPreferences: options.AuthLauncherPreferences,
 	})
 }
 
@@ -416,6 +447,35 @@ func launcherSupportsAction(descriptor AuthLauncherDescriptor, platform string, 
 	return true
 }
 
+func (m *Manager) matchingAuthLaunchers(actionType string, platform string) []authLauncherRegistration {
+	if m == nil || len(m.authLaunchers) == 0 {
+		return nil
+	}
+
+	candidates := make([]authLauncherRegistration, 0)
+	for _, launcher := range m.authLaunchers {
+		if !launcherSupportsAction(launcher.descriptor, platform, actionType) {
+			continue
+		}
+		candidates = append(candidates, launcher)
+	}
+	return candidates
+}
+
+func (m *Manager) sortAuthLaunchers(actionType string, candidates []authLauncherRegistration) {
+	sort.SliceStable(candidates, func(i, j int) bool {
+		leftRank := m.launcherPreferenceRank(actionType, candidates[i])
+		rightRank := m.launcherPreferenceRank(actionType, candidates[j])
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if candidates[i].descriptor.Priority == candidates[j].descriptor.Priority {
+			return candidates[i].order < candidates[j].order
+		}
+		return candidates[i].descriptor.Priority > candidates[j].descriptor.Priority
+	})
+}
+
 func stringSliceContainsTrimmed(values []string, target string) bool {
 	target = strings.TrimSpace(target)
 	for _, value := range values {
@@ -424,4 +484,73 @@ func stringSliceContainsTrimmed(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func applyProviderBindings(manifests []Manifest, bindings map[string]string) []Manifest {
+	if len(bindings) == 0 {
+		return manifests
+	}
+
+	filtered := make([]Manifest, 0, len(manifests))
+	for _, manifest := range manifests {
+		if shouldKeepProviderManifest(manifest, bindings) {
+			filtered = append(filtered, manifest)
+		}
+	}
+	return filtered
+}
+
+func shouldKeepProviderManifest(manifest Manifest, bindings map[string]string) bool {
+	providerCapabilities := manifest.CapabilitiesByType(CapabilityTypeProvider)
+	if len(providerCapabilities) == 0 {
+		return true
+	}
+
+	for _, capability := range providerCapabilities {
+		for _, platform := range capability.Platforms {
+			boundPlugin := strings.TrimSpace(bindings[strings.TrimSpace(platform)])
+			if boundPlugin == "" {
+				continue
+			}
+			if boundPlugin != strings.TrimSpace(manifest.Name) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (m *Manager) launcherPreferenceRank(actionType string, launcher authLauncherRegistration) int {
+	if m == nil || len(m.launcherPrefs) == 0 {
+		return len(m.authLaunchers) + 1000
+	}
+	preferences := m.launcherPrefs[strings.TrimSpace(actionType)]
+	if len(preferences) == 0 {
+		return len(m.authLaunchers) + 1000
+	}
+	for index, preferred := range preferences {
+		preferred = strings.TrimSpace(preferred)
+		if preferred == "" {
+			continue
+		}
+		if preferred == launcher.descriptor.ID || preferred == launcher.runtime.Name() {
+			return index
+		}
+	}
+	return len(preferences) + 1000
+}
+
+func cloneStringSliceMap(values map[string][]string) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]string, len(values))
+	for key, items := range values {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		cloned[key] = append([]string(nil), items...)
+	}
+	return cloned
 }

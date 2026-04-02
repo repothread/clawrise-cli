@@ -31,7 +31,7 @@ clawrise feishu.bitable.record.create --dry-run --json '{
   "table_id":"tbl_demo",
   "fields":{
     "Title":"任务 A",
-    "Status":"Todo"
+    "Status":"Open"
   }
 }'
 ```
@@ -44,7 +44,7 @@ clawrise feishu.bitable.record.create --json '{
   "table_id":"tbl_demo",
   "fields":{
     "Title":"任务 A",
-    "Status":"Todo"
+    "Status":"Open"
   }
 }'
 ```

@@ -69,6 +69,14 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "Release version: ${version}"
 
+      - name: Verify release commit ancestry
+        run: |
+          git fetch origin main --depth=1
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
+            echo "Release workflow must run from a commit that belongs to origin/main history." >&2
+            exit 1
+          fi
+
       - name: Resolve npm publish config
         id: npm
         run: |
@@ -125,6 +133,11 @@ jobs:
           CLAWRISE_GITHUB_REPOSITORY: ${{ github.repository }}
           CLAWRISE_RELEASE_GIT_SHA: ${{ github.sha }}
         run: ./scripts/release/generate-release-notes.sh "${{ steps.version.outputs.version }}"
+
+      - name: Verify release artifacts
+        env:
+          CLAWRISE_NPM_DIST_TAG: ${{ steps.npm.outputs.dist_tag }}
+        run: node ./scripts/release/verify-release-artifacts.mjs "${{ steps.version.outputs.version }}"
 
       - name: Publish GitHub release
         run: |

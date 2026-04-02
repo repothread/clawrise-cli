@@ -156,6 +156,132 @@ func TestManagerLaunchAuthReturnsNoMatchingLauncher(t *testing.T) {
 	}
 }
 
+func TestManagerLaunchAuthHonorsConfiguredLauncherPreference(t *testing.T) {
+	calls := []string{}
+	manager, err := NewManagerWithOptions(context.Background(), []Runtime{
+		NewRegistryRuntime("demo", "test", []string{"demo"}, buildDemoRegistry(), nil),
+	}, ManagerOptions{
+		AuthLaunchers: []AuthLauncherRuntime{
+			&testLauncherRuntime{
+				descriptor: AuthLauncherDescriptor{
+					ID:          "preferred",
+					DisplayName: "preferred",
+					ActionTypes: []string{"open_url"},
+					Priority:    1,
+				},
+				launch: func(params AuthLaunchParams) (AuthLaunchResult, error) {
+					calls = append(calls, "preferred")
+					return AuthLaunchResult{Handled: true, Status: "launched", LauncherID: "preferred"}, nil
+				},
+			},
+			&testLauncherRuntime{
+				descriptor: AuthLauncherDescriptor{
+					ID:          "high",
+					DisplayName: "high",
+					ActionTypes: []string{"open_url"},
+					Priority:    100,
+				},
+				launch: func(params AuthLaunchParams) (AuthLaunchResult, error) {
+					calls = append(calls, "high")
+					return AuthLaunchResult{Handled: true, Status: "launched", LauncherID: "high"}, nil
+				},
+			},
+		},
+		AuthLauncherPreferences: map[string][]string{
+			"open_url": {"preferred"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions returned error: %v", err)
+	}
+
+	result, err := manager.LaunchAuth(context.Background(), AuthLaunchParams{
+		Context: AuthLaunchContext{
+			AccountName: "demo_account",
+			Platform:    "demo",
+		},
+		Action: AuthAction{
+			Type: "open_url",
+			URL:  "https://example.com/auth",
+		},
+	})
+	if err != nil {
+		t.Fatalf("LaunchAuth returned error: %v", err)
+	}
+	if !result.Handled || result.LauncherID != "preferred" {
+		t.Fatalf("unexpected launch result: %+v", result)
+	}
+	if len(calls) != 1 || calls[0] != "preferred" {
+		t.Fatalf("expected preferred launcher to run first, got: %+v", calls)
+	}
+}
+
+func TestManagerRankAuthLaunchersForActionHonorsConfiguredPreference(t *testing.T) {
+	manager, err := NewManagerWithOptions(context.Background(), []Runtime{
+		NewRegistryRuntime("demo", "test", []string{"demo"}, buildDemoRegistry(), nil),
+	}, ManagerOptions{
+		AuthLaunchers: []AuthLauncherRuntime{
+			&testLauncherRuntime{
+				descriptor: AuthLauncherDescriptor{
+					ID:          "browser",
+					DisplayName: "browser",
+					ActionTypes: []string{"open_url"},
+					Priority:    100,
+				},
+			},
+			&testLauncherRuntime{
+				descriptor: AuthLauncherDescriptor{
+					ID:          "device",
+					DisplayName: "device",
+					ActionTypes: []string{"open_url"},
+					Priority:    1,
+				},
+			},
+		},
+		AuthLauncherPreferences: map[string][]string{
+			"open_url": {"device"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions returned error: %v", err)
+	}
+
+	launchers := manager.RankAuthLaunchersForAction("open_url")
+	if len(launchers) != 2 {
+		t.Fatalf("unexpected launchers: %+v", launchers)
+	}
+	if launchers[0].ID != "device" || launchers[1].ID != "browser" {
+		t.Fatalf("expected configured launcher order, got: %+v", launchers)
+	}
+}
+
+func TestApplyProviderBindingsKeepsOnlyBoundPlugin(t *testing.T) {
+	manifestA := Manifest{
+		Name: "demo-a",
+		Capabilities: []CapabilityDescriptor{{
+			Type:      CapabilityTypeProvider,
+			Platforms: []string{"demo"},
+		}},
+	}
+	manifestB := Manifest{
+		Name: "demo-b",
+		Capabilities: []CapabilityDescriptor{{
+			Type:      CapabilityTypeProvider,
+			Platforms: []string{"demo"},
+		}},
+	}
+
+	filtered := applyProviderBindings([]Manifest{manifestA, manifestB}, map[string]string{
+		"demo": "demo-b",
+	})
+	if len(filtered) != 1 {
+		t.Fatalf("expected one filtered manifest, got: %+v", filtered)
+	}
+	if filtered[0].Name != "demo-b" {
+		t.Fatalf("unexpected filtered manifest: %+v", filtered[0])
+	}
+}
+
 func TestBuildExecuteIdentityUsesMethodAndExecutionAuthShape(t *testing.T) {
 	identity := buildExecuteIdentityFromCall(adapter.Call{
 		Identity: adapter.Identity{

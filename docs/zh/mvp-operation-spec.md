@@ -112,7 +112,7 @@ clawrise notion.page.create --json '{"title":"项目记录"}'
 
 ## 3. MVP 范围
 
-### 3.1 P0 必做
+### 3.1 基线操作
 
 Feishu：
 
@@ -147,7 +147,7 @@ Notion：
 - `notion.block.update`
 - `notion.block.delete`
 
-### 3.2 P1 可后置
+### 3.2 补充只读操作
 
 Feishu：
 
@@ -610,7 +610,7 @@ MVP 限制：
 
 ### 4.10 feishu.contact.user.get
 
-P1 读操作。
+补充只读操作。
 
 必填字段：
 
@@ -900,7 +900,7 @@ P1 读操作。
 
 ### 5.12 notion.user.get
 
-P1 读操作。
+补充只读操作。
 
 必填字段：
 
@@ -922,26 +922,3 @@ P1 读操作。
 - Notion 数据库查询 DSL 的完整映射
 - 事务型批量写入
 - 跨平台工作流编排
-
-## 7. 推荐实施顺序
-
-1. 统一输入读取、输出包络和错误模型
-2. `feishu.calendar.event.create`
-3. `feishu.calendar.event.list`
-4. `feishu.docs.document.get`
-5. `feishu.docs.document.list_blocks`
-6. `feishu.docs.block.get`
-7. `feishu.docs.block.list_children`
-8. `feishu.docs.block.get_descendants`
-9. `feishu.docs.block.update`
-10. `feishu.docs.block.batch_delete`
-11. `notion.search.query`
-12. `notion.data_source.query`
-13. `notion.page.create`
-14. `notion.page.get`
-15. `notion.page.markdown.get`
-16. `notion.page.markdown.update`
-17. 幂等与审计存储
-18. `notion.block.append`
-19. `feishu.docs.document.create`
-20. P1 读操作

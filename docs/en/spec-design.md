@@ -229,19 +229,19 @@ Tests should cover:
 - runtime/catalog drift reporting
 - metadata completeness
 
-## 13. Next Step
+## 13. Current Maintenance Focus
 
-The next major step after the current implementation is:
+The current `spec` maintenance focus is:
 
-- broaden the downstream uses of `spec export`
-- let more docs consume the exported metadata directly
-- keep completion and generated docs converging on the same metadata layer
+- keep `spec export` usable as the reusable metadata interface for downstream tooling and generated docs
+- keep completion and generated docs consuming the same metadata layer
+- keep runtime/catalog drift visibility stable as plugin surfaces continue to grow
 
-## 14. Completion Signal
+## 14. Stability Criteria
 
-The near-term `spec` work can be considered complete when:
+The current `spec` design should continue to satisfy these criteria:
 
-- runtime capabilities are discoverable through `list/get`
-- runtime/catalog drift is visible through `status`
-- `export` exists for machine consumers
-- completion and docs stop depending on separate hand-maintained command knowledge
+- runtime capabilities remain discoverable through `list/get`
+- runtime/catalog drift remains visible through `status`
+- `export` remains available for machine consumers
+- completion and docs continue to avoid separate hand-maintained command knowledge

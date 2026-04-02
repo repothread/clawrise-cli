@@ -54,14 +54,15 @@ func NewExecutorWithManager(store *config.Store, manager *pluginruntime.Manager)
 func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, error) {
 	startAt := e.now()
 	requestID := buildRequestID(startAt)
-	governance := newRuntimeGovernance(e.store.Path(), config.RuntimeConfig{}, e.now)
+	governance := newRuntimeGovernance(e.store.Path(), config.New(), e.now)
 	var input map[string]any
+	var warnings []string
 
 	cfg, err := e.store.Load()
 	if err != nil {
 		return e.auditEnvelope(governance, e.buildFatalEnvelope(requestID, opts.DryRun, "", "", apperr.New("CONFIG_LOAD_FAILED", err.Error())), input), nil
 	}
-	governance = newRuntimeGovernance(e.store.Path(), cfg.Runtime, e.now)
+	governance = newRuntimeGovernance(e.store.Path(), cfg, e.now)
 
 	operation, err := ParseOperationWithPlatforms(opts.OperationInput, strings.TrimSpace(cfg.Defaults.Platform), knownPlatforms(e.registry))
 	if err != nil {
@@ -118,7 +119,6 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("account %s with subject %s is not allowed to call %s", accountName, account.Subject, canonicalOperation)), ExecutionProfile{}), input), nil
 	}
 
-	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
 	executionProfile := ExecutionProfile{
 		Name:       accountName,
 		Account:    accountName,
@@ -126,6 +126,13 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		Subject:    account.Subject,
 		AuthMethod: strings.TrimSpace(account.Auth.Method),
 	}
+	policyResult, policyWarnings, policyErr := e.evaluatePolicies(ctx, cfg, definition, requestID, canonicalOperation, input, executionProfile, opts.DryRun)
+	warnings = append(warnings, policyWarnings...)
+	if policyErr != nil {
+		return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, policyErr, executionProfile), warnings, &policyResult), input), nil
+	}
+
+	idempotency := buildIdempotency(definition, opts.IdempotencyKey, canonicalOperation, input)
 
 	if opts.DryRun {
 		data := map[string]any{
@@ -144,7 +151,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		if idempotency != nil {
 			idempotency.Status = "dry_run"
 		}
-		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, 0, nil, executionProfile), input), nil
+		return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, true, data, idempotency, 0, nil, executionProfile), warnings, &policyResult), input), nil
 	}
 
 	timeout := definition.DefaultTimeout
@@ -158,27 +165,27 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 	}
 
 	if definition.Handler == nil {
-		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), input), nil
+		return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("NOT_IMPLEMENTED", "runtime skeleton is ready, but the real adapter is not implemented yet"), executionProfile), warnings, &policyResult), input), nil
 	}
 
 	var idempotencyRecord *persistedIdempotencyRecord
 	if idempotency != nil {
 		record, existed, err := governance.startIdempotency(idempotency, canonicalOperation, requestID, input)
 		if err != nil {
-			return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("IDEMPOTENCY_STORE_FAILED", err.Error()), executionProfile), input), nil
+			return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("IDEMPOTENCY_STORE_FAILED", err.Error()), executionProfile), warnings, &policyResult), input), nil
 		}
 		idempotencyRecord = record
 		if existed {
 			if appErr := governance.validateIdempotencyConflict(idempotency, record, canonicalOperation, input); appErr != nil {
-				return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, appErr, executionProfile), input), nil
+				return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, appErr, executionProfile), warnings, &policyResult), input), nil
 			}
 			if record.Status == "in_progress" {
 				idempotency.Status = record.Status
 				idempotency.Persisted = true
 				idempotency.UpdatedAt = record.UpdatedAt
-				return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, record.RetryCount, apperr.New("IDEMPOTENCY_IN_PROGRESS", "write request with the same idempotency key is already in progress"), executionProfile), input), nil
+				return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, record.RetryCount, apperr.New("IDEMPOTENCY_IN_PROGRESS", "write request with the same idempotency key is already in progress"), executionProfile), warnings, &policyResult), input), nil
 			}
-			return e.auditEnvelope(governance, governance.buildReplayEnvelope(startAt, requestID, executionProfile, idempotency, record), input), nil
+			return e.auditEnvelope(governance, withExecutionMetadata(governance.buildReplayEnvelope(startAt, requestID, executionProfile, idempotency, record), warnings, &policyResult), input), nil
 		}
 	}
 
@@ -207,7 +214,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		}
 	}
 
-	envelope := e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, retryCount, appErr, executionProfile)
+	envelope := withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, data, idempotency, retryCount, appErr, executionProfile), warnings, &policyResult)
 	if idempotencyRecord != nil {
 		if err := governance.finishIdempotency(idempotency, idempotencyRecord, envelope); err != nil {
 			idempotency.Persisted = false
@@ -278,8 +285,80 @@ func (e *Executor) auditEnvelope(governance *runtimeGovernance, envelope Envelop
 	if governance == nil || envelope.Meta.DryRun {
 		return envelope
 	}
-	_ = governance.writeAudit(envelope, input)
+	envelope.Warnings = append(envelope.Warnings, governance.writeAudit(envelope, input)...)
 	return envelope
+}
+
+func withExecutionMetadata(envelope Envelope, warnings []string, policy *PolicyResult) Envelope {
+	if len(warnings) > 0 {
+		envelope.Warnings = appendUniqueStrings(envelope.Warnings, warnings...)
+	}
+	if policy != nil {
+		envelope.Policy = clonePolicyResult(policy)
+	}
+	return envelope
+}
+
+func clonePolicyResult(result *PolicyResult) *PolicyResult {
+	if result == nil {
+		return nil
+	}
+
+	cloned := &PolicyResult{
+		FinalDecision: strings.TrimSpace(result.FinalDecision),
+	}
+	if cloned.FinalDecision == "" {
+		cloned.FinalDecision = policyDecisionAllow
+	}
+	if len(result.Hits) > 0 {
+		cloned.Hits = make([]PolicyHit, 0, len(result.Hits))
+		for _, hit := range result.Hits {
+			cloned.Hits = append(cloned.Hits, PolicyHit{
+				SourceType:  strings.TrimSpace(hit.SourceType),
+				SourceName:  strings.TrimSpace(hit.SourceName),
+				Decision:    strings.TrimSpace(hit.Decision),
+				Message:     strings.TrimSpace(hit.Message),
+				MatchedRule: strings.TrimSpace(hit.MatchedRule),
+				Annotations: cloneAnyMap(hit.Annotations),
+			})
+		}
+	}
+	return cloned
+}
+
+func appendUniqueStrings(existing []string, values ...string) []string {
+	if len(values) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]struct{}, len(existing)+len(values))
+	items := make([]string, 0, len(existing)+len(values))
+	for _, value := range existing {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		items = append(items, value)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return items
 }
 
 func resolveAccountSelection(cfg *config.Config, platform string, explicitAccount string, explicitSubject string) (string, config.Account, *apperr.AppError) {
@@ -456,6 +535,7 @@ func (e *Executor) buildFallbackExecutionIdentity(cfg *config.Config, accountNam
 }
 
 func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName string, account config.Account) (pluginruntime.AuthAccount, error) {
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
 	secrets := map[string]string{}
 	for field, ref := range account.Auth.SecretRefs {
 		value, err := config.ResolveSecret(ref)
@@ -465,7 +545,13 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 		secrets[field] = value
 	}
 
-	sessionStore, err := authcache.OpenStore(configPath, cfg.Auth.SessionStore.Backend)
+	sessionBinding := config.ResolveStorageBinding(cfg, "session_store")
+	sessionStore, err := authcache.OpenStoreWithOptions(authcache.StoreOptions{
+		ConfigPath:     configPath,
+		Backend:        sessionBinding.Backend,
+		Plugin:         sessionBinding.Plugin,
+		EnabledPlugins: enabledPlugins,
+	})
 	if err != nil {
 		return pluginruntime.AuthAccount{}, err
 	}
@@ -486,8 +572,15 @@ func buildPluginAuthAccount(cfg *config.Config, configPath string, accountName s
 }
 
 func persistAuthPatches(cfg *config.Config, configPath string, accountName string, account config.Account, sessionPatch *pluginruntime.AuthSessionPayload, secretPatches map[string]string) error {
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
 	if sessionPatch != nil {
-		sessionStore, err := authcache.OpenStore(configPath, cfg.Auth.SessionStore.Backend)
+		sessionBinding := config.ResolveStorageBinding(cfg, "session_store")
+		sessionStore, err := authcache.OpenStoreWithOptions(authcache.StoreOptions{
+			ConfigPath:     configPath,
+			Backend:        sessionBinding.Backend,
+			Plugin:         sessionBinding.Plugin,
+			EnabledPlugins: enabledPlugins,
+		})
 		if err != nil {
 			return err
 		}
@@ -502,14 +595,17 @@ func persistAuthPatches(cfg *config.Config, configPath string, accountName strin
 	}
 
 	if len(secretPatches) > 0 {
-		backend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
+		binding := config.ResolveStorageBinding(cfg, "secret_store")
+		backend := strings.TrimSpace(binding.Backend)
 		if backend == "" {
 			backend = "auto"
 		}
 		secretStore, err := secretstore.Open(secretstore.Options{
 			ConfigPath:      configPath,
 			Backend:         backend,
-			FallbackBackend: cfg.Auth.SecretStore.FallbackBackend,
+			FallbackBackend: binding.FallbackBackend,
+			Plugin:          binding.Plugin,
+			EnabledPlugins:  enabledPlugins,
 		})
 		if err != nil {
 			return err

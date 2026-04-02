@@ -132,7 +132,7 @@ operation 路径格式：
 
 - Feishu / Notion 第一方能力已经通过外部 provider plugin binary 暴露
 - `clawrise plugin list`
-- `clawrise plugin install <source>`
+- `clawrise plugin install <package-or-source>`
 - `clawrise plugin info <name> <version>`
 - `clawrise plugin remove <name> <version>`
 - `clawrise spec list [path]`
@@ -450,12 +450,12 @@ MVP 平台组合：
 - `feishu`
 - `notion`
 
-推荐实施顺序：
+当前架构依赖顺序：
 
-1. 实现运行时内核
-2. 定义 provider runtime 边界
-3. 交付 Feishu / Notion 第一方 plugin
-4. 实现插件发现与安装
-5. 后续扩展 Google 和其他 provider
+1. 运行时内核
+2. provider runtime 边界
+3. Feishu / Notion 第一方 plugin
+4. 插件发现与安装
+5. 后续 provider 扩展
 
 具体 operation 契约见 [mvp-operation-spec.md](mvp-operation-spec.md)。

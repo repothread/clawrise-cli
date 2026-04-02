@@ -105,6 +105,12 @@ verify_npm_runtime() {
     node "${repo_root}/scripts/release/verify-npm-runtime.mjs"
 }
 
+verify_release_artifacts() {
+  echo "Verifying release artifact consistency"
+  CLAWRISE_NPM_DIST_TAG="${CLAWRISE_NPM_DIST_TAG:-}" \
+    node "${repo_root}/scripts/release/verify-release-artifacts.mjs" "${version}"
+}
+
 check_remote_auth() {
   if [[ "${check_remote}" != "1" ]]; then
     return 0
@@ -151,6 +157,7 @@ echo "Generating release notes"
 "${repo_root}/scripts/release/generate-release-notes.sh" "${version}"
 
 check_release_outputs
+verify_release_artifacts
 verify_npm_packs
 verify_npm_runtime
 check_remote_auth
