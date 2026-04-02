@@ -83,12 +83,14 @@ type ExecuteParams struct {
 
 // ExecuteEnvelope describes the normalized provider request body.
 type ExecuteEnvelope struct {
-	RequestID      string         `json:"request_id"`
-	Operation      string         `json:"operation"`
-	Input          map[string]any `json:"input"`
-	TimeoutMS      int64          `json:"timeout_ms"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-	DryRun         bool           `json:"dry_run"`
+	RequestID            string         `json:"request_id"`
+	Operation            string         `json:"operation"`
+	Input                map[string]any `json:"input"`
+	TimeoutMS            int64          `json:"timeout_ms"`
+	IdempotencyKey       string         `json:"idempotency_key,omitempty"`
+	DryRun               bool           `json:"dry_run"`
+	DebugProviderPayload bool           `json:"debug_provider_payload,omitempty"`
+	VerifyAfterWrite     bool           `json:"verify_after_write,omitempty"`
 }
 
 // ExecuteIdentity describes the resolved execution identity.
@@ -109,6 +111,7 @@ type ExecuteAuth struct {
 type ExecuteRPCResult struct {
 	OK    bool             `json:"ok"`
 	Data  map[string]any   `json:"data"`
+	Debug map[string]any   `json:"debug,omitempty"`
 	Error *apperr.AppError `json:"error,omitempty"`
 	Meta  map[string]any   `json:"meta,omitempty"`
 }

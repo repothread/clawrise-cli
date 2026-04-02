@@ -13,6 +13,10 @@ type providerDebugContextKey string
 
 const providerDebugKey providerDebugContextKey = "provider_debug_capture"
 
+type requestIDContextKey string
+
+const requestIDKey requestIDContextKey = "request_id"
+
 // RuntimeOptions 描述 runtime 透传给 adapter 的执行期增强选项。
 type RuntimeOptions struct {
 	DebugProviderPayload bool
@@ -42,6 +46,26 @@ func RuntimeOptionsFromContext(ctx context.Context) RuntimeOptions {
 	return options
 }
 
+// WithRequestID 将当前请求 id 附着到执行上下文，便于跨 runtime 透传。
+func WithRequestID(ctx context.Context, requestID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if requestID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, requestIDKey, requestID)
+}
+
+// RequestIDFromContext 读取当前执行上下文里的 request id。
+func RequestIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	requestID, _ := ctx.Value(requestIDKey).(string)
+	return requestID
+}
+
 // WithProviderDebugCapture 在上下文中创建或复用 provider 调试采集器。
 func WithProviderDebugCapture(ctx context.Context) (context.Context, *ProviderDebugCapture) {
 	if ctx == nil {
@@ -49,6 +73,15 @@ func WithProviderDebugCapture(ctx context.Context) (context.Context, *ProviderDe
 	}
 	if capture, ok := ctx.Value(providerDebugKey).(*ProviderDebugCapture); ok && capture != nil {
 		return ctx, capture
+	}
+	capture := &ProviderDebugCapture{}
+	return context.WithValue(ctx, providerDebugKey, capture), capture
+}
+
+// WithFreshProviderDebugCapture 强制创建一个新的调试采集器，用于隔离子执行链路。
+func WithFreshProviderDebugCapture(ctx context.Context) (context.Context, *ProviderDebugCapture) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	capture := &ProviderDebugCapture{}
 	return context.WithValue(ctx, providerDebugKey, capture), capture
@@ -100,5 +133,32 @@ func ProviderDebugFromContext(ctx context.Context) map[string]any {
 	}
 	return map[string]any{
 		"provider_requests": items,
+	}
+}
+
+// ImportProviderDebug 将跨进程返回的 provider 调试轨迹重新挂回当前上下文。
+func ImportProviderDebug(ctx context.Context, payload map[string]any) {
+	if ctx == nil || len(payload) == 0 {
+		return
+	}
+
+	rawItems, exists := payload["provider_requests"]
+	if !exists || rawItems == nil {
+		return
+	}
+
+	switch items := rawItems.(type) {
+	case []map[string]any:
+		for _, entry := range items {
+			AddProviderDebugEvent(ctx, entry)
+		}
+	case []any:
+		for _, item := range items {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			AddProviderDebugEvent(ctx, entry)
+		}
 	}
 }

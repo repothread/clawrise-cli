@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
@@ -55,15 +56,20 @@ type HandshakeResult struct {
 
 // ExecuteRequest describes one normalized provider execution request.
 type ExecuteRequest struct {
-	Operation      string
-	Identity       ExecuteIdentity
-	Input          map[string]any
-	IdempotencyKey string
+	RequestID            string
+	Operation            string
+	Identity             ExecuteIdentity
+	Input                map[string]any
+	TimeoutMS            int64
+	IdempotencyKey       string
+	DebugProviderPayload bool
+	VerifyAfterWrite     bool
 }
 
 // ExecuteResult describes one provider execution result.
 type ExecuteResult struct {
 	Data  map[string]any   `json:"data"`
+	Debug map[string]any   `json:"debug,omitempty"`
 	Error *apperr.AppError `json:"error,omitempty"`
 }
 
@@ -149,15 +155,32 @@ func NewManagerWithOptions(ctx context.Context, runtimes []Runtime, options Mana
 			runtimeRef := runtime
 			operation := definition.Operation
 			definition.Handler = func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+				options := adapter.RuntimeOptionsFromContext(ctx)
+				timeoutMS := int64(0)
+				if deadline, ok := ctx.Deadline(); ok {
+					remaining := time.Until(deadline)
+					if remaining > 0 {
+						timeoutMS = remaining.Milliseconds()
+						if timeoutMS == 0 {
+							timeoutMS = 1
+						}
+					}
+				}
+
 				result, err := runtimeRef.Execute(ctx, ExecuteRequest{
-					Operation:      operation,
-					Identity:       buildExecuteIdentityFromCall(call),
-					Input:          call.Input,
-					IdempotencyKey: call.IdempotencyKey,
+					RequestID:            adapter.RequestIDFromContext(ctx),
+					Operation:            operation,
+					Identity:             buildExecuteIdentityFromCall(call),
+					Input:                call.Input,
+					TimeoutMS:            timeoutMS,
+					IdempotencyKey:       call.IdempotencyKey,
+					DebugProviderPayload: options.DebugProviderPayload,
+					VerifyAfterWrite:     options.VerifyAfterWrite,
 				})
 				if err != nil {
 					return nil, apperr.New("PROVIDER_RUNTIME_FAILED", err.Error())
 				}
+				adapter.ImportProviderDebug(ctx, result.Debug)
 				return result.Data, result.Error
 			}
 

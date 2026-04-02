@@ -314,10 +314,15 @@ func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
 			case "/v1/pages/page_demo":
 				switch request.Method {
 				case http.MethodPatch:
+					if got := request.URL.Query()["filter_properties"]; len(got) != 0 {
+						t.Fatalf("did not expect filter_properties on page update: %+v", got)
+					}
 					return jsonResponse(t, http.StatusOK, map[string]any{
-						"id":       "page_demo",
-						"url":      "https://www.notion.so/page_demo",
-						"archived": true,
+						"id":        "page_demo",
+						"url":       "https://www.notion.so/page_demo",
+						"archived":  true,
+						"in_trash":  true,
+						"is_locked": true,
 						"parent": map[string]any{
 							"type":    "page_id",
 							"page_id": "parent_demo",
@@ -338,9 +343,11 @@ func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
 					}), nil
 				case http.MethodGet:
 					return jsonResponse(t, http.StatusOK, map[string]any{
-						"id":       "page_demo",
-						"url":      "https://www.notion.so/page_demo",
-						"archived": true,
+						"id":        "page_demo",
+						"url":       "https://www.notion.so/page_demo",
+						"archived":  true,
+						"in_trash":  true,
+						"is_locked": true,
 						"parent": map[string]any{
 							"type":    "page_id",
 							"page_id": "parent_demo",
@@ -371,9 +378,16 @@ func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
 	})
 
 	data, appErr := client.UpdatePage(ctx, testStaticProfile(), map[string]any{
-		"page_id":  "page_demo",
-		"title":    "已更新页面",
-		"archived": true,
+		"page_id":       "page_demo",
+		"title":         "已更新页面",
+		"archived":      true,
+		"is_locked":     true,
+		"erase_content": true,
+		"template": map[string]any{
+			"type":        "template_id",
+			"template_id": "tpl_demo",
+			"timezone":    "Asia/Shanghai",
+		},
 	})
 	if appErr != nil {
 		t.Fatalf("UpdatePage returned error: %+v", appErr)
@@ -396,6 +410,13 @@ func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
 	if requestBody["in_trash"] != true {
 		t.Fatalf("expected in_trash=true in update page request body, got: %+v", requestBody)
 	}
+	if requestBody["is_locked"] != true || requestBody["erase_content"] != true {
+		t.Fatalf("expected is_locked and erase_content in update page request body, got: %+v", requestBody)
+	}
+	template := requestBody["template"].(map[string]any)
+	if template["type"] != "template_id" || template["template_id"] != "tpl_demo" || template["timezone"] != "Asia/Shanghai" {
+		t.Fatalf("unexpected template request payload: %+v", template)
+	}
 	if _, exists := requestBody["archived"]; exists {
 		t.Fatalf("expected archived to be omitted from update page request body, got: %+v", requestBody)
 	}
@@ -405,6 +426,60 @@ func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
 	}
 	if strings.Contains(string(encodedRequestBody), "已更新页面") {
 		t.Fatalf("expected request body content to be redacted: %s", string(encodedRequestBody))
+	}
+}
+
+func TestGetPageSupportsFilterProperties(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/pages/page_demo" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			if request.Method != http.MethodGet {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+			if got := request.URL.Query()["filter_properties"]; len(got) != 2 || got[0] != "title" || got[1] != "Status" {
+				t.Fatalf("unexpected filter_properties query: %+v", request.URL.Query())
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":        "page_demo",
+				"url":       "https://www.notion.so/page_demo",
+				"in_trash":  false,
+				"is_locked": true,
+				"parent": map[string]any{
+					"type":    "page_id",
+					"page_id": "parent_demo",
+				},
+				"properties": map[string]any{
+					"title": map[string]any{
+						"title": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "过滤页面",
+								"text": map[string]any{
+									"content": "过滤页面",
+								},
+							},
+						},
+					},
+				},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.GetPage(context.Background(), testStaticProfile(), map[string]any{
+		"page_id":           "page_demo",
+		"filter_properties": []string{"title", "Status"},
+	})
+	if appErr != nil {
+		t.Fatalf("GetPage returned error: %+v", appErr)
+	}
+	if data["title"] != "过滤页面" || data["is_locked"] != true {
+		t.Fatalf("unexpected page data: %+v", data)
 	}
 }
 

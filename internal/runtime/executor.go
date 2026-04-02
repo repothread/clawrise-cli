@@ -200,6 +200,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		DebugProviderPayload: opts.DebugProviderPayload && !opts.DryRun && supportsProviderPayloadDebug(canonicalOperation),
 		VerifyAfterWrite:     opts.VerifyAfterWrite && !opts.DryRun && supportsWriteVerification(canonicalOperation),
 	})
+	ctx = adapter.WithRequestID(ctx, requestID)
 	if opts.DebugProviderPayload && !opts.DryRun && supportsProviderPayloadDebug(canonicalOperation) {
 		ctx, _ = adapter.WithProviderDebugCapture(ctx)
 	}

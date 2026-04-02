@@ -152,10 +152,14 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 			}
 
 			result, err := runtime.Execute(ctx, ExecuteRequest{
-				Operation:      params.Request.Operation,
-				Identity:       params.Identity,
-				Input:          params.Request.Input,
-				IdempotencyKey: params.Request.IdempotencyKey,
+				RequestID:            params.Request.RequestID,
+				Operation:            params.Request.Operation,
+				Identity:             params.Identity,
+				Input:                params.Request.Input,
+				TimeoutMS:            params.Request.TimeoutMS,
+				IdempotencyKey:       params.Request.IdempotencyKey,
+				DebugProviderPayload: params.Request.DebugProviderPayload,
+				VerifyAfterWrite:     params.Request.VerifyAfterWrite,
 			})
 			if err != nil {
 				return nil, err
@@ -164,6 +168,7 @@ func handleRPCRequest(runtime Runtime, request RPCRequest) RPCResponse {
 			return ExecuteRPCResult{
 				OK:    result.Error == nil,
 				Data:  result.Data,
+				Debug: result.Debug,
 				Error: result.Error,
 				Meta: map[string]any{
 					"retry_count": 0,

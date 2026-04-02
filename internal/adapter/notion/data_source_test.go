@@ -89,6 +89,69 @@ func TestQueryDataSourceSuccess(t *testing.T) {
 	}
 }
 
+func TestListDataSourceTemplatesSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/data_sources/ds_123/templates" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			if request.Method != http.MethodGet {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+			if request.URL.Query().Get("name") != "Weekly" {
+				t.Fatalf("unexpected name query: %s", request.URL.Query().Get("name"))
+			}
+			if request.URL.Query().Get("page_size") != "20" {
+				t.Fatalf("unexpected page_size query: %s", request.URL.Query().Get("page_size"))
+			}
+			if request.URL.Query().Get("start_cursor") != "cursor_demo" {
+				t.Fatalf("unexpected start_cursor query: %s", request.URL.Query().Get("start_cursor"))
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"templates": []map[string]any{
+					{
+						"id":         "tpl_1",
+						"name":       "Weekly Planning",
+						"is_default": true,
+					},
+					{
+						"id":         "tpl_2",
+						"name":       "Weekly Retro",
+						"is_default": false,
+					},
+				},
+				"has_more":    true,
+				"next_cursor": "cursor_next",
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.ListDataSourceTemplates(context.Background(), testStaticProfile(), map[string]any{
+		"data_source_id": "ds_123",
+		"name":           "Weekly",
+		"page_size":      20,
+		"page_token":     "cursor_demo",
+	})
+	if appErr != nil {
+		t.Fatalf("ListDataSourceTemplates returned error: %+v", appErr)
+	}
+
+	items := data["items"].([]map[string]any)
+	if len(items) != 2 {
+		t.Fatalf("unexpected template items: %+v", data["items"])
+	}
+	if items[0]["template_id"] != "tpl_1" || items[0]["is_default"] != true {
+		t.Fatalf("unexpected first template item: %+v", items[0])
+	}
+	if data["next_page_token"] != "cursor_next" || data["has_more"] != true {
+		t.Fatalf("unexpected pagination result: %+v", data)
+	}
+}
+
 func TestCreateDataSourceViaDatabaseSuccess(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

@@ -166,20 +166,23 @@ func (r *ProcessRuntime) Execute(ctx context.Context, req ExecuteRequest) (Execu
 	var result ExecuteRPCResult
 	if err := r.call(ctx, "clawrise.execute", ExecuteParams{
 		Request: ExecuteEnvelope{
-			RequestID:      "",
-			Operation:      req.Operation,
-			Input:          req.Input,
-			IdempotencyKey: req.IdempotencyKey,
-			DryRun:         false,
+			RequestID:            req.RequestID,
+			Operation:            req.Operation,
+			Input:                req.Input,
+			TimeoutMS:            req.TimeoutMS,
+			IdempotencyKey:       req.IdempotencyKey,
+			DryRun:               false,
+			DebugProviderPayload: req.DebugProviderPayload,
+			VerifyAfterWrite:     req.VerifyAfterWrite,
 		},
 		Identity: req.Identity,
 	}, &result); err != nil {
 		return ExecuteResult{}, err
 	}
 	if result.OK {
-		return ExecuteResult{Data: result.Data}, nil
+		return ExecuteResult{Data: result.Data, Debug: result.Debug}, nil
 	}
-	return ExecuteResult{Data: result.Data, Error: result.Error}, nil
+	return ExecuteResult{Data: result.Data, Debug: result.Debug, Error: result.Error}, nil
 }
 
 func (r *ProcessRuntime) Health(ctx context.Context) (HealthResult, error) {

@@ -3,6 +3,7 @@
 Operations:
 
 - `notion.data_source.get`
+- `notion.data_source.template.list`
 - `notion.data_source.query`
 
 ## Read schema
@@ -10,6 +11,15 @@ Operations:
 ```bash
 clawrise notion.data_source.get --json '{
   "data_source_id":"ds_demo"
+}'
+```
+
+## List available templates
+
+```bash
+clawrise notion.data_source.template.list --json '{
+  "data_source_id":"ds_demo",
+  "page_size":20
 }'
 ```
 

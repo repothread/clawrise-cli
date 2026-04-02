@@ -515,6 +515,7 @@ type notionPage struct {
 	URL        string         `json:"url"`
 	Archived   bool           `json:"archived"`
 	InTrash    bool           `json:"in_trash"`
+	IsLocked   bool           `json:"is_locked"`
 	Parent     map[string]any `json:"parent"`
 	Properties map[string]any `json:"properties"`
 }
@@ -538,6 +539,18 @@ type notionQueryDataSourceResponse struct {
 	Results    []map[string]any `json:"results"`
 	HasMore    bool             `json:"has_more"`
 	NextCursor *string          `json:"next_cursor"`
+}
+
+type notionDataSourceTemplateListResponse struct {
+	Templates  []notionDataSourceTemplate `json:"templates"`
+	HasMore    bool                       `json:"has_more"`
+	NextCursor *string                    `json:"next_cursor"`
+}
+
+type notionDataSourceTemplate struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default"`
 }
 
 type notionBlockChildrenResponse struct {

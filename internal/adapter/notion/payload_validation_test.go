@@ -49,6 +49,42 @@ func TestBuildUpdatePagePayloadSupportsInTrashField(t *testing.T) {
 	}
 }
 
+func TestBuildUpdatePagePayloadSupportsTemplateLockAndEraseContent(t *testing.T) {
+	payload, appErr := buildUpdatePagePayload(map[string]any{
+		"is_locked":     true,
+		"erase_content": true,
+		"template": map[string]any{
+			"type":        "template_id",
+			"template_id": "tpl_demo",
+			"timezone":    "Asia/Shanghai",
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("buildUpdatePagePayload returned error: %+v", appErr)
+	}
+	if payload["is_locked"] != true || payload["erase_content"] != true {
+		t.Fatalf("unexpected page update payload: %+v", payload)
+	}
+	template := payload["template"].(map[string]any)
+	if template["type"] != "template_id" || template["template_id"] != "tpl_demo" || template["timezone"] != "Asia/Shanghai" {
+		t.Fatalf("unexpected template payload: %+v", template)
+	}
+}
+
+func TestBuildUpdatePagePayloadRejectsInvalidTemplate(t *testing.T) {
+	_, appErr := buildUpdatePagePayload(map[string]any{
+		"template": map[string]any{
+			"type": "template_id",
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected buildUpdatePagePayload to reject missing template_id")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
 func TestBuildUpdatePagePayloadRejectsEmptyInput(t *testing.T) {
 	_, appErr := buildUpdatePagePayload(map[string]any{
 		"page_id": "page_demo",

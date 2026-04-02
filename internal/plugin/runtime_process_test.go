@@ -208,6 +208,84 @@ done
 	}
 }
 
+func TestProcessRuntimeExecuteForwardsRequestMetadataAndRuntimeOptions(t *testing.T) {
+	root := t.TempDir()
+	pluginDir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+
+	pluginPath := filepath.Join(pluginDir, "demo-plugin.sh")
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.execute"'*)
+      request_ok=0
+      case "$line" in
+        *'"request_id":"req_demo"'*'"timeout_ms":2500'*'"debug_provider_payload":true'*'"verify_after_write":true'*)
+          request_ok=1
+          ;;
+      esac
+      if [ "$request_ok" -eq 1 ]; then
+        printf '{"jsonrpc":"2.0","id":"1","result":{"ok":true,"data":{"status":"forwarded"},"debug":{"provider_requests":[{"provider":"demo","path":"/execute"}]}}}'"\n"
+      else
+        printf '{"jsonrpc":"2.0","id":"1","result":{"ok":false,"data":{"status":"missing"},"error":{"code":"INVALID_INPUT","message":"execute envelope fields were not forwarded"}}}'"\n"
+      fi
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(pluginPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write demo plugin: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, ManifestFileName)
+	if err := os.WriteFile(manifestPath, []byte(`{
+  "schema_version": 1,
+  "name": "demo",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-plugin.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	manifest, err := LoadManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest returned error: %v", err)
+	}
+	runtime := NewProcessRuntime(manifest)
+
+	result, err := runtime.Execute(context.Background(), ExecuteRequest{
+		RequestID:            "req_demo",
+		Operation:            "demo.page.echo",
+		TimeoutMS:            2500,
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.Error != nil {
+		t.Fatalf("expected successful execute result, got: %+v", result.Error)
+	}
+	if result.Data["status"] != "forwarded" {
+		t.Fatalf("unexpected execute result: %+v", result)
+	}
+	if result.Debug == nil {
+		t.Fatal("expected debug payload to be returned from process runtime")
+	}
+	requests := result.Debug["provider_requests"].([]any)
+	if len(requests) != 1 {
+		t.Fatalf("unexpected debug payload: %+v", result.Debug)
+	}
+}
+
 func TestProcessRuntimeDescribeAndLaunchAuthLauncher(t *testing.T) {
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "launcher")

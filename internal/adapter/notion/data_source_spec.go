@@ -28,6 +28,21 @@ func notionDataSourceGetSpec() adapter.OperationSpec {
 	}
 }
 
+func notionDataSourceTemplateListSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "List templates available under a Notion data source.",
+		Input: adapter.InputSpec{
+			Required: []string{"data_source_id"},
+			Optional: []string{"name", "page_size", "page_token"},
+			Sample: map[string]any{
+				"data_source_id": "ds_demo",
+				"name":           "Weekly",
+				"page_size":      20,
+			},
+		},
+	}
+}
+
 func notionDataSourceCreateSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Create a Notion data source with provider-native payload fields.",

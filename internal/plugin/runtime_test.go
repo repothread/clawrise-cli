@@ -47,6 +47,86 @@ func TestManagerRegistersOperationsThroughRuntimeBoundary(t *testing.T) {
 	}
 }
 
+func TestManagerForwardsRuntimeOptionsAndImportsProviderDebug(t *testing.T) {
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Update one demo page.",
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			options := adapter.RuntimeOptionsFromContext(ctx)
+			if !options.DebugProviderPayload || !options.VerifyAfterWrite {
+				return nil, apperr.New("INVALID_RUNTIME_OPTIONS", "runtime options were not forwarded through manager")
+			}
+			if adapter.RequestIDFromContext(ctx) != "req_demo" {
+				return nil, apperr.New("INVALID_REQUEST_ID", "request id was not forwarded through manager")
+			}
+
+			adapter.AddProviderDebugEvent(ctx, map[string]any{
+				"provider": "demo",
+				"path":     "/pages/demo",
+			})
+			return map[string]any{
+				"verification": map[string]any{
+					"ok": true,
+				},
+			}, nil
+		},
+	})
+
+	manager, err := NewManager(context.Background(), []Runtime{
+		NewRegistryRuntime("demo", "test", []string{"demo"}, registry, nil),
+	})
+	if err != nil {
+		t.Fatalf("NewManager returned error: %v", err)
+	}
+
+	definition, ok := manager.Registry().Resolve("demo.page.update")
+	if !ok {
+		t.Fatal("expected demo.page.update to be registered")
+	}
+
+	ctx := adapter.WithRuntimeOptions(context.Background(), adapter.RuntimeOptions{
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+	})
+	ctx = adapter.WithRequestID(ctx, "req_demo")
+	ctx, _ = adapter.WithProviderDebugCapture(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+
+	data, appErr := definition.Handler(ctx, adapter.Call{
+		Identity: adapter.Identity{
+			AccountName: "demo_account",
+			Platform:    "demo",
+			Subject:     "integration",
+			AuthMethod:  "demo.token",
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("expected successful execution, got: %+v", appErr)
+	}
+
+	verification := data["verification"].(map[string]any)
+	if verification["ok"] != true {
+		t.Fatalf("unexpected verification result: %+v", verification)
+	}
+
+	debug := adapter.ProviderDebugFromContext(ctx)
+	if debug == nil {
+		t.Fatal("expected provider debug to be imported back into caller context")
+	}
+	requests := debug["provider_requests"].([]map[string]any)
+	if len(requests) != 1 || requests[0]["path"] != "/pages/demo" {
+		t.Fatalf("unexpected provider debug payload: %+v", debug)
+	}
+}
+
 func TestManagerAggregatesCatalogEntries(t *testing.T) {
 	manager, err := NewManager(context.Background(), []Runtime{
 		NewRegistryRuntime("demo", "test", []string{"demo"}, buildDemoRegistry(), []speccatalog.Entry{

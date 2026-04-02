@@ -132,6 +132,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.data_source.template.list",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionDataSourceTemplateListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListDataSourceTemplates(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.data_source.create",
 		Platform:        "notion",
 		Mutating:        true,

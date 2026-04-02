@@ -208,6 +208,16 @@ func (c *Client) verifyPageUpdate(ctx context.Context, profile ExecutionProfile,
 		})
 	}
 
+	if expectedLocked, ok := asBool(input["is_locked"]); ok {
+		actualLocked, _ := asBool(pageData["is_locked"])
+		appendVerificationCheck(result, map[string]any{
+			"name":     "lock_state_matches",
+			"ok":       expectedLocked == actualLocked,
+			"expected": expectedLocked,
+			"actual":   actualLocked,
+		})
+	}
+
 	return result
 }
 

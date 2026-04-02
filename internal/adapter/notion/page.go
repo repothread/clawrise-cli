@@ -64,11 +64,16 @@ func (c *Client) GetPage(ctx context.Context, profile ExecutionProfile, input ma
 		return nil, appErr
 	}
 
+	query := url.Values{}
+	if appErr := addFilterPropertiesQuery(query, input["filter_properties"]); appErr != nil {
+		return nil, appErr
+	}
+
 	responseBody, appErr := c.doJSONRequest(
 		ctx,
 		http.MethodGet,
 		"/v1/pages/"+url.PathEscape(pageID),
-		nil,
+		query,
 		nil,
 		"Bearer "+accessToken,
 		notionVersion,
@@ -272,6 +277,19 @@ func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppEr
 		// archived 继续保留为兼容别名，但实际向新版 Notion API 发送 in_trash。
 		payload["in_trash"] = archived
 	}
+	if isLocked, ok := asBool(input["is_locked"]); ok {
+		payload["is_locked"] = isLocked
+	}
+	if eraseContent, ok := asBool(input["erase_content"]); ok {
+		payload["erase_content"] = eraseContent
+	}
+	if template, exists := input["template"]; exists {
+		normalizedTemplate, appErr := normalizePageTemplate(template)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload["template"] = normalizedTemplate
+	}
 	if icon, exists := input["icon"]; exists {
 		normalized, appErr := normalizeNotionFileObject(icon, true)
 		if appErr != nil {
@@ -290,6 +308,59 @@ func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppEr
 		return nil, apperr.New("INVALID_INPUT", "at least one updatable field is required")
 	}
 	return payload, nil
+}
+
+func addFilterPropertiesQuery(query url.Values, raw any) *apperr.AppError {
+	if raw == nil {
+		return nil
+	}
+
+	list, ok := asArray(raw)
+	if !ok {
+		return apperr.New("INVALID_INPUT", "filter_properties must be an array")
+	}
+	for _, item := range list {
+		property, ok := asString(item)
+		if !ok || strings.TrimSpace(property) == "" {
+			return apperr.New("INVALID_INPUT", "each filter_properties item must be a non-empty string")
+		}
+		query.Add("filter_properties", strings.TrimSpace(property))
+	}
+	return nil
+}
+
+func normalizePageTemplate(raw any) (map[string]any, *apperr.AppError) {
+	record, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "template must be an object")
+	}
+
+	templateType, ok := asString(record["type"])
+	if !ok || strings.TrimSpace(templateType) == "" {
+		return nil, apperr.New("INVALID_INPUT", "template.type is required")
+	}
+	templateType = strings.TrimSpace(templateType)
+
+	normalized := map[string]any{
+		"type": templateType,
+	}
+	switch templateType {
+	case "default":
+		// default 模板不要求额外字段。
+	case "template_id":
+		templateID, ok := asString(record["template_id"])
+		if !ok || strings.TrimSpace(templateID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "template.template_id is required when template.type is template_id")
+		}
+		normalized["template_id"] = strings.TrimSpace(templateID)
+	default:
+		return nil, apperr.New("INVALID_INPUT", "template.type must be default or template_id")
+	}
+
+	if timezone, ok := asString(record["timezone"]); ok && strings.TrimSpace(timezone) != "" {
+		normalized["timezone"] = strings.TrimSpace(timezone)
+	}
+	return normalized, nil
 }
 
 func normalizeNotionFileObject(raw any, allowEmoji bool) (map[string]any, *apperr.AppError) {
@@ -426,6 +497,8 @@ func mapPageData(page notionPage) map[string]any {
 		"parent":     normalizeParent(page.Parent),
 		"url":        page.URL,
 		"archived":   page.Archived || page.InTrash,
+		"in_trash":   page.InTrash,
+		"is_locked":  page.IsLocked,
 		"properties": page.Properties,
 	}
 }

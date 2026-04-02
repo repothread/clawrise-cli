@@ -47,6 +47,70 @@ func (c *Client) GetDataSource(ctx context.Context, profile ExecutionProfile, in
 	return normalizeDataSourceObject(response), nil
 }
 
+// ListDataSourceTemplates lists templates available to one Notion data source.
+func (c *Client) ListDataSourceTemplates(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	dataSourceID, appErr := requireIDField(input, "data_source_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	query := url.Values{}
+	if name, ok := asString(input["name"]); ok && strings.TrimSpace(name) != "" {
+		query.Set("name", strings.TrimSpace(name))
+	}
+	if pageSize, ok := asInt(input["page_size"]); ok && pageSize > 0 {
+		query.Set("page_size", fmt.Sprintf("%d", pageSize))
+	}
+	if pageToken, ok := asString(input["page_token"]); ok && strings.TrimSpace(pageToken) != "" {
+		query.Set("start_cursor", strings.TrimSpace(pageToken))
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodGet,
+		"/v1/data_sources/"+url.PathEscape(dataSourceID)+"/templates",
+		query,
+		nil,
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response notionDataSourceTemplateListResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion data source templates response: %v", err))
+	}
+
+	items := make([]map[string]any, 0, len(response.Templates))
+	for _, item := range response.Templates {
+		items = append(items, map[string]any{
+			"template_id": item.ID,
+			"name":        item.Name,
+			"is_default":  item.IsDefault,
+		})
+	}
+
+	nextPageToken := ""
+	if response.NextCursor != nil {
+		nextPageToken = strings.TrimSpace(*response.NextCursor)
+	}
+
+	return map[string]any{
+		"data_source_id":  dataSourceID,
+		"items":           items,
+		"next_page_token": nextPageToken,
+		"has_more":        response.HasMore,
+	}, nil
+}
+
 // QueryDataSource queries pages or nested data sources under a data source.
 func (c *Client) QueryDataSource(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	dataSourceID, appErr := requireIDField(input, "data_source_id")

@@ -43,8 +43,13 @@ func notionPageGetSpec() adapter.OperationSpec {
 		Summary: "Get a Notion page.",
 		Input: adapter.InputSpec{
 			Required: []string{"page_id"},
+			Optional: []string{"filter_properties"},
+			Notes: []string{
+				"`filter_properties` can limit which page properties are returned on large pages.",
+			},
 			Sample: map[string]any{
-				"page_id": "page_demo",
+				"page_id":           "page_demo",
+				"filter_properties": []string{"title"},
 			},
 		},
 	}
@@ -70,9 +75,10 @@ func notionPageUpdateSpec() adapter.OperationSpec {
 		Summary: "Update a Notion page's properties or archive state.",
 		Input: adapter.InputSpec{
 			Required: []string{"page_id"},
-			Optional: []string{"title", "title_property", "properties", "archived", "in_trash", "icon", "cover"},
+			Optional: []string{"title", "title_property", "properties", "archived", "in_trash", "is_locked", "erase_content", "template", "icon", "cover"},
 			Notes: []string{
 				"`in_trash` is the native field for current Notion API versions; `archived` remains accepted as a backward-compatible alias.",
+				"`template` currently supports `{ \"type\": \"default\" }` or `{ \"type\": \"template_id\", \"template_id\": \"...\" }`, with optional `timezone`.",
 				"`--verify` and `--debug-provider-payload` are supported for this operation.",
 			},
 			Sample: map[string]any{
