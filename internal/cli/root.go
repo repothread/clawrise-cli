@@ -758,6 +758,15 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  clawrise completion [bash|zsh|fish]")
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Write Enhancements:")
+	_, _ = fmt.Fprintln(w, "  --verify                  read back and verify the result after a successful write when supported")
+	_, _ = fmt.Fprintln(w, "  --debug-provider-payload  include the final provider request and response payloads when supported")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Examples:")
+	_, _ = fmt.Fprintln(w, "  clawrise notion.block.append --dry-run --json '{\"block_id\":\"blk_demo\",\"children\":[{\"type\":\"paragraph\",\"text\":\"Hello Clawrise\"}]}'")
+	_, _ = fmt.Fprintln(w, "  clawrise notion.block.append --verify --json '{\"block_id\":\"blk_demo\",\"children\":[{\"type\":\"paragraph\",\"text\":\"Hello Clawrise\"}]}'")
+	_, _ = fmt.Fprintln(w, "  clawrise notion.block.append --debug-provider-payload --verify --json '{\"block_id\":\"blk_demo\",\"children\":[{\"type\":\"paragraph\",\"text\":\"Hello Clawrise\"}]}'")
 }
 
 func printPlatformHelp(stdout io.Writer) {

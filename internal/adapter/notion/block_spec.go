@@ -74,6 +74,10 @@ func notionBlockAppendSpec() adapter.OperationSpec {
 				Title:   "Append blocks with provider-native nested bodies",
 				Command: `clawrise notion.block.append --dry-run --json '{"block_id":"blk_demo","children":[{"type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":"Hello Clawrise"}}]}}]}'`,
 			},
+			{
+				Title:   "Append blocks with provider payload debug and verification",
+				Command: `clawrise notion.block.append --debug-provider-payload --verify --json '{"block_id":"blk_demo","children":[{"type":"paragraph","text":"Hello Clawrise"}]}'`,
+			},
 		},
 	}
 }
@@ -103,6 +107,10 @@ func notionBlockUpdateSpec() adapter.OperationSpec {
 			{
 				Title:   "Update a block with a provider-native body wrapper",
 				Command: `clawrise notion.block.update --dry-run --json '{"block_id":"blk_demo","block":{"type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":"Updated paragraph"}}]}}}'`,
+			},
+			{
+				Title:   "Update a block with provider payload debug and verification",
+				Command: `clawrise notion.block.update --debug-provider-payload --verify --json '{"block_id":"blk_demo","type":"paragraph","text":"Updated paragraph"}'`,
 			},
 		},
 	}
