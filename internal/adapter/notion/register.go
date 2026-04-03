@@ -121,6 +121,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.task.block.attach_file",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  30 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskBlockAttachFileSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.AttachFileBlock(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.task.data_source.row.upsert",
 		Platform:        "notion",
 		Mutating:        true,

@@ -13,7 +13,7 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	RegisterOperations(registry, newTestClient(t, nil))
 
 	definitions := registry.Definitions()
-	if len(definitions) != 33 {
+	if len(definitions) != 34 {
 		t.Fatalf("unexpected definition count: %d", len(definitions))
 	}
 
@@ -76,6 +76,17 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	}
 	if readCompletePage.Spec.Summary == "" {
 		t.Fatalf("expected notion.task.page.read_complete summary to be present: %+v", readCompletePage.Spec)
+	}
+
+	attachFileBlock, ok := registry.Resolve("notion.task.block.attach_file")
+	if !ok {
+		t.Fatal("expected notion.task.block.attach_file to be registered")
+	}
+	if !attachFileBlock.Mutating {
+		t.Fatalf("expected notion.task.block.attach_file to be mutating: %+v", attachFileBlock)
+	}
+	if attachFileBlock.Spec.Summary == "" {
+		t.Fatalf("expected notion.task.block.attach_file summary to be present: %+v", attachFileBlock.Spec)
 	}
 
 	searchQuery, ok := registry.Resolve("notion.search.query")
