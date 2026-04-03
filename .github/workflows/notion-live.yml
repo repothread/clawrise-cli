@@ -42,6 +42,7 @@ jobs:
       NOTION_TOKEN: ${{ secrets.NOTION_TOKEN != '' && secrets.NOTION_TOKEN || vars.NOTION_TOKEN }}
       NOTION_PARENT_PAGE_ID: ${{ vars.NOTION_PARENT_PAGE_ID }}
       NOTION_VERSION: 2026-03-11
+      CLAWRISE_RUN_NOTION_LIVE: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,5 +53,5 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run Notion live workflow
-        run: ./scripts/ci/run-notion-live.sh
+      - name: Run Notion live go test
+        run: go test -count=1 -run TestNotionLiveSmokeWithRealToken -v ./internal/adapter/notion

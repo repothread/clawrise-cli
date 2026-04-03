@@ -197,13 +197,19 @@ function parseChecksumFile(filePath) {
 
     const match = rawLine.match(/^[a-fA-F0-9]+\s+\*?(.+?)\s*$/);
     assertCondition(match, `无法解析 SHA256SUMS 行：${rawLine}`);
-    const fileName = String(match[1] || '').trim();
+    const fileName = normalizeChecksumFileName(match[1]);
     assertCondition(fileName !== '', `SHA256SUMS 中存在空文件名行：${rawLine}`);
     assertCondition(!items.has(fileName), `SHA256SUMS 中存在重复文件项：${fileName}`);
     items.set(fileName, true);
   }
 
   return items;
+}
+
+function normalizeChecksumFileName(rawName) {
+  return String(rawName || '')
+    .trim()
+    .replace(/^\.\/+/, '');
 }
 
 function resolveCoreBinaryName(target) {

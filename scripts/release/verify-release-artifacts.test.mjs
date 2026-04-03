@@ -151,7 +151,7 @@ function createArchiveFixture(archivesRoot, version) {
   for (const target of releaseTargets) {
     const archiveName = `clawrise-cli_${version}_${target.archiveOS}-${target.archiveArch}.tar.gz`;
     fs.writeFileSync(path.join(archivesRoot, archiveName), '');
-    checksumLines.push(`${'a'.repeat(64)}  ${archiveName}`);
+    checksumLines.push(`${'a'.repeat(64)}  ./${archiveName}`);
   }
   fs.writeFileSync(path.join(archivesRoot, 'SHA256SUMS'), `${checksumLines.join('\n')}\n`);
 }

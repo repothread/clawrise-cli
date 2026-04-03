@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -2178,7 +2179,7 @@ func TestExecutorEmitsBuiltinWebhookAuditSink(t *testing.T) {
 		receivedBody   []byte
 		receivedHeader string
 	)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := newIPv4TestServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		receivedHeader = request.Header.Get("Authorization")
 		body, err := io.ReadAll(request.Body)
 		if err != nil {
@@ -2256,6 +2257,21 @@ func TestExecutorEmitsBuiltinWebhookAuditSink(t *testing.T) {
 	if !strings.Contains(string(receivedBody), `"operation":"demo.page.update"`) {
 		t.Fatalf("expected webhook body to carry audit record, got: %s", string(receivedBody))
 	}
+}
+
+func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+
+	// 显式绑定到 127.0.0.1，避免在 IPv6 受限环境下默认监听 [::1] 造成测试不稳定。
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on ipv4 loopback: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(handler)
+	server.Listener = listener
+	server.Start()
+	return server
 }
 
 type roundTripFunc func(request *http.Request) (*http.Response, error)
