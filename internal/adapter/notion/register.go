@@ -154,6 +154,39 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.ensure_sections",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPageEnsureSectionsSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.EnsurePageSections(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.append_under_heading",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPageAppendUnderHeadingSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.AppendUnderHeading(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.find_or_create_by_path",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPageFindOrCreateByPathSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.FindOrCreatePageByPath(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.task.page.read_complete",
 		Platform:        "notion",
 		Mutating:        false,
@@ -162,6 +195,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Spec:            notionTaskPageReadCompleteSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.ReadCompletePage(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.read_graph",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPageReadGraphSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ReadPageGraph(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{
@@ -206,6 +250,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Spec:            notionTaskDataSourceRowUpsertSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.UpsertDataSourceRow(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.task.data_source.schema.ensure",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskDataSourceSchemaEnsureSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.EnsureDataSourceSchema(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{

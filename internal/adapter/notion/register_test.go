@@ -13,7 +13,7 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	RegisterOperations(registry, newTestClient(t, nil))
 
 	definitions := registry.Definitions()
-	if len(definitions) != 41 {
+	if len(definitions) != 46 {
 		t.Fatalf("unexpected definition count: %d", len(definitions))
 	}
 
@@ -67,6 +67,14 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 		t.Fatalf("expected notion.task.data_source.row.upsert summary to be present: %+v", upsertRow.Spec)
 	}
 
+	schemaEnsure, ok := registry.Resolve("notion.task.data_source.schema.ensure")
+	if !ok {
+		t.Fatal("expected notion.task.data_source.schema.ensure to be registered")
+	}
+	if !schemaEnsure.Mutating {
+		t.Fatalf("expected notion.task.data_source.schema.ensure to be mutating: %+v", schemaEnsure)
+	}
+
 	upsertMarkdownChild, ok := registry.Resolve("notion.task.page.upsert_markdown_child")
 	if !ok {
 		t.Fatal("expected notion.task.page.upsert_markdown_child to be registered")
@@ -89,6 +97,30 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 		t.Fatalf("expected notion.task.page.patch_section summary to be present: %+v", patchSection.Spec)
 	}
 
+	ensureSections, ok := registry.Resolve("notion.task.page.ensure_sections")
+	if !ok {
+		t.Fatal("expected notion.task.page.ensure_sections to be registered")
+	}
+	if !ensureSections.Mutating {
+		t.Fatalf("expected notion.task.page.ensure_sections to be mutating: %+v", ensureSections)
+	}
+
+	appendUnderHeading, ok := registry.Resolve("notion.task.page.append_under_heading")
+	if !ok {
+		t.Fatal("expected notion.task.page.append_under_heading to be registered")
+	}
+	if !appendUnderHeading.Mutating {
+		t.Fatalf("expected notion.task.page.append_under_heading to be mutating: %+v", appendUnderHeading)
+	}
+
+	findOrCreateByPath, ok := registry.Resolve("notion.task.page.find_or_create_by_path")
+	if !ok {
+		t.Fatal("expected notion.task.page.find_or_create_by_path to be registered")
+	}
+	if !findOrCreateByPath.Mutating {
+		t.Fatalf("expected notion.task.page.find_or_create_by_path to be mutating: %+v", findOrCreateByPath)
+	}
+
 	readCompletePage, ok := registry.Resolve("notion.task.page.read_complete")
 	if !ok {
 		t.Fatal("expected notion.task.page.read_complete to be registered")
@@ -98,6 +130,14 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	}
 	if readCompletePage.Spec.Summary == "" {
 		t.Fatalf("expected notion.task.page.read_complete summary to be present: %+v", readCompletePage.Spec)
+	}
+
+	readGraph, ok := registry.Resolve("notion.task.page.read_graph")
+	if !ok {
+		t.Fatal("expected notion.task.page.read_graph to be registered")
+	}
+	if readGraph.Mutating {
+		t.Fatalf("expected notion.task.page.read_graph to be read-only: %+v", readGraph)
 	}
 
 	attachFileBlock, ok := registry.Resolve("notion.task.block.attach_file")

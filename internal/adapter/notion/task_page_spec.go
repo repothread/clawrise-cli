@@ -84,6 +84,98 @@ func notionTaskPagePatchSectionSpec() adapter.OperationSpec {
 	}
 }
 
+func notionTaskPageEnsureSectionsSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Ensure one page contains the requested heading sections, creating only the missing sections.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id", "sections"},
+			Optional: []string{"allow_truncated", "allow_unknown_blocks"},
+			Notes: []string{
+				"Each `sections` item requires exactly one of `heading` or `heading_path`.",
+				"Each section item may optionally provide `heading_level` plus one of `markdown` or `file_path` to seed the section body when it is newly created.",
+				"Existing sections are left unchanged.",
+			},
+			Sample: map[string]any{
+				"page_id": "page_demo",
+				"sections": []any{
+					map[string]any{
+						"heading":       "Summary",
+						"heading_level": 2,
+					},
+					map[string]any{
+						"heading_path":  []string{"Weekly Review", "Risks"},
+						"heading_level": 2,
+						"markdown":      "- Pending vendor confirmation",
+					},
+				},
+			},
+		},
+	}
+}
+
+func notionTaskPageAppendUnderHeadingSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Append markdown content under one page heading, optionally creating that heading first.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id"},
+			Optional: []string{"heading", "heading_path", "heading_level", "markdown", "file_path", "create_if_missing", "allow_truncated", "allow_unknown_blocks"},
+			Notes: []string{
+				"Provide exactly one of `heading` or `heading_path`.",
+				"Provide exactly one of `markdown` or `file_path`.",
+				"When the target heading is missing, set `create_if_missing=true` to create it and append the provided content in one step.",
+			},
+			Sample: map[string]any{
+				"page_id":           "page_demo",
+				"heading":           "Action Items",
+				"heading_level":     2,
+				"markdown":          "- Follow up with partner team",
+				"create_if_missing": true,
+			},
+		},
+	}
+}
+
+func notionTaskPageFindOrCreateByPathSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Resolve one root page or data source context, then find or create a page path under it.",
+		Input: adapter.InputSpec{
+			Optional: []string{"parent_page_id", "target", "url", "database_id", "data_source_id", "page_id", "data_source_name", "path", "path_string", "markdown", "file_path", "create_if_missing", "search_page_size", "position", "after", "template"},
+			Notes: []string{
+				"Provide one root selector plus one of `path` or `path_string`.",
+				"`path` may be a string like `Project A / Weekly / 2026-W14` or an array of titles.",
+				"`markdown` or `file_path` is used only when the leaf page must be newly created.",
+			},
+			Sample: map[string]any{
+				"parent_page_id": "page_demo",
+				"path":           []string{"Project A", "Weekly", "2026-W14"},
+				"markdown":       "# 2026-W14\n\nDraft created by Clawrise.",
+			},
+		},
+	}
+}
+
+func notionTaskPageReadGraphSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Read one page plus related pages discovered from relation properties, up to a bounded depth and node count.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id"},
+			Optional: []string{"relation_properties", "filter_properties", "property_item_page_size", "include_markdown", "include_transcript", "expand_unknown_blocks", "unknown_block_limit", "max_depth", "max_nodes", "stop_on_error"},
+			Notes: []string{
+				"`relation_properties` narrows graph traversal to specific relation property names; otherwise all relation properties are followed.",
+				"`filter_properties` must include every relation property named in `relation_properties`.",
+				"`max_depth` defaults to 1 and `max_nodes` defaults to 20 to keep graph reads bounded.",
+			},
+			Sample: map[string]any{
+				"page_id":             "page_demo",
+				"relation_properties": []string{"Related Tasks", "Customer"},
+				"include_markdown":    true,
+				"max_depth":           2,
+				"max_nodes":           10,
+			},
+		},
+	}
+}
+
 func notionTaskPageReadCompleteSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Read one Notion page as completely as possible by combining page metadata, full property items, and recursively fetched markdown subtrees.",

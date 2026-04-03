@@ -46,6 +46,44 @@ func notionTaskDataSourceRowUpsertSpec() adapter.OperationSpec {
 	}
 }
 
+func notionTaskDataSourceSchemaEnsureSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Resolve one target data source and add missing schema properties or options without rewriting the whole schema.",
+		Input: adapter.InputSpec{
+			Optional: []string{"target", "url", "database_id", "data_source_id", "page_id", "data_source_name", "title", "description", "properties"},
+			Notes: []string{
+				"Provide one target selector plus at least one of `title`, `description`, or `properties`.",
+				"`properties` follows the provider-native Notion property schema shape.",
+				"This task is additive by default: it adds missing properties and missing select-like options, but does not rewrite existing non-option property definitions.",
+			},
+			Sample: map[string]any{
+				"target": "https://www.notion.so/workspace/Project-Hub-0123456789abcdef0123456789abcdef",
+				"properties": map[string]any{
+					"Status": map[string]any{
+						"select": map[string]any{
+							"options": []any{
+								map[string]any{
+									"name":  "Active",
+									"color": "green",
+								},
+							},
+						},
+					},
+					"Owner": map[string]any{
+						"people": map[string]any{},
+					},
+				},
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Ensure one CRM data source has the expected fields",
+				Command: `clawrise notion.task.data_source.schema.ensure --json '{"data_source_id":"ds_demo","properties":{"Status":{"select":{"options":[{"name":"Active"}]}},"Owner":{"people":{}}}}'`,
+			},
+		},
+	}
+}
+
 func notionTaskDataSourceBulkUpsertSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Bulk create or update multiple rows under one Notion data source by repeatedly applying row upsert semantics and returning per-item results.",
