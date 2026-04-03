@@ -11,6 +11,39 @@ import (
 // RegisterOperations registers Notion operations into the shared registry.
 func RegisterOperations(registry *adapter.Registry, client *Client) {
 	registry.Register(adapter.Definition{
+		Operation:       "notion.database.get",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionDatabaseGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetDatabase(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.database.create",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionDatabaseCreateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.CreateDatabase(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.database.update",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionDatabaseUpdateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.UpdateDatabase(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.page.create",
 		Platform:        "notion",
 		Mutating:        true,
@@ -110,6 +143,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.patch_section",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPagePatchSectionSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.PatchPageSection(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.task.page.read_complete",
 		Platform:        "notion",
 		Mutating:        false,
@@ -143,6 +187,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.task.database.resolve_target",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskDatabaseResolveTargetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ResolveDatabaseTarget(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.task.data_source.row.upsert",
 		Platform:        "notion",
 		Mutating:        true,
@@ -151,6 +206,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		Spec:            notionTaskDataSourceRowUpsertSpec(),
 		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
 			return client.UpsertDataSourceRow(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.task.data_source.bulk_upsert",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  30 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskDataSourceBulkUpsertSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.BulkUpsertDataSourceRows(ctx, executionProfileFromCall(call), call.Input)
 		},
 	})
 	registry.Register(adapter.Definition{

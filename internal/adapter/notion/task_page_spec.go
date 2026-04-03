@@ -55,6 +55,35 @@ func notionTaskPageUpsertMarkdownChildSpec() adapter.OperationSpec {
 	}
 }
 
+func notionTaskPagePatchSectionSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Replace one markdown section under a Notion page by exact heading or heading path, and append it when missing if requested.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id"},
+			Optional: []string{"heading", "heading_path", "heading_level", "markdown", "file_path", "create_if_missing", "allow_truncated", "allow_unknown_blocks"},
+			Notes: []string{
+				"Provide exactly one of `heading` or `heading_path`.",
+				"Provide exactly one of `markdown` or `file_path`; this content becomes the body of the matched section and does not need to repeat the heading line.",
+				"`heading_level` is used to disambiguate one exact heading name, and also controls the level used when appending a missing section.",
+				"For safety, the task rejects pages whose markdown is truncated or reports `unknown_block_ids` unless explicitly allowed.",
+			},
+			Sample: map[string]any{
+				"page_id":           "page_demo",
+				"heading_path":      []string{"Weekly Review", "Risks"},
+				"heading_level":     2,
+				"markdown":          "- API 限流仍需观察\n- 依赖升级待验证",
+				"create_if_missing": true,
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Replace one Risks section under a page",
+				Command: `clawrise notion.task.page.patch_section --json '{"page_id":"page_demo","heading":"Risks","heading_level":2,"markdown":"- API 限流仍需观察"}'`,
+			},
+		},
+	}
+}
+
 func notionTaskPageReadCompleteSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Read one Notion page as completely as possible by combining page metadata, full property items, and recursively fetched markdown subtrees.",

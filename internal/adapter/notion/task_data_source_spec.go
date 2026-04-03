@@ -45,3 +45,46 @@ func notionTaskDataSourceRowUpsertSpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func notionTaskDataSourceBulkUpsertSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Bulk create or update multiple rows under one Notion data source by repeatedly applying row upsert semantics and returning per-item results.",
+		Input: adapter.InputSpec{
+			Required: []string{"data_source_id", "items"},
+			Optional: []string{"title_property", "create_if_missing", "page_size", "filter_properties", "stop_on_error"},
+			Notes: []string{
+				"Each `items` entry follows the same shape as `notion.task.data_source.row.upsert`, except `data_source_id` is inherited from the outer request.",
+				"Outer optional fields such as `title_property`, `create_if_missing`, `page_size`, and `filter_properties` are used as defaults when one item does not override them.",
+				"`stop_on_error` defaults to false so the task can return partial success details for AI batch sync flows.",
+			},
+			Sample: map[string]any{
+				"data_source_id": "ds_demo",
+				"title_property": "Name",
+				"items": []any{
+					map[string]any{
+						"match": map[string]any{
+							"property": "External ID",
+							"rich_text": map[string]any{
+								"equals": "crm_123",
+							},
+						},
+						"title": "Acme Corp",
+						"properties": map[string]any{
+							"Status": map[string]any{
+								"select": map[string]any{
+									"name": "Active",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Bulk upsert two CRM rows",
+				Command: `clawrise notion.task.data_source.bulk_upsert --json '{"data_source_id":"ds_demo","title_property":"Name","items":[{"match":{"property":"External ID","rich_text":{"equals":"crm_123"}},"title":"Acme Corp"},{"match":{"property":"External ID","rich_text":{"equals":"crm_456"}},"title":"Globex"}]}'`,
+			},
+		},
+	}
+}

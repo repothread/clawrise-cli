@@ -13,8 +13,19 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	RegisterOperations(registry, newTestClient(t, nil))
 
 	definitions := registry.Definitions()
-	if len(definitions) != 35 {
+	if len(definitions) != 41 {
 		t.Fatalf("unexpected definition count: %d", len(definitions))
+	}
+
+	getDatabase, ok := registry.Resolve("notion.database.get")
+	if !ok {
+		t.Fatal("expected notion.database.get to be registered")
+	}
+	if getDatabase.Mutating {
+		t.Fatalf("expected notion.database.get to be read-only: %+v", getDatabase)
+	}
+	if getDatabase.Spec.Summary == "" {
+		t.Fatalf("expected notion.database.get summary to be present: %+v", getDatabase.Spec)
 	}
 
 	createPage, ok := registry.Resolve("notion.page.create")
@@ -67,6 +78,17 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 		t.Fatalf("expected notion.task.page.upsert_markdown_child summary to be present: %+v", upsertMarkdownChild.Spec)
 	}
 
+	patchSection, ok := registry.Resolve("notion.task.page.patch_section")
+	if !ok {
+		t.Fatal("expected notion.task.page.patch_section to be registered")
+	}
+	if !patchSection.Mutating {
+		t.Fatalf("expected notion.task.page.patch_section to be mutating: %+v", patchSection)
+	}
+	if patchSection.Spec.Summary == "" {
+		t.Fatalf("expected notion.task.page.patch_section summary to be present: %+v", patchSection.Spec)
+	}
+
 	readCompletePage, ok := registry.Resolve("notion.task.page.read_complete")
 	if !ok {
 		t.Fatal("expected notion.task.page.read_complete to be registered")
@@ -100,6 +122,17 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 		t.Fatalf("expected notion.task.meeting_notes.get summary to be present: %+v", meetingNotesGet.Spec)
 	}
 
+	resolveDatabaseTarget, ok := registry.Resolve("notion.task.database.resolve_target")
+	if !ok {
+		t.Fatal("expected notion.task.database.resolve_target to be registered")
+	}
+	if resolveDatabaseTarget.Mutating {
+		t.Fatalf("expected notion.task.database.resolve_target to be read-only: %+v", resolveDatabaseTarget)
+	}
+	if resolveDatabaseTarget.Spec.Summary == "" {
+		t.Fatalf("expected notion.task.database.resolve_target summary to be present: %+v", resolveDatabaseTarget.Spec)
+	}
+
 	searchQuery, ok := registry.Resolve("notion.search.query")
 	if !ok {
 		t.Fatal("expected notion.search.query to be registered")
@@ -120,5 +153,16 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	}
 	if fileUploadSend.Spec.Summary == "" {
 		t.Fatalf("expected notion.file_upload.send summary to be present: %+v", fileUploadSend.Spec)
+	}
+
+	bulkUpsert, ok := registry.Resolve("notion.task.data_source.bulk_upsert")
+	if !ok {
+		t.Fatal("expected notion.task.data_source.bulk_upsert to be registered")
+	}
+	if !bulkUpsert.Mutating {
+		t.Fatalf("expected notion.task.data_source.bulk_upsert to be mutating: %+v", bulkUpsert)
+	}
+	if bulkUpsert.Spec.Summary == "" {
+		t.Fatalf("expected notion.task.data_source.bulk_upsert summary to be present: %+v", bulkUpsert.Spec)
 	}
 }

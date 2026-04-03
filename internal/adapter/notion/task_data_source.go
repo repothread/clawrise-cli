@@ -142,6 +142,115 @@ func (c *Client) UpsertDataSourceRow(ctx context.Context, profile ExecutionProfi
 	}
 }
 
+// BulkUpsertDataSourceRows 批量执行 row.upsert，并返回逐项结果，方便 AI 做同步、导入、整理等批处理任务。
+// BulkUpsertDataSourceRows runs row.upsert repeatedly and returns per-item results for AI-oriented batch sync flows.
+func (c *Client) BulkUpsertDataSourceRows(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	dataSourceID, appErr := requireIDField(input, "data_source_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	rawItems, ok := asArray(input["items"])
+	if !ok || len(rawItems) == 0 {
+		return nil, apperr.New("INVALID_INPUT", "items must be a non-empty array")
+	}
+
+	stopOnError := false
+	if value, ok := asBool(input["stop_on_error"]); ok {
+		stopOnError = value
+	}
+
+	results := make([]map[string]any, 0, len(rawItems))
+	createdCount := 0
+	updatedCount := 0
+	failedCount := 0
+	stopped := false
+
+	for index, rawItem := range rawItems {
+		itemInput, appErr := buildBulkUpsertItemInput(dataSourceID, input, rawItem)
+		if appErr != nil {
+			results = append(results, buildBulkUpsertErrorResult(index, rawItem, appErr))
+			failedCount++
+			if stopOnError {
+				stopped = true
+				break
+			}
+			continue
+		}
+
+		itemResult, appErr := c.UpsertDataSourceRow(ctx, profile, itemInput)
+		if appErr != nil {
+			results = append(results, buildBulkUpsertErrorResult(index, rawItem, appErr))
+			failedCount++
+			if stopOnError {
+				stopped = true
+				break
+			}
+			continue
+		}
+
+		action, _ := asString(itemResult["action"])
+		switch strings.TrimSpace(action) {
+		case "created":
+			createdCount++
+		case "updated":
+			updatedCount++
+		}
+
+		results = append(results, map[string]any{
+			"index":  index,
+			"ok":     true,
+			"action": strings.TrimSpace(action),
+			"result": cloneMap(itemResult),
+		})
+	}
+
+	return map[string]any{
+		"data_source_id": dataSourceID,
+		"total_count":    len(rawItems),
+		"success_count":  createdCount + updatedCount,
+		"created_count":  createdCount,
+		"updated_count":  updatedCount,
+		"failed_count":   failedCount,
+		"stopped":        stopped,
+		"items":          results,
+	}, nil
+}
+
+func buildBulkUpsertItemInput(dataSourceID string, defaults map[string]any, rawItem any) (map[string]any, *apperr.AppError) {
+	record, ok := asMap(rawItem)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "each items entry must be an object")
+	}
+
+	merged := map[string]any{
+		"data_source_id": dataSourceID,
+	}
+	copyOptionalTaskFields(defaults, merged, "title_property", "create_if_missing", "page_size", "filter_properties")
+	for key, value := range record {
+		merged[key] = cloneDebugValue(value)
+	}
+	return merged, nil
+}
+
+func buildBulkUpsertErrorResult(index int, rawItem any, appErr *apperr.AppError) map[string]any {
+	result := map[string]any{
+		"index": index,
+		"ok":    false,
+		"error": map[string]any{
+			"code":          appErr.Code,
+			"message":       appErr.Message,
+			"retryable":     appErr.Retryable,
+			"upstream_code": appErr.UpstreamCode,
+			"http_status":   appErr.HTTPStatus,
+		},
+	}
+	if record, ok := asMap(rawItem); ok {
+		result["input"] = cloneMap(record)
+	}
+	return result
+}
+
 // resolveOptionalMarkdownTaskSource 在 markdown/file_path 是可选时复用相同的输入校验和文件读取逻辑。
 // resolveOptionalMarkdownTaskSource reuses the same validation and file loading logic when markdown or file_path is optional.
 func resolveOptionalMarkdownTaskSource(input map[string]any) (string, string, bool, *apperr.AppError) {
