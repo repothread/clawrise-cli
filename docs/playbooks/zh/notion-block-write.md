@@ -107,10 +107,42 @@ clawrise notion.block.append --verify --json '{
 }'
 ```
 
+## 8. 先上传文件，再写入 file block
+
+```bash
+clawrise notion.file_upload.create --json '{
+  "mode":"single_part",
+  "filename":"demo.txt",
+  "content_type":"text/plain"
+}'
+```
+
+拿到 `file_upload_id` 后：
+
+```bash
+clawrise notion.file_upload.send --json '{
+  "file_upload_id":"fu_demo",
+  "file_path":"/tmp/demo.txt",
+  "content_type":"text/plain"
+}'
+```
+
+然后把它挂到 block：
+
+```bash
+clawrise notion.block.append --json '{
+  "block_id":"page_demo",
+  "children":[
+    {"type":"file","file_upload_id":"fu_demo"}
+  ]
+}'
+```
+
 ## 使用建议
 
 - 在载荷形态稳定之前，始终把 `--dry-run` 放在回路里
 - 需要写后立即确认结果时，在支持的 Notion 写操作上加 `--verify`
 - 需要查看最终上游请求和响应时，在支持的 Notion 写操作上加 `--debug-provider-payload`
+- 需要写入 `image` 或 `file` block 时，优先先走 `notion.file_upload.*`，再把 `file_upload_id` 传给 block
 - 如果你是在复用 Notion 读取结果或中间转换结果，保留 provider-native 嵌套 block body 是安全的
 - 如果任务本质上是 markdown 优先的整页编辑，优先考虑 `notion.page.markdown.update`

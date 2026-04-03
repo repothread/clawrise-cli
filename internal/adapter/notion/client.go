@@ -553,6 +553,12 @@ type notionDataSourceTemplate struct {
 	IsDefault bool   `json:"is_default"`
 }
 
+type notionFileUploadListResponse struct {
+	Results    []map[string]any `json:"results"`
+	HasMore    bool             `json:"has_more"`
+	NextCursor *string          `json:"next_cursor"`
+}
+
 type notionBlockChildrenResponse struct {
 	Results    []map[string]any `json:"results"`
 	HasMore    bool             `json:"has_more"`

@@ -176,6 +176,61 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.file_upload.create",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  30 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionFileUploadCreateSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.CreateFileUpload(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.file_upload.get",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionFileUploadGetSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.GetFileUpload(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.file_upload.list",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionFileUploadListSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ListFileUploads(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.file_upload.send",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  60 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionFileUploadSendSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.SendFileUpload(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.file_upload.complete",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  30 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionFileUploadCompleteSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.CompleteFileUpload(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.block.get",
 		Platform:        "notion",
 		Mutating:        false,

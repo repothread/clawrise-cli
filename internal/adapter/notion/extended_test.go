@@ -188,6 +188,64 @@ func TestAppendBlockChildrenSupportsExtendedTypes(t *testing.T) {
 	}
 }
 
+func TestAppendBlockChildrenSupportsFileUploadBackedMediaBlocks(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	client := newTestClient(t, &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/blocks/block_demo/children" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode append payload: %v", err)
+			}
+			children := payload["children"].([]any)
+			imageBody := children[0].(map[string]any)["image"].(map[string]any)
+			if imageBody["type"] != "file_upload" || imageBody["file_upload"].(map[string]any)["id"] != "fu_image_demo" {
+				t.Fatalf("unexpected image file_upload payload: %+v", imageBody)
+			}
+			fileBody := children[1].(map[string]any)["file"].(map[string]any)
+			if fileBody["type"] != "file_upload" || fileBody["file_upload"].(map[string]any)["id"] != "fu_file_demo" {
+				t.Fatalf("unexpected file file_upload payload: %+v", fileBody)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"results": []map[string]any{
+					{"id": "blk_media_1"},
+					{"id": "blk_media_2"},
+				},
+			}), nil
+		},
+	})
+
+	data, appErr := client.AppendBlockChildren(context.Background(), testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+		"children": []any{
+			map[string]any{
+				"type":           "image",
+				"file_upload_id": "fu_image_demo",
+			},
+			map[string]any{
+				"type": "file",
+				"file": map[string]any{
+					"type": "file_upload",
+					"file_upload": map[string]any{
+						"id": "fu_file_demo",
+					},
+				},
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("AppendBlockChildren returned error: %+v", appErr)
+	}
+	if data["appended_count"] != 2 {
+		t.Fatalf("unexpected appended_count: %+v", data["appended_count"])
+	}
+}
+
 func TestCommentOperationsSuccess(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

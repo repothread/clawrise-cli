@@ -37,6 +37,25 @@ func TestBuildUpdatePagePayloadSupportsArchivedAliasIconAndCover(t *testing.T) {
 	}
 }
 
+func TestBuildUpdatePagePayloadSupportsFileUploadIcon(t *testing.T) {
+	payload, appErr := buildUpdatePagePayload(map[string]any{
+		"icon": map[string]any{
+			"file_upload_id": "fu_demo",
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("buildUpdatePagePayload returned error: %+v", appErr)
+	}
+	icon := payload["icon"].(map[string]any)
+	if icon["type"] != "file_upload" {
+		t.Fatalf("unexpected icon payload: %+v", icon)
+	}
+	fileUpload := icon["file_upload"].(map[string]any)
+	if fileUpload["id"] != "fu_demo" {
+		t.Fatalf("unexpected file_upload icon payload: %+v", icon)
+	}
+}
+
 func TestBuildUpdatePagePayloadSupportsInTrashField(t *testing.T) {
 	payload, appErr := buildUpdatePagePayload(map[string]any{
 		"in_trash": true,
@@ -82,6 +101,43 @@ func TestBuildUpdatePagePayloadRejectsInvalidTemplate(t *testing.T) {
 	}
 	if appErr.Code != "INVALID_INPUT" {
 		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
+func TestBuildBlockSupportsFileUploadBackedMediaBlocks(t *testing.T) {
+	imagePayload, appErr := buildBlock(map[string]any{
+		"type":           "image",
+		"file_upload_id": "fu_image_demo",
+	})
+	if appErr != nil {
+		t.Fatalf("buildBlock returned error for image file_upload: %+v", appErr)
+	}
+	imageBody := imagePayload["image"].(map[string]any)
+	if imageBody["type"] != "file_upload" {
+		t.Fatalf("unexpected image payload: %+v", imageBody)
+	}
+	if imageBody["file_upload"].(map[string]any)["id"] != "fu_image_demo" {
+		t.Fatalf("unexpected image file_upload payload: %+v", imageBody)
+	}
+
+	filePayload, appErr := buildBlock(map[string]any{
+		"type": "file",
+		"file": map[string]any{
+			"type": "file_upload",
+			"file_upload": map[string]any{
+				"id": "fu_file_demo",
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("buildBlock returned error for file file_upload: %+v", appErr)
+	}
+	fileBody := filePayload["file"].(map[string]any)
+	if fileBody["type"] != "file_upload" {
+		t.Fatalf("unexpected file payload: %+v", fileBody)
+	}
+	if fileBody["file_upload"].(map[string]any)["id"] != "fu_file_demo" {
+		t.Fatalf("unexpected file file_upload payload: %+v", fileBody)
 	}
 }
 

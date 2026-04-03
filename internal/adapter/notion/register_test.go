@@ -12,7 +12,7 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	RegisterOperations(registry, newTestClient(t, nil))
 
 	definitions := registry.Definitions()
-	if len(definitions) != 22 {
+	if len(definitions) != 28 {
 		t.Fatalf("unexpected definition count: %d", len(definitions))
 	}
 
@@ -42,5 +42,16 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	}
 	if searchQuery.Spec.Summary == "" {
 		t.Fatalf("expected notion.search.query summary to be present: %+v", searchQuery.Spec)
+	}
+
+	fileUploadSend, ok := registry.Resolve("notion.file_upload.send")
+	if !ok {
+		t.Fatal("expected notion.file_upload.send to be registered")
+	}
+	if !fileUploadSend.Mutating {
+		t.Fatalf("expected notion.file_upload.send to be mutating: %+v", fileUploadSend)
+	}
+	if fileUploadSend.Spec.Summary == "" {
+		t.Fatalf("expected notion.file_upload.send summary to be present: %+v", fileUploadSend.Spec)
 	}
 }

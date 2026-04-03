@@ -432,7 +432,15 @@ func buildCalloutIcon(input map[string]any, bodyInput map[string]any) (map[strin
 
 func buildExternalFileBlockBody(blockType string, input map[string]any, bodyInput map[string]any) (map[string]any, *apperr.AppError) {
 	body := map[string]any{}
-	if urlValue, ok := blockString(input, bodyInput, "url"); ok && strings.TrimSpace(urlValue) != "" {
+	if fileUploadID, ok := blockString(input, bodyInput, "file_upload_id"); ok && strings.TrimSpace(fileUploadID) != "" {
+		body["type"] = "file_upload"
+		body["file_upload"] = map[string]any{
+			"id": strings.TrimSpace(fileUploadID),
+		}
+	} else if fileUpload, ok := blockMap(input, bodyInput, "file_upload"); ok && len(fileUpload) > 0 {
+		body["type"] = "file_upload"
+		body["file_upload"] = cloneMap(fileUpload)
+	} else if urlValue, ok := blockString(input, bodyInput, "url"); ok && strings.TrimSpace(urlValue) != "" {
 		body["type"] = "external"
 		body["external"] = map[string]any{
 			"url": strings.TrimSpace(urlValue),
@@ -445,17 +453,26 @@ func buildExternalFileBlockBody(blockType string, input map[string]any, bodyInpu
 		if !ok || strings.TrimSpace(providerType) == "" {
 			return nil, apperr.New("INVALID_INPUT", "url is required for external file blocks")
 		}
-		if strings.TrimSpace(providerType) != "external" {
-			return nil, apperr.New("INVALID_INPUT", blockType+" blocks currently support only external file payloads")
-		}
-		if external, ok := blockMap(input, bodyInput, "external"); ok && len(external) > 0 {
-			body["type"] = "external"
-			body["external"] = cloneMap(external)
-		} else {
-			return nil, apperr.New("INVALID_INPUT", "external is required for external file blocks")
+		switch strings.TrimSpace(providerType) {
+		case "external":
+			if external, ok := blockMap(input, bodyInput, "external"); ok && len(external) > 0 {
+				body["type"] = "external"
+				body["external"] = cloneMap(external)
+			} else {
+				return nil, apperr.New("INVALID_INPUT", "external is required for external file blocks")
+			}
+		case "file_upload":
+			if fileUpload, ok := blockMap(input, bodyInput, "file_upload"); ok && len(fileUpload) > 0 {
+				body["type"] = "file_upload"
+				body["file_upload"] = cloneMap(fileUpload)
+			} else {
+				return nil, apperr.New("INVALID_INPUT", "file_upload is required for file_upload-backed file blocks")
+			}
+		default:
+			return nil, apperr.New("INVALID_INPUT", blockType+" blocks currently support only external or file_upload payloads")
 		}
 	} else {
-		return nil, apperr.New("INVALID_INPUT", "url is required for external file blocks")
+		return nil, apperr.New("INVALID_INPUT", "one of url, file_upload_id, or file_upload is required for file blocks")
 	}
 
 	caption, appErr := buildNamedRichText(input, bodyInput, "caption", "caption_rich_text")

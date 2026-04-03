@@ -107,10 +107,42 @@ clawrise notion.block.append --verify --json '{
 }'
 ```
 
+## Upload first, then write a file block
+
+```bash
+clawrise notion.file_upload.create --json '{
+  "mode":"single_part",
+  "filename":"demo.txt",
+  "content_type":"text/plain"
+}'
+```
+
+After you have a `file_upload_id`:
+
+```bash
+clawrise notion.file_upload.send --json '{
+  "file_upload_id":"fu_demo",
+  "file_path":"/tmp/demo.txt",
+  "content_type":"text/plain"
+}'
+```
+
+Then attach it to a block:
+
+```bash
+clawrise notion.block.append --json '{
+  "block_id":"page_demo",
+  "children":[
+    {"type":"file","file_upload_id":"fu_demo"}
+  ]
+}'
+```
+
 ## Practical guidance
 
 - keep `--dry-run` in the loop until the payload shape is stable
 - add `--verify` on supported Notion writes when the agent needs an immediate read-after-write check
 - add `--debug-provider-payload` when the agent needs the final upstream request and response payloads in the execution envelope
+- when writing `image` or `file` blocks, prefer `notion.file_upload.*` first and then pass `file_upload_id` into the block payload
 - if you are reusing block objects from another Notion read or transform step, keeping the provider-native nested body is safe
 - prefer `notion.page.markdown.update` when the task is really markdown-first page editing instead of structured block editing

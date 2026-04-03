@@ -382,6 +382,14 @@ func normalizeNotionFileObject(raw any, allowEmoji bool) (map[string]any, *apper
 			},
 		}, nil
 	case map[string]any:
+		if fileUploadID, ok := asString(value["file_upload_id"]); ok && strings.TrimSpace(fileUploadID) != "" {
+			return map[string]any{
+				"type": "file_upload",
+				"file_upload": map[string]any{
+					"id": strings.TrimSpace(fileUploadID),
+				},
+			}, nil
+		}
 		return cloneMap(value), nil
 	default:
 		return nil, apperr.New("INVALID_INPUT", "file object must be a string or an object")
