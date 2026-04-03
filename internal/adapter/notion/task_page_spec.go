@@ -54,3 +54,32 @@ func notionTaskPageUpsertMarkdownChildSpec() adapter.OperationSpec {
 		},
 	}
 }
+
+func notionTaskPageReadCompleteSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Read one Notion page as completely as possible by combining page metadata, full property items, and recursively fetched markdown subtrees.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id"},
+			Optional: []string{"filter_properties", "include_property_items", "property_item_page_size", "include_markdown", "include_transcript", "expand_unknown_blocks", "unknown_block_limit"},
+			Notes: []string{
+				"`filter_properties` narrows both the base page response and the property items that will be completed.",
+				"`include_property_items` defaults to true and fetches each selected property through `notion.page.property_item.get` until pagination is exhausted.",
+				"`include_markdown` defaults to true and reads `notion.page.markdown.get` for the page body.",
+				"`expand_unknown_blocks` defaults to true and recursively calls the markdown endpoint again for returned `unknown_block_ids`, up to `unknown_block_limit`.",
+			},
+			Sample: map[string]any{
+				"page_id":                "page_demo",
+				"include_property_items": true,
+				"include_markdown":       true,
+				"expand_unknown_blocks":  true,
+				"unknown_block_limit":    10,
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Read one page with full properties and markdown appendices",
+				Command: `clawrise notion.task.page.read_complete --json '{"page_id":"page_demo","include_property_items":true,"include_markdown":true,"expand_unknown_blocks":true}'`,
+			},
+		},
+	}
+}

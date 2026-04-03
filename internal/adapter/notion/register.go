@@ -110,6 +110,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.read_complete",
+		Platform:        "notion",
+		Mutating:        false,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPageReadCompleteSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ReadCompletePage(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.task.data_source.row.upsert",
 		Platform:        "notion",
 		Mutating:        true,

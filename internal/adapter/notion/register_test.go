@@ -13,7 +13,7 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	RegisterOperations(registry, newTestClient(t, nil))
 
 	definitions := registry.Definitions()
-	if len(definitions) != 32 {
+	if len(definitions) != 33 {
 		t.Fatalf("unexpected definition count: %d", len(definitions))
 	}
 
@@ -65,6 +65,17 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	}
 	if upsertMarkdownChild.Spec.Summary == "" {
 		t.Fatalf("expected notion.task.page.upsert_markdown_child summary to be present: %+v", upsertMarkdownChild.Spec)
+	}
+
+	readCompletePage, ok := registry.Resolve("notion.task.page.read_complete")
+	if !ok {
+		t.Fatal("expected notion.task.page.read_complete to be registered")
+	}
+	if readCompletePage.Mutating {
+		t.Fatalf("expected notion.task.page.read_complete to be read-only: %+v", readCompletePage)
+	}
+	if readCompletePage.Spec.Summary == "" {
+		t.Fatalf("expected notion.task.page.read_complete summary to be present: %+v", readCompletePage.Spec)
 	}
 
 	searchQuery, ok := registry.Resolve("notion.search.query")
