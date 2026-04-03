@@ -74,7 +74,7 @@ func TestServiceGetOperation(t *testing.T) {
 	if !result.Implemented {
 		t.Fatal("expected notion.page.create to be implemented")
 	}
-	if len(result.Input.Required) != 2 {
+	if len(result.Input.Required) != 1 {
 		t.Fatalf("unexpected required fields: %+v", result.Input.Required)
 	}
 }

@@ -6,8 +6,103 @@ import (
 	"testing"
 )
 
+func TestBuildCreatePagePayloadSupportsMarkdownTemplateAndPosition(t *testing.T) {
+	markdownPayload, appErr := buildCreatePagePayload(testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_demo",
+		},
+		"markdown": "# 周报\n\n本周完成了联调。",
+		"position": map[string]any{
+			"type": "page_start",
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("buildCreatePagePayload returned error for markdown payload: %+v", appErr)
+	}
+	if markdownPayload["markdown"] != "# 周报\n\n本周完成了联调。" {
+		t.Fatalf("unexpected markdown payload: %+v", markdownPayload)
+	}
+	position := markdownPayload["position"].(map[string]any)
+	if position["type"] != "page_start" {
+		t.Fatalf("unexpected position payload: %+v", position)
+	}
+	if _, exists := markdownPayload["properties"]; exists {
+		t.Fatalf("did not expect properties when markdown-only title is delegated to Notion: %+v", markdownPayload)
+	}
+
+	templatePayload, appErr := buildCreatePagePayload(testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_demo",
+		},
+		"title": "套用模板的页面",
+		"template": map[string]any{
+			"type":        "template_id",
+			"template_id": "tpl_demo",
+		},
+		"after": "block_after_demo",
+	})
+	if appErr != nil {
+		t.Fatalf("buildCreatePagePayload returned error for template payload: %+v", appErr)
+	}
+	template := templatePayload["template"].(map[string]any)
+	if template["type"] != "template_id" || template["template_id"] != "tpl_demo" {
+		t.Fatalf("unexpected template payload: %+v", template)
+	}
+	afterBlock := templatePayload["position"].(map[string]any)["after_block"].(map[string]any)
+	if afterBlock["id"] != "block_after_demo" {
+		t.Fatalf("unexpected after_block payload: %+v", afterBlock)
+	}
+}
+
+func TestBuildCreatePagePayloadRejectsMarkdownChildrenConflict(t *testing.T) {
+	_, appErr := buildCreatePagePayload(testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_demo",
+		},
+		"markdown": "# 周报",
+		"children": []any{
+			map[string]any{
+				"type": "paragraph",
+				"text": "冲突正文",
+			},
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected buildCreatePagePayload to reject markdown and children together")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
+func TestBuildCreatePagePayloadRejectsPositionOutsidePageParent(t *testing.T) {
+	_, appErr := buildCreatePagePayload(testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "data_source_id",
+			"id":   "ds_demo",
+		},
+		"title": "需求卡片",
+		"properties": map[string]any{
+			"Name": map[string]any{
+				"title": []any{},
+			},
+		},
+		"after": "block_demo",
+	})
+	if appErr == nil {
+		t.Fatal("expected buildCreatePagePayload to reject after outside page parent")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
 func TestBuildUpdatePagePayloadSupportsArchivedAliasIconAndCover(t *testing.T) {
 	// 页面更新是 live 测试里最常见的清理与装饰入口，这里把关键字段的构造补齐单测。
+	// Page update is the most common cleanup and decoration path in live tests, so this test fills in coverage for the critical payload fields.
 	payload, appErr := buildUpdatePagePayload(map[string]any{
 		"title":    "已更新页面",
 		"archived": true,
@@ -185,6 +280,7 @@ func TestBuildUpdatePageMarkdownPayloadSupportsReplaceAndRangeCommands(t *testin
 
 func TestBuildCreateCommentPayloadValidatesParentsAndAttachments(t *testing.T) {
 	// 评论接口要求 parent 互斥，这里把有效负载与错误路径一起补上。
+	// The comments API requires mutually exclusive parent selectors, so this test covers both one valid payload and the conflicting-input error path.
 	_, appErr := buildCreateCommentPayload(map[string]any{
 		"text":          "冲突评论",
 		"page_id":       "page_123",

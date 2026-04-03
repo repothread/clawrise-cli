@@ -77,6 +77,28 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.import_markdown",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPageImportMarkdownSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.ImportMarkdownPage(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
+		Operation:       "notion.task.page.upsert_markdown_child",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  20 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionTaskPageUpsertMarkdownChildSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.UpsertMarkdownChildPage(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.search.query",
 		Platform:        "notion",
 		Mutating:        false,
