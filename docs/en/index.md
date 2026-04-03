@@ -5,7 +5,7 @@
 - [AI Install Guide](./ai-install.md)
 - [Feishu User Auth Setup](./feishu-user-auth-setup.md)
 - [Local Playbooks Index](../playbooks/index.yaml)
-- Community companion docs for runtime policy, audit, and plugin authoring are maintained in the separate `clawrise` project root markdown files.
+- [Plugin Authoring Spec](./plugin-authoring-spec.md)
 
 ## Roadmaps
 

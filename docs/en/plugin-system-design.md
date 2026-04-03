@@ -2,6 +2,8 @@
 
 See the Chinese version at [../zh/plugin-system-design.md](../zh/plugin-system-design.md).
 
+> For the current author-facing protocol surface and distribution guidance, use [plugin-authoring-spec.md](./plugin-authoring-spec.md). This document remains the architecture design document.
+
 ## 1. Purpose
 
 This document defines the target plugin architecture for Clawrise.

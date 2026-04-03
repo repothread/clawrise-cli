@@ -2,6 +2,8 @@
 
 英文版见 [../en/plugin-system-design.md](../en/plugin-system-design.md)。
 
+> 面向第三方插件仓库的当前作者规范、协议面与分发建议，以 [plugin-authoring-spec.md](./plugin-authoring-spec.md) 为准。本文保留“系统设计文档”的定位。
+
 ## 1. 文档目的
 
 这份文档定义 Clawrise 的目标插件系统形态，用于解决以下问题：
