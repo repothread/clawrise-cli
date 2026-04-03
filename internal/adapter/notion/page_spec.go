@@ -107,6 +107,36 @@ func notionPageUpdateSpec() adapter.OperationSpec {
 	}
 }
 
+func notionPageMoveSpec() adapter.OperationSpec {
+	return adapter.OperationSpec{
+		Summary: "Move a Notion page to another page or data source parent.",
+		Input: adapter.InputSpec{
+			Required: []string{"page_id", "parent"},
+			Notes: []string{
+				"`parent.type` must be `page_id` or `data_source_id`.",
+				"This endpoint only moves regular pages; databases and other block types cannot be moved with it.",
+			},
+			Sample: map[string]any{
+				"page_id": "page_demo",
+				"parent": map[string]any{
+					"type": "page_id",
+					"id":   "page_parent_demo",
+				},
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Move a page under another page",
+				Command: `clawrise notion.page.move --json '{"page_id":"page_demo","parent":{"type":"page_id","id":"page_parent_demo"}}'`,
+			},
+			{
+				Title:   "Move a page into a data source",
+				Command: `clawrise notion.page.move --json '{"page_id":"page_demo","parent":{"type":"data_source_id","id":"ds_demo"}}'`,
+			},
+		},
+	}
+}
+
 func notionPageMarkdownGetSpec() adapter.OperationSpec {
 	return adapter.OperationSpec{
 		Summary: "Get Notion page content as markdown.",

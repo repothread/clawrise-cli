@@ -101,7 +101,8 @@ func (c *Client) ListBlockChildren(ctx context.Context, profile ExecutionProfile
 	}, nil
 }
 
-// AppendBlockChildren appends child blocks to the end of a page or block.
+// AppendBlockChildren 追加子 block，并支持控制插入位置。
+// AppendBlockChildren appends child blocks to a page or block and can control the insertion position.
 func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
@@ -119,8 +120,12 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfi
 	payload := map[string]any{
 		"children": children,
 	}
-	if after, ok := asString(input["after"]); ok && strings.TrimSpace(after) != "" {
-		payload["after"] = strings.TrimSpace(after)
+	position, appErr := normalizeBlockAppendPosition(input["position"], input["after"])
+	if appErr != nil {
+		return nil, appErr
+	}
+	if position != nil {
+		payload["position"] = position
 	}
 
 	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
@@ -163,6 +168,60 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfi
 		data = attachVerification(data, c.verifyBlockAppend(ctx, profile, payload, data))
 	}
 	return data, nil
+}
+
+func normalizeBlockAppendPosition(rawPosition any, rawAfter any) (map[string]any, *apperr.AppError) {
+	if rawPosition == nil && rawAfter == nil {
+		return nil, nil
+	}
+	if rawPosition != nil && rawAfter != nil {
+		return nil, apperr.New("INVALID_INPUT", "position and after cannot be used together")
+	}
+	if rawAfter != nil {
+		afterBlockID, ok := asString(rawAfter)
+		if !ok || strings.TrimSpace(afterBlockID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "after must be a non-empty string")
+		}
+		return map[string]any{
+			"type": "after_block",
+			"after_block": map[string]any{
+				"id": strings.TrimSpace(afterBlockID),
+			},
+		}, nil
+	}
+
+	position, ok := asMap(rawPosition)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "position must be an object")
+	}
+	positionType, ok := asString(position["type"])
+	if !ok || strings.TrimSpace(positionType) == "" {
+		return nil, apperr.New("INVALID_INPUT", "position.type is required")
+	}
+	positionType = strings.TrimSpace(positionType)
+	switch positionType {
+	case "start", "end":
+		return map[string]any{
+			"type": positionType,
+		}, nil
+	case "after_block":
+		afterBlock, ok := asMap(position["after_block"])
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "position.after_block must be an object")
+		}
+		afterBlockID, ok := asString(afterBlock["id"])
+		if !ok || strings.TrimSpace(afterBlockID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "position.after_block.id is required")
+		}
+		return map[string]any{
+			"type": "after_block",
+			"after_block": map[string]any{
+				"id": strings.TrimSpace(afterBlockID),
+			},
+		}, nil
+	default:
+		return nil, apperr.New("INVALID_INPUT", "position.type must be start, end, or after_block")
+	}
 }
 
 // UpdateBlock updates the content of the specified block.

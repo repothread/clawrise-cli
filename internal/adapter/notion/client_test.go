@@ -429,6 +429,71 @@ func TestUpdatePageVerifyAndDebugSuccess(t *testing.T) {
 	}
 }
 
+func TestMovePageSuccess(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	client := newTestClient(t, &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/pages/page_demo/move" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			if request.Method != http.MethodPost {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode move page request: %v", err)
+			}
+			parent := payload["parent"].(map[string]any)
+			if parent["type"] != "data_source_id" || parent["data_source_id"] != "ds_demo" {
+				t.Fatalf("unexpected move parent payload: %+v", parent)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":       "page_demo",
+				"url":      "https://www.notion.so/page_demo",
+				"in_trash": false,
+				"parent": map[string]any{
+					"type":           "data_source_id",
+					"data_source_id": "ds_demo",
+				},
+				"properties": map[string]any{
+					"Name": map[string]any{
+						"title": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "已移动页面",
+								"text": map[string]any{
+									"content": "已移动页面",
+								},
+							},
+						},
+					},
+				},
+			}), nil
+		},
+	})
+
+	data, appErr := client.MovePage(context.Background(), testStaticProfile(), map[string]any{
+		"page_id": "page_demo",
+		"parent": map[string]any{
+			"type": "data_source_id",
+			"id":   "ds_demo",
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("MovePage returned error: %+v", appErr)
+	}
+	if data["page_id"] != "page_demo" {
+		t.Fatalf("unexpected page_id: %+v", data["page_id"])
+	}
+	parent := data["parent"].(map[string]any)
+	if parent["data_source_id"] != "ds_demo" {
+		t.Fatalf("unexpected normalized parent: %+v", parent)
+	}
+}
+
 func TestGetPageSupportsFilterProperties(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 
@@ -973,8 +1038,16 @@ func TestAppendBlockChildrenSuccess(t *testing.T) {
 			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 				t.Fatalf("failed to decode append blocks request: %v", err)
 			}
-			if payload["after"] != "before_demo" {
-				t.Fatalf("unexpected after marker: %+v", payload["after"])
+			position := payload["position"].(map[string]any)
+			if position["type"] != "after_block" {
+				t.Fatalf("unexpected append position: %+v", position)
+			}
+			afterBlock := position["after_block"].(map[string]any)
+			if afterBlock["id"] != "before_demo" {
+				t.Fatalf("unexpected after_block marker: %+v", position)
+			}
+			if _, exists := payload["after"]; exists {
+				t.Fatalf("did not expect deprecated after field in payload: %+v", payload)
 			}
 			children := payload["children"].([]any)
 			if len(children) != 2 {
@@ -1009,6 +1082,52 @@ func TestAppendBlockChildrenSuccess(t *testing.T) {
 		t.Fatalf("AppendBlockChildren returned error: %+v", appErr)
 	}
 	if data["appended_count"] != 2 {
+		t.Fatalf("unexpected appended_count: %+v", data["appended_count"])
+	}
+}
+
+func TestAppendBlockChildrenSupportsPositionStart(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	client := newTestClient(t, &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/blocks/block_demo/children" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("failed to decode append blocks request: %v", err)
+			}
+			position := payload["position"].(map[string]any)
+			if position["type"] != "start" {
+				t.Fatalf("unexpected position payload: %+v", position)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"results": []map[string]any{
+					{"id": "blk_position_1"},
+				},
+			}), nil
+		},
+	})
+
+	data, appErr := client.AppendBlockChildren(context.Background(), testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+		"position": map[string]any{
+			"type": "start",
+		},
+		"children": []any{
+			map[string]any{
+				"type": "paragraph",
+				"text": "插到开头",
+			},
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("AppendBlockChildren returned error: %+v", appErr)
+	}
+	if data["appended_count"] != 1 {
 		t.Fatalf("unexpected appended_count: %+v", data["appended_count"])
 	}
 }

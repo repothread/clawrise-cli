@@ -50,9 +50,10 @@ func notionBlockAppendSpec() adapter.OperationSpec {
 		Summary: "Append child blocks to a Notion block.",
 		Input: adapter.InputSpec{
 			Required: []string{"block_id", "children"},
-			Optional: []string{"after"},
+			Optional: []string{"position", "after"},
 			Notes: []string{
 				"`children` supports both shorthand top-level fields such as `text`, `rich_text`, `children`, and `checked`, and provider-native nested block bodies such as `paragraph.rich_text` and `to_do.checked`.",
+				"`position` supports `start`, `end`, or `after_block`; `after` remains accepted as a backward-compatible alias for `position.type=after_block`.",
 				"When both shorthand and provider-native fields are present on the same block, the top-level fields take precedence.",
 			},
 			Sample: map[string]any{
@@ -69,6 +70,10 @@ func notionBlockAppendSpec() adapter.OperationSpec {
 			{
 				Title:   "Append blocks with shorthand fields",
 				Command: `clawrise notion.block.append --dry-run --json '{"block_id":"blk_demo","children":[{"type":"paragraph","text":"Hello Clawrise"}]}'`,
+			},
+			{
+				Title:   "Insert blocks at the start of one block's children",
+				Command: `clawrise notion.block.append --dry-run --json '{"block_id":"blk_demo","position":{"type":"start"},"children":[{"type":"paragraph","text":"Hello Clawrise"}]}'`,
 			},
 			{
 				Title:   "Append blocks with provider-native nested bodies",

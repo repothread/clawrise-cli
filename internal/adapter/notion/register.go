@@ -55,6 +55,17 @@ func RegisterOperations(registry *adapter.Registry, client *Client) {
 		},
 	})
 	registry.Register(adapter.Definition{
+		Operation:       "notion.page.move",
+		Platform:        "notion",
+		Mutating:        true,
+		DefaultTimeout:  10 * time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec:            notionPageMoveSpec(),
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return client.MovePage(ctx, executionProfileFromCall(call), call.Input)
+		},
+	})
+	registry.Register(adapter.Definition{
 		Operation:       "notion.page.markdown.get",
 		Platform:        "notion",
 		Mutating:        false,

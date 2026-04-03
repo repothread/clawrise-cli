@@ -140,6 +140,51 @@ func (c *Client) UpdatePage(ctx context.Context, profile ExecutionProfile, input
 	return data, nil
 }
 
+// MovePage 把页面移动到另一个 page 或 data source 父级下。
+// MovePage moves a page to another page or data source parent.
+func (c *Client) MovePage(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	pageID, appErr := requireIDField(input, "page_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	parent, appErr := normalizeMovePageParent(input["parent"])
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/pages/"+url.PathEscape(pageID)+"/move",
+		nil,
+		map[string]any{
+			"parent": parent,
+		},
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response notionPage
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion page move response: %v", err))
+	}
+	if strings.TrimSpace(response.ID) == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "page id is empty in Notion response")
+	}
+
+	return mapPageData(response), nil
+}
+
 // GetPageMarkdown reads page content or unknown subtrees in enhanced markdown form.
 func (c *Client) GetPageMarkdown(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	pageID, appErr := requireIDField(input, "page_id")
@@ -361,6 +406,43 @@ func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppEr
 		return nil, apperr.New("INVALID_INPUT", "at least one updatable field is required")
 	}
 	return payload, nil
+}
+
+func normalizeMovePageParent(raw any) (map[string]any, *apperr.AppError) {
+	parent, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "parent must be an object")
+	}
+
+	parentType, ok := asString(parent["type"])
+	if !ok || strings.TrimSpace(parentType) == "" {
+		return nil, apperr.New("INVALID_INPUT", "parent.type is required")
+	}
+	parentType = strings.TrimSpace(parentType)
+
+	requestKey := ""
+	switch parentType {
+	case "page_id":
+		requestKey = "page_id"
+	case "data_source_id":
+		requestKey = "data_source_id"
+	default:
+		return nil, apperr.New("INVALID_INPUT", "parent.type must be page_id or data_source_id")
+	}
+
+	parentID, ok := asString(parent["id"])
+	if !ok || strings.TrimSpace(parentID) == "" {
+		if directID, ok := asString(parent[requestKey]); ok && strings.TrimSpace(directID) != "" {
+			parentID = directID
+		} else {
+			return nil, apperr.New("INVALID_INPUT", "parent.id is required")
+		}
+	}
+
+	return map[string]any{
+		"type":     parentType,
+		requestKey: strings.TrimSpace(parentID),
+	}, nil
 }
 
 func addFilterPropertiesQuery(query url.Values, raw any) *apperr.AppError {

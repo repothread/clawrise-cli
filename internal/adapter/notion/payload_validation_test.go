@@ -100,6 +100,75 @@ func TestBuildCreatePagePayloadRejectsPositionOutsidePageParent(t *testing.T) {
 	}
 }
 
+func TestNormalizeMovePageParentSupportsPageAndDataSource(t *testing.T) {
+	pageParent, appErr := normalizeMovePageParent(map[string]any{
+		"type": "page_id",
+		"id":   "page_parent_demo",
+	})
+	if appErr != nil {
+		t.Fatalf("normalizeMovePageParent returned error for page parent: %+v", appErr)
+	}
+	if pageParent["type"] != "page_id" || pageParent["page_id"] != "page_parent_demo" {
+		t.Fatalf("unexpected page move parent payload: %+v", pageParent)
+	}
+
+	dataSourceParent, appErr := normalizeMovePageParent(map[string]any{
+		"type":           "data_source_id",
+		"data_source_id": "ds_demo",
+	})
+	if appErr != nil {
+		t.Fatalf("normalizeMovePageParent returned error for data source parent: %+v", appErr)
+	}
+	if dataSourceParent["type"] != "data_source_id" || dataSourceParent["data_source_id"] != "ds_demo" {
+		t.Fatalf("unexpected data source move parent payload: %+v", dataSourceParent)
+	}
+}
+
+func TestNormalizeMovePageParentRejectsUnsupportedParentType(t *testing.T) {
+	_, appErr := normalizeMovePageParent(map[string]any{
+		"type": "block_id",
+		"id":   "blk_demo",
+	})
+	if appErr == nil {
+		t.Fatal("expected normalizeMovePageParent to reject unsupported parent type")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
+func TestNormalizeBlockAppendPositionSupportsAliasAndNativeForms(t *testing.T) {
+	aliasPosition, appErr := normalizeBlockAppendPosition(nil, "blk_after_demo")
+	if appErr != nil {
+		t.Fatalf("normalizeBlockAppendPosition returned error for after alias: %+v", appErr)
+	}
+	if aliasPosition["type"] != "after_block" {
+		t.Fatalf("unexpected after alias position payload: %+v", aliasPosition)
+	}
+
+	startPosition, appErr := normalizeBlockAppendPosition(map[string]any{
+		"type": "start",
+	}, nil)
+	if appErr != nil {
+		t.Fatalf("normalizeBlockAppendPosition returned error for start position: %+v", appErr)
+	}
+	if startPosition["type"] != "start" {
+		t.Fatalf("unexpected start position payload: %+v", startPosition)
+	}
+}
+
+func TestNormalizeBlockAppendPositionRejectsConflictingInputs(t *testing.T) {
+	_, appErr := normalizeBlockAppendPosition(map[string]any{
+		"type": "end",
+	}, "blk_after_demo")
+	if appErr == nil {
+		t.Fatal("expected normalizeBlockAppendPosition to reject position and after together")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
 func TestBuildUpdatePagePayloadSupportsArchivedAliasIconAndCover(t *testing.T) {
 	// 页面更新是 live 测试里最常见的清理与装饰入口，这里把关键字段的构造补齐单测。
 	// Page update is the most common cleanup and decoration path in live tests, so this test fills in coverage for the critical payload fields.
