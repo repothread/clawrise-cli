@@ -13,7 +13,7 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	RegisterOperations(registry, newTestClient(t, nil))
 
 	definitions := registry.Definitions()
-	if len(definitions) != 31 {
+	if len(definitions) != 32 {
 		t.Fatalf("unexpected definition count: %d", len(definitions))
 	}
 
@@ -43,6 +43,17 @@ func TestRegisterOperationsRegistersAllNotionOperations(t *testing.T) {
 	}
 	if movePage.Spec.Summary == "" {
 		t.Fatalf("expected notion.page.move summary to be present: %+v", movePage.Spec)
+	}
+
+	upsertRow, ok := registry.Resolve("notion.task.data_source.row.upsert")
+	if !ok {
+		t.Fatal("expected notion.task.data_source.row.upsert to be registered")
+	}
+	if !upsertRow.Mutating {
+		t.Fatalf("expected notion.task.data_source.row.upsert to be mutating: %+v", upsertRow)
+	}
+	if upsertRow.Spec.Summary == "" {
+		t.Fatalf("expected notion.task.data_source.row.upsert summary to be present: %+v", upsertRow.Spec)
 	}
 
 	upsertMarkdownChild, ok := registry.Resolve("notion.task.page.upsert_markdown_child")
