@@ -53,3 +53,46 @@ jobs:
 
       - name: Build all packages
         run: go build ./...
+
+  release-smoke:
+    name: Release Smoke
+    runs-on: ubuntu-latest
+    needs:
+      - test
+    timeout-minutes: 20
+    env:
+      CLAWRISE_NPM_SCOPE: '@clawrise'
+      CLAWRISE_NPM_PACKAGE_PREFIX: 'clawrise-cli'
+      CLAWRISE_NPM_DIST_TAG: 'next'
+      CLAWRISE_SMOKE_RELEASE_VERSION: '0.0.0-smoke.1'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build release bundles
+        run: ./scripts/release/build-npm-bundles.sh "${CLAWRISE_SMOKE_RELEASE_VERSION}"
+
+      - name: Prepare npm packages
+        run: node ./scripts/release/prepare-npm-packages.mjs "${CLAWRISE_SMOKE_RELEASE_VERSION}"
+
+      - name: Generate release notes
+        run: ./scripts/release/generate-release-notes.sh "${CLAWRISE_SMOKE_RELEASE_VERSION}"
+
+      - name: Verify release artifacts
+        run: node ./scripts/release/verify-release-artifacts.mjs "${CLAWRISE_SMOKE_RELEASE_VERSION}"
+
+      - name: Verify npm runtime wiring
+        run: node ./scripts/release/verify-npm-runtime.mjs
