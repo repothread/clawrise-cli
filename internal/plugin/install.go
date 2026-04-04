@@ -1321,6 +1321,12 @@ func copyTree(source, target string) error {
 		if err != nil {
 			return fmt.Errorf("failed to compute relative plugin path: %w", err)
 		}
+		if relative != "." && shouldSkipPackagedArtifactPath(relative) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		destination := filepath.Join(target, relative)
 
 		if info.IsDir() {
@@ -1542,8 +1548,11 @@ func extractTarGz(source, target string) error {
 		}
 
 		cleanName := filepath.Clean(header.Name)
-		if strings.HasPrefix(cleanName, "..") {
+		if filepath.IsAbs(cleanName) || strings.HasPrefix(cleanName, "..") {
 			return fmt.Errorf("plugin archive contains invalid path: %s", header.Name)
+		}
+		if shouldSkipPackagedArtifactPath(cleanName) {
+			continue
 		}
 		path := filepath.Join(target, cleanName)
 
@@ -1570,6 +1579,26 @@ func extractTarGz(source, target string) error {
 		}
 	}
 	return nil
+}
+
+func shouldSkipPackagedArtifactPath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "." {
+		return false
+	}
+
+	// 忽略 macOS 归档里常见的 AppleDouble 和 Finder 元数据目录，
+	// 避免第三方发布物把宿主环境无关的噪音文件带进安装目录。
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(path)), "/")
+	for _, part := range parts {
+		switch {
+		case part == "__MACOSX":
+			return true
+		case strings.HasPrefix(part, "._"):
+			return true
+		}
+	}
+	return false
 }
 
 func writeInstallMetadata(root string, metadata *InstallMetadata) error {

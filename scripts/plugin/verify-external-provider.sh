@@ -19,20 +19,28 @@ if [ -z "${GOCACHE:-}" ]; then
   export GOCACHE="${TMPDIR:-/tmp}/clawrise-go-build"
 fi
 
+run_clawrise() {
+  if [ -n "${CLAWRISE_BIN:-}" ]; then
+    "$CLAWRISE_BIN" "$@"
+    return
+  fi
+  go run ./cmd/clawrise "$@"
+}
+
 export CLAWRISE_PLUGIN_PATHS="$PLUGIN_ROOT"
 
-echo "检查插件发现与健康状态..."
-go run ./cmd/clawrise doctor >/dev/null
+echo "检查开发态 discovery 插件发现与健康状态..."
+run_clawrise doctor >/dev/null
 
 echo "检查鉴权方法暴露..."
-go run ./cmd/clawrise auth methods --platform "$PLATFORM" >/dev/null
+run_clawrise auth methods --platform "$PLATFORM" >/dev/null
 
 echo "检查 spec 列表暴露..."
-go run ./cmd/clawrise spec list "$PLATFORM" >/dev/null
+run_clawrise spec list "$PLATFORM" >/dev/null
 
 if [ -n "$OPERATION" ]; then
   echo "检查单个 operation spec 暴露..."
-  go run ./cmd/clawrise spec get "$OPERATION" >/dev/null
+  run_clawrise spec get "$OPERATION" >/dev/null
 fi
 
-echo "外部 provider 插件基础接入检查已通过。"
+echo "外部 provider 插件开发态接入检查已通过。"

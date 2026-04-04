@@ -96,6 +96,52 @@ func TestInstallLocalTarGz(t *testing.T) {
 	}
 }
 
+func TestInstallLocalTarGzSkipsMacOSMetadataArtifacts(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	archivePath := filepath.Join(t.TempDir(), "demo-plugin.tar.gz")
+	if err := writeTestPluginArchiveWithMacOSMetadata(archivePath); err != nil {
+		t.Fatalf("failed to write plugin archive with macOS metadata: %v", err)
+	}
+
+	result, err := InstallLocal(archivePath)
+	if err != nil {
+		t.Fatalf("InstallLocal returned error: %v", err)
+	}
+
+	assertInstalledPluginHasNoMacOSMetadataArtifacts(t, result.Path)
+}
+
+func TestInstallLocalDirectorySkipsMacOSMetadataArtifacts(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	if err := writeTestPluginSourceDir(sourceDir, "demo", "0.3.0", ""); err != nil {
+		t.Fatalf("failed to write plugin source dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "__MACOSX"), 0o755); err != nil {
+		t.Fatalf("failed to create __MACOSX dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "._plugin.json"), []byte("metadata"), 0o644); err != nil {
+		t.Fatalf("failed to write AppleDouble manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "__MACOSX", "._plugin.json"), []byte("metadata"), 0o644); err != nil {
+		t.Fatalf("failed to write __MACOSX AppleDouble manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "bin", "._demo-plugin"), []byte("metadata"), 0o644); err != nil {
+		t.Fatalf("failed to write AppleDouble binary: %v", err)
+	}
+
+	result, err := InstallLocal(sourceDir)
+	if err != nil {
+		t.Fatalf("InstallLocal returned error: %v", err)
+	}
+
+	assertInstalledPluginHasNoMacOSMetadataArtifacts(t, result.Path)
+}
+
 func TestInstallHTTPSupport(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -1094,18 +1140,6 @@ func writeTestPluginArchive(path string) error {
 }
 
 func writeTestPluginArchiveWithManifest(path string, name string, version string) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	gzipWriter := gzip.NewWriter(file)
-	defer gzipWriter.Close()
-
-	tarWriter := tar.NewWriter(gzipWriter)
-	defer tarWriter.Close()
-
 	files := map[string]string{
 		"demo-plugin/plugin.json": `{
   "schema_version": 1,
@@ -1121,6 +1155,46 @@ func writeTestPluginArchiveWithManifest(path string, name string, version string
 }`,
 		"demo-plugin/bin/demo-plugin": "#!/bin/sh\n",
 	}
+	return writeTestPluginArchiveEntries(path, files)
+}
+
+func writeTestPluginArchiveWithMacOSMetadata(path string) error {
+	files := map[string]string{
+		"demo-plugin/plugin.json": `{
+  "schema_version": 1,
+  "name": "demo",
+  "version": "0.2.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`,
+		"demo-plugin/bin/demo-plugin":         "#!/bin/sh\n",
+		"demo-plugin/._plugin.json":           "metadata",
+		"demo-plugin/bin/._demo-plugin":       "metadata",
+		"__MACOSX/demo-plugin/._plugin.json":  "metadata",
+		"__MACOSX/demo-plugin/._demo-plugin":  "metadata",
+		"__MACOSX/demo-plugin/._README.md":    "metadata",
+		"demo-plugin/__MACOSX/._ignored-file": "metadata",
+	}
+	return writeTestPluginArchiveEntries(path, files)
+}
+
+func writeTestPluginArchiveEntries(path string, files map[string]string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	gzipWriter := gzip.NewWriter(file)
+	defer gzipWriter.Close()
+
+	tarWriter := tar.NewWriter(gzipWriter)
+	defer tarWriter.Close()
 
 	for name, content := range files {
 		header := &tar.Header{
@@ -1159,6 +1233,30 @@ func writeTestPluginSourceDir(path string, name string, version string, extraFie
 		return err
 	}
 	return os.WriteFile(filepath.Join(path, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755)
+}
+
+func assertInstalledPluginHasNoMacOSMetadataArtifacts(t *testing.T, root string) {
+	t.Helper()
+
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if relative == "." {
+			return nil
+		}
+		if shouldSkipPackagedArtifactPath(relative) {
+			t.Fatalf("unexpected macOS metadata artifact in installed plugin: %s", relative)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("failed to inspect installed plugin tree: %v", err)
+	}
 }
 
 func buildTestSRI(data []byte) string {

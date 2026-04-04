@@ -247,6 +247,33 @@ This repository now ships a local black-box verification script:
 ```
 
 It depends only on discovery, protocol behavior, and CLI integration. It does not care which language implements the plugin.
+It is meant for development-time discovery checks, where the current plugin root should be discoverable and able to handshake directly.
+
+For production install validation, this repository also ships an install-path verification script:
+
+```bash
+./scripts/plugin/verify-external-provider-install.sh \
+  file:///abs/path/to/clawrise-plugin-linear-0.1.0-darwin-arm64.tar.gz \
+  linear \
+  0.1.0 \
+  linear \
+  linear.viewer.get
+```
+
+This script validates:
+
+1. `plugin install`
+2. `plugin info`
+3. `plugin verify`
+4. `doctor`
+5. `auth methods`
+6. `spec list/get`
+
+Production recommendation:
+
+- do not treat a source repository directory as the formal production install source
+- publish versioned `.tar.gz` artifacts and install them through `file://`, `https://`, or `registry://`
+- publish immutable versions together with SHA256 checksums so artifact repositories, mirrors, and audits can verify what was installed
 
 ## 9. Language Guidance
 

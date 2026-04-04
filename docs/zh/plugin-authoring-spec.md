@@ -245,6 +245,33 @@ Clawrise 运行时标准是“插件目录 + manifest + 协议”，不是某一
 ```
 
 这个脚本只依赖发现、协议与 CLI 行为，不依赖插件仓库使用什么语言实现。
+它面向开发态 discovery 验证，适合检查“当前插件目录能否被 core 直接发现并握手”。
+
+针对生产安装链路，当前仓库还提供了安装态黑盒验证脚本：
+
+```bash
+./scripts/plugin/verify-external-provider-install.sh \
+  file:///abs/path/to/clawrise-plugin-linear-0.1.0-darwin-arm64.tar.gz \
+  linear \
+  0.1.0 \
+  linear \
+  linear.viewer.get
+```
+
+这个脚本会验证：
+
+1. `plugin install`
+2. `plugin info`
+3. `plugin verify`
+4. `doctor`
+5. `auth methods`
+6. `spec list/get`
+
+生产环境建议：
+
+- 不要直接把源码仓库目录作为正式安装源
+- 应发布带版本号的 `.tar.gz` 归档，并通过 `file://`、`https://` 或 `registry://` 安装
+- 归档发布时应同时提供稳定版本号与 SHA256 checksum，便于制品仓库、镜像与变更审计
 
 ## 9. 语言建议
 
