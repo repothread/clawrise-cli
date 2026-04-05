@@ -18,6 +18,7 @@ export const releaseTargets = [
 
 const bundledProviderPlugins = ['feishu', 'notion'];
 const protocolVersion = 1;
+const manifestSchemaVersion = 2;
 
 export function verifyReleaseArtifacts(options = {}) {
   const repoRoot = path.resolve(options.repoRoot || path.join(__dirname, '..', '..'));
@@ -146,10 +147,21 @@ function verifyBundles(bundlesRoot, version) {
 
 function verifyBundledProviderManifest(manifestPath, pluginName, version, target) {
   const manifest = readJSON(manifestPath);
+  assertCondition(manifest.schema_version === manifestSchemaVersion, `内建 provider manifest schema_version 不正确：${manifestPath}`);
   assertCondition(manifest.name === pluginName, `内建 provider manifest 名称不一致：${manifestPath}`);
   assertCondition(manifest.version === version, `内建 provider manifest 版本不一致：${manifestPath}`);
-  assertCondition(manifest.kind === 'provider', `内建 provider manifest kind 不正确：${manifestPath}`);
   assertCondition(manifest.protocol_version === protocolVersion, `内建 provider manifest protocol_version 不正确：${manifestPath}`);
+  assertCondition(manifest.min_core_version === version, `内建 provider manifest min_core_version 不正确：${manifestPath}`);
+  assertCondition(
+    Array.isArray(manifest.capabilities) &&
+      manifest.capabilities.length === 1 &&
+      manifest.capabilities[0] &&
+      manifest.capabilities[0].type === 'provider' &&
+      Array.isArray(manifest.capabilities[0].platforms) &&
+      manifest.capabilities[0].platforms.length === 1 &&
+      manifest.capabilities[0].platforms[0] === pluginName,
+    `内建 provider manifest capabilities 不正确：${manifestPath}`,
+  );
 
   const expectedBinary = `./bin/${resolvePluginBinaryName(pluginName, target)}`;
   assertCondition(

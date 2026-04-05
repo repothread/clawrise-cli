@@ -42,12 +42,17 @@ write_provider_manifest() {
 
   cat > "${manifest_path}" <<EOF
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "name": "${name}",
   "version": "${version}",
-  "kind": "provider",
   "protocol_version": 1,
-  "platforms": ["${name}"],
+  "min_core_version": "${version}",
+  "capabilities": [
+    {
+      "type": "provider",
+      "platforms": ["${name}"]
+    }
+  ],
   "entry": {
     "type": "binary",
     "command": ["./bin/${binary_name}"]

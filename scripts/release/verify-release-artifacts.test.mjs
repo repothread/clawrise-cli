@@ -130,12 +130,17 @@ function createPlatformPackageFixture(npmRoot, bundlesRoot, item, version) {
     fs.writeFileSync(path.join(bundlePluginDir, pluginBinary), '');
 
     const manifest = {
-      schema_version: 1,
+      schema_version: 2,
       name: pluginName,
       version,
-      kind: 'provider',
       protocol_version: 1,
-      platforms: [pluginName],
+      min_core_version: version,
+      capabilities: [
+        {
+          type: 'provider',
+          platforms: [pluginName],
+        },
+      ],
       entry: {
         type: 'binary',
         command: [`./bin/${pluginBinary}`],

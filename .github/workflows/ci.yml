@@ -34,6 +34,12 @@ jobs:
       - name: Run npm packaging unit tests
         run: node --test packaging/npm/root/lib/*.test.js
 
+      - name: Run release artifact unit tests
+        run: node --test scripts/release/verify-release-artifacts.test.mjs
+
+      - name: Run publish script regression tests
+        run: bash scripts/release/publish-npm.test.sh
+
       - name: Run unit tests
         run: go test ./...
 
