@@ -18,3 +18,4 @@ coverage.out
 
 # 本地插件与调试产物
 .clawrise/
+.omx/
