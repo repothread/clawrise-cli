@@ -1,6 +1,31 @@
 # Clawrise General Workflow
 
-## 1. Ensure Setup Has Been Run
+## Quick Map
+
+- [1. Choose The Setup Or Runtime Entry Point](#1-choose-the-setup-or-runtime-entry-point)
+- [2. Inspect The Environment First](#2-inspect-the-environment-first)
+- [3. Discover Before Building Input](#3-discover-before-building-input)
+- [4. Inspect Auth And Accounts](#4-inspect-auth-and-accounts)
+- [5. Execution Rules](#5-execution-rules)
+- [6. Output Shape](#6-output-shape)
+- [7. Architectural Boundary](#7-architectural-boundary)
+
+## 1. Choose The Setup Or Runtime Entry Point
+
+Use the published wrapper for setup:
+
+- `clawrise setup ...` when the published package is already installed
+- `npx @clawrise/clawrise-cli setup ...` when it is not installed yet
+
+Use the repo-local Go entrypoint for runtime commands while developing in this repository:
+
+```bash
+GOCACHE=/tmp/clawrise-go-build GOMODCACHE=/tmp/clawrise-gomodcache go run ./cmd/clawrise ...
+```
+
+The repo-local Go entrypoint does not expose the npm-only `setup` wrapper.
+
+## 1.1 Ensure Setup Has Been Run
 
 If the user is on a fresh machine or the current client has not been prepared yet, start with:
 
@@ -139,5 +164,5 @@ That means:
 
 If the user needs platform-specific auth or task guidance, switch to the matching platform skill after setup:
 
-- `clawrise-feishu`
+- `clawrise-feishu` for legacy Feishu-through-Clawrise maintenance only
 - `clawrise-notion`

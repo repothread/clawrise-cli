@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
 import { releaseTargets, verifyReleaseArtifacts } from './verify-release-artifacts.mjs';
@@ -38,7 +40,23 @@ test('缺少归档校验项时失败', () => {
   }
 });
 
-function createReleaseFixture(version) {
+test('skill 归档缺少源文件时失败', () => {
+  const fixture = createReleaseFixture('1.2.3', {
+    omitArchivedFiles: {
+      'clawrise-notion': ['references/operation-map.md'],
+    },
+  });
+  try {
+    assert.throws(
+      () => verifyReleaseArtifacts({ repoRoot: fixture.repoRoot, version: '1.2.3' }),
+      /skill 归档缺少源文件：clawrise-notion\/references\/operation-map\.md/,
+    );
+  } finally {
+    cleanupFixture(fixture.repoRoot);
+  }
+});
+
+function createReleaseFixture(version, options = {}) {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clawrise-release-verify-'));
   const npmRoot = path.join(repoRoot, 'dist', 'release', 'npm');
   const bundlesRoot = path.join(repoRoot, 'dist', 'release', 'bundles');
@@ -72,6 +90,7 @@ function createReleaseFixture(version) {
     createPlatformPackageFixture(npmRoot, bundlesRoot, item, version);
   }
   createArchiveFixture(archivesRoot, version);
+  createSkillsFixture(repoRoot, version, options);
   fs.writeFileSync(
     path.join(repoRoot, 'dist', 'release', 'release-notes.md'),
     `### Install\n\n\`\`\`bash\nnpm install -g ${rootPackage.package_name}@${version}\n\`\`\`\n`,
@@ -159,6 +178,138 @@ function createArchiveFixture(archivesRoot, version) {
     checksumLines.push(`${'a'.repeat(64)}  ./${archiveName}`);
   }
   fs.writeFileSync(path.join(archivesRoot, 'SHA256SUMS'), `${checksumLines.join('\n')}\n`);
+}
+
+function createSkillsFixture(repoRoot, version, options = {}) {
+  const skillsSourceRoot = path.join(repoRoot, 'skills');
+  const skillsDistRoot = path.join(repoRoot, 'dist', 'release', 'skills');
+  const versionRoot = path.join(skillsDistRoot, version);
+  const generatedAt = '2026-04-05T00:00:00.000Z';
+  const skillDefinitions = [
+    {
+      name: 'clawrise-core',
+      description: 'Generic Clawrise CLI workflow and setup.',
+      referenceFiles: ['references/install-and-layout.md', 'references/workflow.md'],
+    },
+    {
+      name: 'clawrise-feishu',
+      description: 'Legacy Feishu operations exposed through Clawrise.',
+      referenceFiles: ['references/common-tasks.md'],
+    },
+    {
+      name: 'clawrise-notion',
+      description: 'Notion operations exposed through Clawrise.',
+      referenceFiles: ['references/common-tasks.md', 'references/operation-map.md'],
+    },
+  ];
+
+  fs.mkdirSync(versionRoot, { recursive: true });
+
+  const manifestSkills = [];
+  for (const skill of skillDefinitions) {
+    const sourceDir = path.join(skillsSourceRoot, skill.name);
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sourceDir, 'SKILL.md'),
+      `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n\n# ${skill.name}\n`,
+    );
+    for (const relativeFile of skill.referenceFiles) {
+      const filePath = path.join(sourceDir, relativeFile);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, `${skill.name}:${relativeFile}\n`);
+    }
+
+    const archivePath = path.join(versionRoot, `${skill.name}.tar.gz`);
+    const stageDir = createArchiveStage(sourceDir, options.omitArchivedFiles?.[skill.name] || []);
+    archiveDirectory(stageDir, archivePath);
+
+    const relativeArchivePath = `${version}/${skill.name}.tar.gz`;
+    manifestSkills.push({
+      name: skill.name,
+      description: skill.description,
+      platforms: inferSkillPlatforms(skill.name),
+      requires: inferSkillRequirements(skill.name),
+      reference_files: [...skill.referenceFiles].sort(),
+      version,
+      archive_path: relativeArchivePath,
+      url: relativeArchivePath,
+      checksum_sha256: sha256File(archivePath),
+      size_bytes: fs.statSync(archivePath).size,
+    });
+  }
+
+  writeJSON(path.join(skillsDistRoot, 'index.json'), {
+    generated_at: generatedAt,
+    latest_version: version,
+    skills: manifestSkills,
+  });
+  writeJSON(path.join(skillsDistRoot, 'latest.json'), {
+    generated_at: generatedAt,
+    version,
+    skills: manifestSkills,
+  });
+}
+
+function createArchiveStage(sourceDir, omittedFiles) {
+  if (!Array.isArray(omittedFiles) || omittedFiles.length === 0) {
+    return sourceDir;
+  }
+
+  const repoRoot = path.dirname(path.dirname(sourceDir));
+  const stageRoot = path.join(repoRoot, '.skill-archive-stage');
+  fs.mkdirSync(stageRoot, { recursive: true });
+  const stageDir = fs.mkdtempSync(path.join(stageRoot, `${path.basename(sourceDir)}-stage-`));
+  copyTree(sourceDir, stageDir);
+  for (const relativeFile of omittedFiles) {
+    fs.rmSync(path.join(stageDir, relativeFile), { recursive: true, force: true });
+  }
+  return stageDir;
+}
+
+function archiveDirectory(sourceDir, archivePath) {
+  const result = spawnSync('tar', ['-C', sourceDir, '-czf', archivePath, '.'], {
+    stdio: 'pipe',
+  });
+  if (result.status !== 0) {
+    const stderr = (result.stderr || Buffer.alloc(0)).toString('utf8').trim();
+    throw new Error(`Failed to archive fixture directory: ${stderr}`);
+  }
+}
+
+function copyTree(sourceDir, targetDir) {
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      copyTree(sourcePath, targetPath);
+      continue;
+    }
+    if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.copyFileSync(sourcePath, targetPath);
+    }
+  }
+}
+
+function inferSkillPlatforms(skillName) {
+  if (skillName === 'clawrise-core') {
+    return [];
+  }
+  return [skillName.slice('clawrise-'.length)];
+}
+
+function inferSkillRequirements(skillName) {
+  if (skillName === 'clawrise-core') {
+    return [];
+  }
+  return ['clawrise-core'];
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash('sha256');
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest('hex');
 }
 
 function writeJSON(filePath, value) {

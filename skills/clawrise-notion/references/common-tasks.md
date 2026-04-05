@@ -1,5 +1,17 @@
 # Notion Common Tasks
 
+## Quick Map
+
+- [1. Find The Right Page, Database, Or Data Source](#1-find-the-right-page-database-or-data-source)
+- [2. Create, Update, Move, Or Inspect One Page](#2-create-update-move-or-inspect-one-page)
+- [3. Maintain Page Content From Markdown, Headings, Or Paths](#3-maintain-page-content-from-markdown-headings-or-paths)
+- [4. Append, Update, Or Inspect Blocks Safely](#4-append-update-or-inspect-blocks-safely)
+- [5. Upload Or Attach Files](#5-upload-or-attach-files)
+- [6. Query Or Manage Databases And Data Sources](#6-query-or-manage-databases-and-data-sources)
+- [7. Sync Rows Or Schema Changes From External Systems](#7-sync-rows-or-schema-changes-from-external-systems)
+- [8. Read Users, Comments, Or Meeting Notes Context](#8-read-users-comments-or-meeting-notes-context)
+- [Write Safety](#write-safety)
+
 This reference assumes that `clawrise-core` and `clawrise-notion` have already been installed for the current client.
 
 If the user still needs Notion support installed, run:

@@ -66,8 +66,10 @@ check_release_outputs() {
   local metadata_path="${repo_root}/dist/release/npm/release-metadata.json"
   local notes_path="${repo_root}/dist/release/release-notes.md"
   local checksum_path="${repo_root}/dist/release/archives/SHA256SUMS"
+  local skills_index_path="${repo_root}/dist/release/skills/index.json"
+  local skills_latest_path="${repo_root}/dist/release/skills/latest.json"
 
-  for path in "${metadata_path}" "${notes_path}" "${checksum_path}"; do
+  for path in "${metadata_path}" "${notes_path}" "${checksum_path}" "${skills_index_path}" "${skills_latest_path}"; do
     if [[ ! -f "${path}" ]]; then
       echo "Missing expected release artifact: ${path}" >&2
       exit 1
@@ -152,6 +154,9 @@ echo "Building multi-platform release bundles"
 
 echo "Preparing npm release directories"
 node "${repo_root}/scripts/release/prepare-npm-packages.mjs" "${version}"
+
+echo "Preparing skill release directories"
+node "${repo_root}/scripts/release/prepare-skill-packages.mjs" "${version}"
 
 echo "Generating release notes"
 "${repo_root}/scripts/release/generate-release-notes.sh" "${version}"

@@ -1,5 +1,14 @@
 # Installation And Layout
 
+## Quick Map
+
+- [1. Repository Skill Source](#1-repository-skill-source)
+- [2. Client Skill Locations](#2-client-skill-locations)
+- [3. Default Clawrise Runtime Paths](#3-default-clawrise-runtime-paths)
+- [4. Plugin Install Sources](#4-plugin-install-sources)
+- [5. Repository Install Script](#5-repository-install-script)
+- [6. No-Clone Distribution Options](#6-no-clone-distribution-options)
+
 ## 1. Repository Skill Source
 
 The source directories inside this repository are:

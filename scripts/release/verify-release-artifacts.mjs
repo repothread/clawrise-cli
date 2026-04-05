@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,6 +47,7 @@ export function verifyReleaseArtifacts(options = {}) {
   verifyBundles(bundlesRoot, expectedVersion);
   verifyArchives(archivesRoot, expectedVersion);
   verifyReleaseNotes(notesPath, metadata, expectedVersion);
+  const skillCount = verifySkillPackages(repoRoot, expectedVersion);
 
   return {
     version: expectedVersion,
@@ -52,6 +55,7 @@ export function verifyReleaseArtifacts(options = {}) {
     rootPackage: metadata.root_package.package_name,
     platformCount: metadata.platform_packages.length,
     archiveCount: releaseTargets.length,
+    skillCount,
   };
 }
 
@@ -197,6 +201,105 @@ function verifyReleaseNotes(notesPath, metadata, version) {
   assertCondition(notes.includes(installSnippet), `release notes 缺少安装片段：${installSnippet}`);
 }
 
+function verifySkillPackages(repoRoot, version) {
+  const skillsSourceRoot = path.join(repoRoot, 'skills');
+  const skillsDistRoot = path.join(repoRoot, 'dist', 'release', 'skills');
+  const indexPath = path.join(skillsDistRoot, 'index.json');
+  const latestPath = path.join(skillsDistRoot, 'latest.json');
+
+  assertDirectory(skillsSourceRoot, `缺少 skills 源目录：${skillsSourceRoot}`);
+  assertDirectory(skillsDistRoot, `缺少 skills 发布目录：${skillsDistRoot}`);
+
+  const indexManifest = readJSON(indexPath);
+  const latestManifest = readJSON(latestPath);
+
+  assertCondition(indexManifest.latest_version === version, `skills index latest_version 不一致：期望 ${version}，实际 ${indexManifest.latest_version || '<empty>'}`);
+  assertCondition(latestManifest.version === version, `skills latest version 不一致：期望 ${version}，实际 ${latestManifest.version || '<empty>'}`);
+
+  const sourceSkillNames = fs.readdirSync(skillsSourceRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+  verifySkillManifestEntries(indexManifest.skills, sourceSkillNames, 'skills/index.json');
+  verifySkillManifestEntries(latestManifest.skills, sourceSkillNames, 'skills/latest.json');
+
+  for (const skillName of sourceSkillNames) {
+    const sourceDir = path.join(skillsSourceRoot, skillName);
+    const expectedMetadata = readSkillMetadata(sourceDir, skillName);
+    const archiveRelativePath = `${version}/${skillName}.tar.gz`;
+    const archivePath = path.join(skillsDistRoot, archiveRelativePath);
+    assertFile(archivePath, `缺少 skill 归档：${archiveRelativePath}`);
+
+    const expectedChecksum = sha256File(archivePath);
+    const expectedSize = fs.statSync(archivePath).size;
+    const archivedFiles = listArchiveFiles(archivePath);
+
+    verifySkillManifestEntry(indexManifest.skills, 'skills/index.json', {
+      name: skillName,
+      description: expectedMetadata.description,
+      platforms: expectedMetadata.platforms,
+      requires: expectedMetadata.requires,
+      referenceFiles: expectedMetadata.referenceFiles,
+      version,
+      archiveRelativePath,
+      expectedChecksum,
+      expectedSize,
+    });
+    verifySkillManifestEntry(latestManifest.skills, 'skills/latest.json', {
+      name: skillName,
+      description: expectedMetadata.description,
+      platforms: expectedMetadata.platforms,
+      requires: expectedMetadata.requires,
+      referenceFiles: expectedMetadata.referenceFiles,
+      version,
+      archiveRelativePath,
+      expectedChecksum,
+      expectedSize,
+    });
+
+    const sourceFiles = listRelativeFiles(sourceDir);
+    for (const relativeFile of sourceFiles) {
+      assertCondition(
+        archivedFiles.has(relativeFile),
+        `skill 归档缺少源文件：${skillName}/${relativeFile}`,
+      );
+    }
+  }
+
+  return sourceSkillNames.length;
+}
+
+function verifySkillManifestEntries(entries, sourceSkillNames, label) {
+  assertCondition(Array.isArray(entries), `${label} 缺少 skills 数组。`);
+  const entryNames = entries.map((entry) => String(entry?.name || '').trim()).sort();
+  assertCondition(
+    JSON.stringify(entryNames) === JSON.stringify(sourceSkillNames),
+    `${label} skill 列表与源目录不一致。`,
+  );
+}
+
+function verifySkillManifestEntry(entries, label, expected) {
+  const matches = entries.filter((entry) => String(entry?.name || '').trim() === expected.name);
+  assertCondition(matches.length === 1, `${label} 中的 skill 条目数量异常：${expected.name}`);
+  const entry = matches[0];
+
+  assertCondition(String(entry.description || '').trim() === expected.description, `${label} skill description 不一致：${expected.name}`);
+  assertArrayEqual(entry.platforms, expected.platforms, `${label} skill platforms 不一致：${expected.name}`);
+  assertArrayEqual(entry.requires, expected.requires, `${label} skill requires 不一致：${expected.name}`);
+  assertArrayEqual(entry.reference_files, expected.referenceFiles, `${label} skill reference_files 不一致：${expected.name}`);
+  assertCondition(String(entry.version || '').trim() === expected.version, `${label} skill version 不一致：${expected.name}`);
+  assertCondition(String(entry.archive_path || '').trim() === expected.archiveRelativePath, `${label} skill archive_path 不一致：${expected.name}`);
+  assertCondition(String(entry.checksum_sha256 || '').trim() === expected.expectedChecksum, `${label} skill checksum 不一致：${expected.name}`);
+  assertCondition(Number(entry.size_bytes) === expected.expectedSize, `${label} skill size_bytes 不一致：${expected.name}`);
+
+  const normalizedURL = String(entry.url || '').trim();
+  assertCondition(
+    normalizedURL === expected.archiveRelativePath || normalizedURL.endsWith(`/${expected.archiveRelativePath}`),
+    `${label} skill url 不一致：${expected.name}`,
+  );
+}
+
 function parseChecksumFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const items = new Map();
@@ -246,6 +349,142 @@ function readJSON(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function readSkillMetadata(sourceDir, skillName) {
+  const skillDocumentPath = path.join(sourceDir, 'SKILL.md');
+  const document = fs.readFileSync(skillDocumentPath, 'utf8');
+  const frontmatter = parseFrontmatter(document, skillDocumentPath);
+  const declaredName = String(frontmatter.name || '').trim();
+  const description = String(frontmatter.description || '').trim();
+
+  assertCondition(declaredName === skillName, `skill frontmatter name 与目录名不一致：${skillDocumentPath}`);
+  assertCondition(description !== '', `skill frontmatter 缺少 description：${skillDocumentPath}`);
+
+  return {
+    description,
+    platforms: inferSkillPlatforms(skillName),
+    requires: inferSkillRequirements(skillName),
+    referenceFiles: listRelativeFiles(path.join(sourceDir, 'references'), sourceDir),
+  };
+}
+
+function parseFrontmatter(document, filePath) {
+  const match = String(document || '').match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  assertCondition(Boolean(match), `skill frontmatter 格式无效：${filePath}`);
+
+  const result = {};
+  for (const rawLine of match[1].split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === '' || line.startsWith('#')) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    result[key] = stripWrappedQuotes(value);
+  }
+  return result;
+}
+
+function stripWrappedQuotes(value) {
+  const trimmed = String(value || '').trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function inferSkillPlatforms(skillName) {
+  if (skillName === 'clawrise-core') {
+    return [];
+  }
+  if (skillName.startsWith('clawrise-')) {
+    return [skillName.slice('clawrise-'.length)];
+  }
+  return [];
+}
+
+function inferSkillRequirements(skillName) {
+  if (skillName === 'clawrise-core') {
+    return [];
+  }
+  return ['clawrise-core'];
+}
+
+function listRelativeFiles(directoryPath, rootDir = directoryPath) {
+  if (!fs.existsSync(directoryPath) || !fs.statSync(directoryPath).isDirectory()) {
+    return [];
+  }
+
+  return walkFiles(directoryPath)
+    .map((filePath) => path.relative(rootDir, filePath).split(path.sep).join('/'))
+    .sort();
+}
+
+function walkFiles(directoryPath) {
+  const files = [];
+  for (const entry of fs.readdirSync(directoryPath, { withFileTypes: true })) {
+    const entryPath = path.join(directoryPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkFiles(entryPath));
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
+function listArchiveFiles(archivePath) {
+  const result = spawnSync('tar', ['-tzf', archivePath], {
+    stdio: 'pipe',
+  });
+  if (result.status !== 0) {
+    const stderr = (result.stderr || Buffer.alloc(0)).toString('utf8').trim();
+    throw new Error(`无法读取 skill 归档：${archivePath}${stderr ? ` (${stderr})` : ''}`);
+  }
+
+  const files = new Set();
+  for (const rawLine of String(result.stdout || '').split(/\r?\n/)) {
+    const normalized = normalizeArchivePath(rawLine);
+    if (normalized === '' || rawLine.trim().endsWith('/')) {
+      continue;
+    }
+    files.add(normalized);
+  }
+  return files;
+}
+
+function normalizeArchivePath(rawPath) {
+  return String(rawPath || '')
+    .trim()
+    .replace(/^\.\/+/, '')
+    .replace(/\/+$/, '');
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash('sha256');
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest('hex');
+}
+
+function assertArrayEqual(actual, expected, message) {
+  const normalizedActual = Array.isArray(actual) ? [...actual] : [];
+  const normalizedExpected = Array.isArray(expected) ? [...expected] : [];
+  assertCondition(
+    JSON.stringify(normalizedActual) === JSON.stringify(normalizedExpected),
+    message,
+  );
+}
+
 function assertCondition(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -259,7 +498,7 @@ function main() {
       distTag: process.env.CLAWRISE_NPM_DIST_TAG || '',
     });
     console.log(
-      `发布产物校验通过：version=${summary.version} root=${summary.rootPackage} platforms=${summary.platformCount} archives=${summary.archiveCount}`,
+      `发布产物校验通过：version=${summary.version} root=${summary.rootPackage} platforms=${summary.platformCount} archives=${summary.archiveCount} skills=${summary.skillCount}`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -1,53 +1,25 @@
 ---
 name: clawrise-notion
-description: Use when the task is to access Notion through Clawrise, including Notion auth setup, page and block editing, markdown workflows, database and data source management, file uploads, comments, users, search, or any other `notion.*` operation. Pair with clawrise-core.
+description: Use when a task explicitly targets Notion through Clawrise, including `notion.page.*`, `notion.block.*`, `notion.database.*`, `notion.data_source.*`, `notion.file_upload.*`, `notion.comment.*`, `notion.user.*`, `notion.search.query`, and `notion.task.*` workflows such as markdown import, section patching, file attachment, target resolution, meeting notes extraction, or data-source sync. Pair with clawrise-core for generic setup, spec discovery, and auth inspection.
 ---
 
 # Clawrise Notion
 
-This skill adds Notion-specific guidance. Use `clawrise-core` for the common execution workflow.
+This skill adds Notion-specific routing and payload guidance on top of `clawrise-core`.
 
-This skill assumes that the current client has already been prepared with:
-
-```bash
-clawrise setup <client> notion
-clawrise setup notion
-```
-
-or:
-
-```bash
-npx @clawrise/clawrise-cli setup <client> notion
-npx @clawrise/clawrise-cli setup notion
-```
-
-Preferred setup example:
-
-```bash
-NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
-```
-
-Default account name:
-
-- `notion_bot`
-
-## Use This Skill For
-
-- raw Notion operations such as `notion.page.*`, `notion.block.*`, `notion.database.*`, `notion.data_source.*`, `notion.comment.*`, `notion.user.*`, `notion.file_upload.*`, and `notion.search.query`
-- higher-level Notion workflows such as `notion.task.page.*`, `notion.task.block.attach_file`, `notion.task.database.resolve_target`, `notion.task.data_source.*`, and `notion.task.meeting_notes.get`
-
-## Usage
+## Fast Path
 
 1. Start with the `clawrise-core` workflow to inspect the local environment and specs.
-2. Add this skill only when the task is Notion-specific.
-3. Do not use this skill to explain generic client setup unless the user is explicitly setting up Notion support.
-
-## Check These First
+2. Check these first:
 
 ```bash
 clawrise spec list notion
 clawrise auth methods --platform notion
 ```
+
+3. Keep the subject fixed to `integration` for current Notion auth methods. Do not switch to `bot` or `user`.
+4. For mutating tasks: run `clawrise spec get <operation>`, prefer `--dry-run`, and read before write when page or block content may be overwritten.
+5. Use `--verify` and `--debug-provider-payload` only on `notion.page.create`, `notion.page.update`, `notion.block.append`, and `notion.block.update`.
 
 ## Auth Constraints
 
@@ -56,32 +28,17 @@ clawrise auth methods --platform notion
 - `notion.oauth_public`
   - for `integration`
 
-Both current Notion auth methods use the `integration` subject. Do not switch to `bot` or `user`.
-
-## Task Rules
-
-- Run `clawrise spec get <operation>` before building JSON
-- Prefer `--dry-run` for write operations
-- Read before write to avoid overwriting page or block content
-- Keep pages, blocks, comments, databases, and data sources in Notion-native fields
-- Notion block writes accept both shorthand top-level fields and provider-native nested block bodies
-- When both block input shapes are present on the same block, top-level fields win
-- When reusing Notion block output across tools, preserving the provider-native nested block body is safe
-- Use `--verify` and `--debug-provider-payload` only on `notion.page.create`, `notion.page.update`, `notion.block.append`, and `notion.block.update`
-- Prefer the matching `notion.task.page.*` workflow over raw `notion.page.markdown.update` when the intent is section-scoped, heading-scoped, path-scoped, or markdown import oriented
-- Prefer `notion.task.block.attach_file` for one-step upload and append flows; use raw `notion.file_upload.*` only when the task needs manual multi-part control or external upload URLs
+Both current Notion auth methods use the `integration` subject.
 
 ## Route By Intent
 
-- find a page, database, or data source from loose context: `notion.search.query`, `notion.task.database.resolve_target`
-- inspect or edit one page: `notion.page.*`, `notion.page.markdown.*`, `notion.page.property_item.get`
-- inspect or edit blocks: `notion.block.*`
-- maintain page structure from markdown or headings: `notion.task.page.*`
-- upload or attach files: `notion.task.block.attach_file`, `notion.file_upload.*`
-- create or update databases, data sources, or schema: `notion.database.*`, `notion.data_source.*`, `notion.task.data_source.*`
-- read collaboration context: `notion.comment.*`, `notion.user.*`, `notion.task.meeting_notes.get`
+- exact provider-native page, block, database, or data-source payloads: `notion.page.*`, `notion.block.*`, `notion.database.*`, `notion.data_source.*`
+- markdown, heading, path, or section workflows: `notion.task.page.*`
+- loose target discovery from a URL, id, or vague workspace context: `notion.search.query`, `notion.task.database.resolve_target`
+- one-step upload and append: `notion.task.block.attach_file`; manual upload lifecycle or external upload URLs: `notion.file_upload.*`
+- collaboration or meeting context: `notion.comment.*`, `notion.user.*`, `notion.task.meeting_notes.get`
 
 ## Read These References Only When The Task Matches
 
-- `references/common-tasks.md`
-- `references/operation-map.md`
+- `references/common-tasks.md` — decision guide, safety notes, and playbook links
+- `references/operation-map.md` — exact operation lookup when the user intent is known but the command name is not
