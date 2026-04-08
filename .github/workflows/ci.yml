@@ -37,11 +37,34 @@ jobs:
       - name: Run release artifact unit tests
         run: node --test scripts/release/verify-release-artifacts.test.mjs
 
+      - name: Run skill packaging unit tests
+        run: node --test scripts/release/prepare-skill-packages.test.mjs
+
       - name: Run publish script regression tests
         run: bash scripts/release/publish-npm.test.sh
 
       - name: Run unit tests
         run: go test ./...
+
+  hardening:
+    name: Hardening
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run race-enabled tests
+        run: go test -race ./...
 
   build:
     name: Build
@@ -60,17 +83,49 @@ jobs:
       - name: Build all packages
         run: go build ./...
 
+  script-smoke:
+    name: Script Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify first-party provider CLI smoke flow
+        run: bash scripts/ci/verify-first-party-provider-smoke.sh
+
+      - name: Verify sample policy and audit plugins
+        run: bash scripts/plugin/verify-sample-plugins.sh
+
+      - name: Verify released skill installer smoke flow
+        run: bash scripts/ci/verify-skills-install.sh 0.0.0-skills-smoke.1
+
   release-smoke:
     name: Release Smoke
     runs-on: ubuntu-latest
     needs:
       - test
+      - hardening
+      - script-smoke
     timeout-minutes: 20
     env:
       CLAWRISE_NPM_SCOPE: '@clawrise'
       CLAWRISE_NPM_PACKAGE_PREFIX: 'clawrise-cli'
       CLAWRISE_NPM_DIST_TAG: 'next'
-      CLAWRISE_SMOKE_RELEASE_VERSION: '0.0.0-smoke.1'
+      CLAWRISE_SMOKE_RELEASE_VERSION: '0.0.0-smoke.${{ github.run_number }}'
+      CLAWRISE_RELEASE_ALLOW_DETACHED: '1'
+      CLAWRISE_RELEASE_BASE_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -88,17 +143,5 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Build release bundles
-        run: ./scripts/release/build-npm-bundles.sh "${CLAWRISE_SMOKE_RELEASE_VERSION}"
-
-      - name: Prepare npm packages
-        run: node ./scripts/release/prepare-npm-packages.mjs "${CLAWRISE_SMOKE_RELEASE_VERSION}"
-
-      - name: Generate release notes
-        run: ./scripts/release/generate-release-notes.sh "${CLAWRISE_SMOKE_RELEASE_VERSION}"
-
-      - name: Verify release artifacts
-        run: node ./scripts/release/verify-release-artifacts.mjs "${CLAWRISE_SMOKE_RELEASE_VERSION}"
-
-      - name: Verify npm runtime wiring
-        run: node ./scripts/release/verify-npm-runtime.mjs
+      - name: Run release readiness smoke script
+        run: ./scripts/release/check-release-ready.sh "${CLAWRISE_SMOKE_RELEASE_VERSION}"
