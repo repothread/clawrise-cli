@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -429,7 +430,7 @@ func resolveInstallCandidate(source string, options InstallOptions) (installCand
 
 	trust := evaluateInstallSourceTrust(reference, options)
 	if !trust.Allowed {
-		return installCandidate{}, func() {}, fmt.Errorf(strings.Join(trust.Issues, "; "))
+		return installCandidate{}, func() {}, errors.New(strings.Join(trust.Issues, "; "))
 	}
 
 	tempDir, err := os.MkdirTemp("", "clawrise-plugin-install-*")

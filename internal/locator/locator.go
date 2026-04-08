@@ -151,14 +151,6 @@ func ResolveRuntimeDirResolution(configPath string) (PathResolution, error) {
 	}, nil
 }
 
-func defaultStateDir() (string, error) {
-	resolution, err := defaultStateDirResolution()
-	if err != nil {
-		return "", err
-	}
-	return resolution.Path, nil
-}
-
 func defaultStateDirResolution() (PathResolution, error) {
 	if custom := strings.TrimSpace(os.Getenv("CLAWRISE_STATE_HOME")); custom != "" {
 		return PathResolution{

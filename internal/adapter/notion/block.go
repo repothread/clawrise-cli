@@ -330,7 +330,7 @@ func buildBlockChildren(raw any) ([]map[string]any, *apperr.AppError) {
 }
 
 func buildUpdateBlockPayload(input map[string]any) (map[string]any, *apperr.AppError) {
-	blockInput := map[string]any{}
+	var blockInput map[string]any
 	if rawBlock, exists := input["block"]; exists {
 		record, ok := asMap(rawBlock)
 		if !ok {

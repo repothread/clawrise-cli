@@ -15,6 +15,8 @@ tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/clawrise-first-party-smoke.XXXXXX")"
 home_dir="${tmp_root}/home"
 config_path="${tmp_root}/config.yaml"
 docs_dir="${tmp_root}/docs"
+spec_export_dir="${tmp_root}/spec-export"
+sample_policy_archive="${tmp_root}/sample-policy.tar.gz"
 cli_bin="${CLAWRISE_BIN:-${tmp_root}/clawrise}"
 
 cleanup() {
@@ -50,6 +52,11 @@ runtime:
     max_attempts: 1
     base_delay_ms: 100
     max_delay_ms: 200
+
+plugins:
+  install:
+    allowed_sources:
+      - file
 
 accounts:
   feishu_bot:
@@ -139,7 +146,7 @@ spec_status_output="$("${cli_bin}" spec status)"
 assert_contains "${spec_status_output}" '"ok": true' "spec status output"
 assert_contains "${spec_status_output}" '"registered_count"' "spec status output"
 
-echo "Checking spec discovery and single-operation lookups..."
+echo "Checking spec discovery, export, and single-operation lookups..."
 spec_feishu_output="$("${cli_bin}" spec list feishu.calendar.event)"
 assert_contains "${spec_feishu_output}" '"full_path": "feishu.calendar.event.create"' "feishu spec list output"
 
@@ -153,6 +160,20 @@ assert_contains "${spec_get_feishu_output}" '"dry_run_supported": true' "feishu 
 spec_get_notion_output="$("${cli_bin}" spec get notion.page.get)"
 assert_contains "${spec_get_notion_output}" '"runtime_status": "registered_and_implemented"' "notion spec get output"
 assert_contains "${spec_get_notion_output}" '"dry_run_supported": true' "notion spec get output"
+
+spec_export_json_output="$("${cli_bin}" spec export notion.page.get --format json)"
+assert_contains "${spec_export_json_output}" '"exported_operation_count": 1' "spec export json output"
+
+spec_export_markdown_output="$("${cli_bin}" spec export notion.page --format markdown --out-dir "${spec_export_dir}")"
+assert_contains "${spec_export_markdown_output}" '"written_files"' "spec export markdown output"
+if [[ ! -f "${spec_export_dir}/index.md" ]]; then
+  echo "Expected markdown spec index to be generated at ${spec_export_dir}/index.md" >&2
+  exit 1
+fi
+if [[ ! -f "${spec_export_dir}/operations/notion/page/get.md" ]]; then
+  echo "Expected markdown spec operation document to be generated" >&2
+  exit 1
+fi
 
 echo "Checking docs and completion generators..."
 "${cli_bin}" docs generate notion --out-dir "${docs_dir}" >/dev/null
@@ -189,5 +210,29 @@ feishu_write_output="$("${cli_bin}" feishu.calendar.event.create --dry-run --jso
 assert_contains "${feishu_write_output}" '"ok": true' "feishu calendar create output"
 assert_contains "${feishu_write_output}" '"operation": "feishu.calendar.event.create"' "feishu calendar create output"
 assert_contains "${feishu_write_output}" '"account": "feishu_bot"' "feishu calendar create output"
+
+echo "Checking batch execution output..."
+batch_output="$("${cli_bin}" batch --json '{"requests":[{"operation":"feishu.calendar.event.create","dry_run":true,"input":{"calendar_id":"cal_demo","summary":"Batch Smoke 1","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}},{"operation":"notion.page.get","account":"notion_bot","dry_run":true,"input":{"page_id":"page_demo"}}]}')"
+assert_contains "${batch_output}" '"success_count": 2' "batch output"
+assert_contains "${batch_output}" '"operation": "notion.page.get"' "batch output"
+assert_contains "${batch_output}" '"operation": "feishu.calendar.event.create"' "batch output"
+
+echo "Checking plugin install/info/verify commands..."
+tar -czf "${sample_policy_archive}" -C "${REPO_ROOT}/examples/plugins/sample-policy/0.1.0" .
+
+plugin_install_output="$("${cli_bin}" plugin install "file://${sample_policy_archive}")"
+assert_contains "${plugin_install_output}" '"ok": true' "plugin install output"
+assert_contains "${plugin_install_output}" '"name": "sample-policy"' "plugin install output"
+
+plugin_list_output="$("${cli_bin}" plugin list)"
+assert_contains "${plugin_list_output}" '"name": "sample-policy"' "plugin list output"
+
+plugin_info_output="$("${cli_bin}" plugin info sample-policy 0.1.0)"
+assert_contains "${plugin_info_output}" '"ok": true' "plugin info output"
+assert_contains "${plugin_info_output}" '"name": "sample-policy"' "plugin info output"
+
+plugin_verify_output="$("${cli_bin}" plugin verify sample-policy 0.1.0)"
+assert_contains "${plugin_verify_output}" '"ok": true' "plugin verify output"
+assert_contains "${plugin_verify_output}" '"verified": true' "plugin verify output"
 
 echo "First-party provider smoke checks passed."

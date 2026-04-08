@@ -60,11 +60,24 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install static analysis tools
+        run: |
+          echo "${HOME}/go/bin" >> "${GITHUB_PATH}"
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
       - name: Run go vet
         run: go vet ./...
 
       - name: Run race-enabled tests
         run: go test -race ./...
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Run govulncheck (advisory)
+        continue-on-error: true
+        run: govulncheck ./...
 
   build:
     name: Build
