@@ -261,7 +261,7 @@ func UpgradeInstalled(name, version string, options InstallOptions) (UpgradeResu
 	if installed.Manifest.Version != version {
 		if _, err := RemoveInstalled(name, version); err != nil {
 			result.Error = fmt.Sprintf("plugin %s@%s upgraded to %s but failed to remove previous version: %v", name, version, installed.Manifest.Version, err)
-			return result, fmt.Errorf(result.Error)
+			return result, errors.New(result.Error)
 		}
 		result.RemovedPrevious = true
 	}

@@ -50,6 +50,8 @@ jobs:
     name: Hardening
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: go1.25.9
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -75,8 +77,7 @@ jobs:
       - name: Run staticcheck
         run: staticcheck ./...
 
-      - name: Run govulncheck (advisory)
-        continue-on-error: true
+      - name: Run govulncheck
         run: govulncheck ./...
 
   build:
