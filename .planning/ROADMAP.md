@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01-01-PLAN.md — 移除 Emit 中 defer Close，新增 runtimeGovernance.closeSinks 统一清理，添加多次 emit 测试
+- [x] 01-01-PLAN.md — 移除 Emit 中 defer Close，新增 runtimeGovernance.closeSinks 统一清理，添加多次 emit 测试
 
 ### Phase 2: Context 传播
 **Goal**: 所有关键生产路径尊重调用方 context，支持超时取消和 SIGINT 中断
