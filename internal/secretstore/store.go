@@ -156,7 +156,9 @@ func openNamedStore(configPath string, stateDir string, backend string, plugin s
 		if !found {
 			return nil, fmt.Errorf("unsupported secret store backend: %s", backend)
 		}
-		return newPluginSecretStore(manifest), nil
+		// 使用 context.Background() 构造 pluginSecretStore，
+		// 因为 Store 接口无法传递 context。未来可在构造时传入可取消的 ctx。
+		return newPluginSecretStore(context.Background(), manifest), nil
 	}
 
 	manifest, found, err := discoverSecretStorePlugin(backend, plugin, enabledPlugins)
@@ -166,7 +168,9 @@ func openNamedStore(configPath string, stateDir string, backend string, plugin s
 	if !found {
 		return nil, fmt.Errorf("unsupported secret store backend: %s", backend)
 	}
-	return newPluginSecretStore(manifest), nil
+	// 使用 context.Background() 构造 pluginSecretStore，
+	// 因为 Store 接口无法传递 context。未来可在构造时传入可取消的 ctx。
+	return newPluginSecretStore(context.Background(), manifest), nil
 }
 
 func normalizeBackendName(value string) string {
@@ -192,13 +196,20 @@ func discoverSecretStorePlugin(backend string, pluginName string, enabledPlugins
 	})
 }
 
+// pluginSecretStore 通过 JSON-RPC 插件进程实现 secret store 后端。
+// ctx 存储构造时传入的 context 引用，传递给所有底层 JSON-RPC 调用，
+// 使加解密操作可以响应 context 取消信号（如 SIGINT 中断）。
 type pluginSecretStore struct {
 	client *pluginruntime.ProcessSecretStore
+	ctx    context.Context
 }
 
-func newPluginSecretStore(manifest pluginruntime.Manifest) Store {
+// newPluginSecretStore 创建基于插件的 secret store 实例。
+// ctx 参数用于传递给所有底层 JSON-RPC 调用，支持操作可被 context 取消。
+func newPluginSecretStore(ctx context.Context, manifest pluginruntime.Manifest) Store {
 	return &pluginSecretStore{
 		client: pluginruntime.NewProcessSecretStore(manifest),
+		ctx:    ctx,
 	}
 }
 
@@ -209,7 +220,9 @@ func (s *pluginSecretStore) Backend() string {
 	if backend := strings.TrimSpace(s.client.Backend()); backend != "" {
 		return backend
 	}
-	descriptor, err := s.client.DescribeStorageBackend(context.Background())
+	// 使用存储的 ctx 引用替代 context.Background()，
+	// 使底层 JSON-RPC 调用可以响应 context 取消信号。
+	descriptor, err := s.client.DescribeStorageBackend(s.ctx)
 	if err != nil {
 		return ""
 	}
@@ -223,7 +236,8 @@ func (s *pluginSecretStore) Status() Status {
 			Detail:    "storage backend plugin client is not initialized",
 		}
 	}
-	status, err := s.client.Status(context.Background())
+	// 使用存储的 ctx 引用替代 context.Background()
+	status, err := s.client.Status(s.ctx)
 	if err != nil {
 		return Status{
 			Backend:   s.Backend(),
@@ -245,7 +259,8 @@ func (s *pluginSecretStore) Status() Status {
 }
 
 func (s *pluginSecretStore) Get(connectionName string, field string) (string, error) {
-	result, err := s.client.Get(context.Background(), pluginruntime.SecretStoreGetParams{
+	// 使用存储的 ctx 引用替代 context.Background()
+	result, err := s.client.Get(s.ctx, pluginruntime.SecretStoreGetParams{
 		AccountName: connectionName,
 		Field:       field,
 	})
@@ -259,7 +274,8 @@ func (s *pluginSecretStore) Get(connectionName string, field string) (string, er
 }
 
 func (s *pluginSecretStore) Set(connectionName string, field string, value string) error {
-	return s.client.Set(context.Background(), pluginruntime.SecretStoreSetParams{
+	// 使用存储的 ctx 引用替代 context.Background()
+	return s.client.Set(s.ctx, pluginruntime.SecretStoreSetParams{
 		AccountName: connectionName,
 		Field:       field,
 		Value:       value,
@@ -267,7 +283,8 @@ func (s *pluginSecretStore) Set(connectionName string, field string, value strin
 }
 
 func (s *pluginSecretStore) Delete(connectionName string, field string) error {
-	return s.client.Delete(context.Background(), pluginruntime.SecretStoreDeleteParams{
+	// 使用存储的 ctx 引用替代 context.Background()
+	return s.client.Delete(s.ctx, pluginruntime.SecretStoreDeleteParams{
 		AccountName: connectionName,
 		Field:       field,
 	})
