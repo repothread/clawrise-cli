@@ -40,13 +40,12 @@ Plans:
   2. adapter 层 HTTP 调用（runtime_options.go）传递调用方 context，不再使用 context.Background()
   3. secret store 的加解密操作传递调用方 context，长时间加密操作可被取消
   4. 插件安装的下载/验证操作传递调用方 context，下载中断时能正确清理
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: 修复 root.go 操作执行路径的 context 传播
-- [ ] 02-02: 修复 runtime_options.go HTTP 调用的 context 传播
-- [ ] 02-03: 修复 store.go 加解密操作的 context 传播
-- [ ] 02-04: 修复 install.go 下载/验证操作的 context 传播
+- [ ] 02-01-PLAN.md — root.go 创建 signal.NotifyContext 并传递给操作执行路径 + runtime_options.go 验证（CTX-01, CTX-02）
+- [ ] 02-02-PLAN.md — pluginSecretStore 存储 ctx 引用并传递给底层 client（CTX-03）
+- [ ] 02-03-PLAN.md — install.go 内部函数链添加 ctx 参数，替换 HTTP 请求（CTX-04）
 
 ### Phase 3: 发布验证
 **Goal**: 代码库处于可安全合入 main 的状态，所有测试通过且无新增警告
@@ -71,5 +70,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Audit Sink 修复 | 0/1 | Planning complete | - |
-| 2. Context 传播 | 0/4 | Not started | - |
+| 2. Context 传播 | 0/3 | Planning complete | - |
 | 3. 发布验证 | 0/2 | Not started | - |
