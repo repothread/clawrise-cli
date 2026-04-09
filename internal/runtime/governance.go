@@ -309,6 +309,15 @@ func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) 
 	return warnings
 }
 
+// closeSinks 关闭所有需要显式清理的审计 sink（如插件进程）。
+// 在 runtimeGovernance 生命周期结束时调用。
+func (g *runtimeGovernance) closeSinks() {
+	if g == nil {
+		return
+	}
+	closePluginAuditSinks(g.sinks)
+}
+
 func (g *runtimeGovernance) shouldRetry(definition adapter.Definition, appErr *apperr.AppError, retryCount int) bool {
 	if appErr == nil || !appErr.Retryable {
 		return false

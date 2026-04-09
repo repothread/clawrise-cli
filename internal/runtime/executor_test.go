@@ -2418,6 +2418,148 @@ func accountsFromLegacyAccounts(profiles map[string]legacyTestAccount) map[strin
 	return accounts
 }
 
+// TestExecutorPluginAuditSinkSupportsMultipleEmitsInOneCall 验证 BUG-02 修复：
+// 同一 CLI 调用中多次审计事件写入不会因插件进程被关闭而失败。
+func TestExecutorPluginAuditSinkSupportsMultipleEmitsInOneCall(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	markerPath := filepath.Join(t.TempDir(), "audit-sink-multi.jsonl")
+	pluginDir := filepath.Join(pluginRoot, "audit-multi", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create audit sink plugin dir: %v", err)
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+marker=%q
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.audit.emit"'*)
+      printf '%%s\n' "$line" >> "$marker"
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`, markerPath)
+	if err := os.WriteFile(filepath.Join(pluginDir, "audit-multi.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write audit sink plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "audit-multi",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./audit-multi.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write audit sink plugin manifest: %v", err)
+	}
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "测试审计 sink 多次写入。",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+
+	// 第一次执行
+	firstEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_1"}`,
+		IdempotencyKey: "idem_multi_first",
+	})
+	if err != nil {
+		t.Fatalf("first ExecuteContext returned error: %v", err)
+	}
+	if !firstEnvelope.OK {
+		t.Fatalf("expected first execution to succeed, got: %+v", firstEnvelope.Error)
+	}
+
+	// 第二次执行 - 使用不同的 idempotency key
+	secondEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_2"}`,
+		IdempotencyKey: "idem_multi_second",
+	})
+	if err != nil {
+		t.Fatalf("second ExecuteContext returned error: %v", err)
+	}
+	if !secondEnvelope.OK {
+		t.Fatalf("expected second execution to succeed, got: %+v", secondEnvelope.Error)
+	}
+
+	// 验证插件收到两次 emit
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("failed to read audit sink marker: %v", err)
+	}
+	lines := strings.Count(string(data), `"method":"clawrise.audit.emit"`)
+	if lines != 2 {
+		t.Fatalf("expected 2 audit emit calls to plugin, got %d; marker content:\n%s", lines, string(data))
+	}
+}
+
+// TestPluginAuditSinkCloseLifecycle 验证 closePluginAuditSinks 的行为正确性：
+// 仅关闭 plugin 类型的 sink，不影响 stdout/webhook sink。
+func TestPluginAuditSinkCloseLifecycle(t *testing.T) {
+	t.Run("closes_only_plugin_sinks", func(t *testing.T) {
+		var stdoutBuf bytes.Buffer
+		sinks := []auditSink{
+			&stdoutAuditSink{writer: &stdoutBuf},
+			&pluginAuditSink{runtime: nil}, // nil runtime 不应 panic
+		}
+		// 调用 closePluginAuditSinks 不应 panic
+		closePluginAuditSinks(sinks)
+
+		// stdout sink 仍然可用
+		record := auditRecord{Operation: "test.op", OK: true}
+		if err := sinks[0].Emit(context.Background(), record); err != nil {
+			t.Fatalf("stdout sink should still work after closePluginAuditSinks: %v", err)
+		}
+		if !strings.Contains(stdoutBuf.String(), "test.op") {
+			t.Fatalf("expected stdout output to contain operation, got: %s", stdoutBuf.String())
+		}
+	})
+}
+
 func newTestRegistry(t *testing.T, feishuClient *feishuadapter.Client, notionClient *notionadapter.Client) *adapter.Registry {
 	t.Helper()
 

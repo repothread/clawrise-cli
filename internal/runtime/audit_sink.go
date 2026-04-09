@@ -122,19 +122,27 @@ func (s *pluginAuditSink) Name() string {
 	}
 }
 
+// 注意：不在 Emit 中关闭 runtime，因为插件进程需要在整个 CLI 调用生命周期内保持可用。
+// 关闭由 runtimeGovernance.closeSinks() 在 Execute 返回时统一处理。（BUG-01/BUG-02 修复）
 func (s *pluginAuditSink) Emit(ctx context.Context, record auditRecord) error {
 	if s == nil || s.runtime == nil {
 		return nil
 	}
-	defer func() {
-		// Audit sinks are currently used per emission and then closed to avoid lingering processes.
-		_ = s.runtime.Close()
-	}()
 
 	return s.runtime.Emit(ctx, pluginruntime.AuditEmitParams{
 		SinkID: s.runtime.ID(),
 		Record: convertAuditRecordToPlugin(record),
 	})
+}
+
+// closePluginAuditSinks 关闭所有 pluginAuditSink 持有的插件进程。
+// 仅在 runtimeGovernance 生命周期结束时调用（BUG-01/BUG-02 修复）。
+func closePluginAuditSinks(sinks []auditSink) {
+	for _, sink := range sinks {
+		if pluginSink, ok := sink.(*pluginAuditSink); ok && pluginSink != nil && pluginSink.runtime != nil {
+			_ = pluginSink.runtime.Close()
+		}
+	}
 }
 
 func (s *stdoutAuditSink) Name() string {

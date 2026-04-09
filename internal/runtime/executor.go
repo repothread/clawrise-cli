@@ -63,6 +63,7 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		return e.auditEnvelope(governance, e.buildFatalEnvelope(requestID, opts.DryRun, "", "", apperr.New("CONFIG_LOAD_FAILED", err.Error())), input), nil
 	}
 	governance = newRuntimeGovernance(e.store.Path(), cfg, e.now)
+	defer governance.closeSinks()
 
 	operation, err := ParseOperationWithPlatforms(opts.OperationInput, strings.TrimSpace(cfg.Defaults.Platform), knownPlatforms(e.registry))
 	if err != nil {
