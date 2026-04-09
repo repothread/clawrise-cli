@@ -176,7 +176,9 @@ func Install(source string) (InstallResult, error) {
 }
 
 // InstallWithOptions installs one plugin from any supported source with explicit trust and compatibility options.
+// 公开 API 签名不变，内部使用 context.Background() 作为 fallback。
 func InstallWithOptions(source string, options InstallOptions) (InstallResult, error) {
+	ctx := context.Background()
 	root, err := pluginsRootDir()
 	if err != nil {
 		return InstallResult{}, err
@@ -189,7 +191,7 @@ func InstallWithOptions(source string, options InstallOptions) (InstallResult, e
 	if source == "" {
 		return InstallResult{}, fmt.Errorf("plugin source is required")
 	}
-	candidate, cleanup, err := resolveInstallCandidate(source, options)
+	candidate, cleanup, err := resolveInstallCandidate(ctx, source, options)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -234,8 +236,10 @@ func InstallLocal(source string) (InstallResult, error) {
 }
 
 // UpgradeInstalled upgrades one installed plugin by reinstalling from its recorded source.
+// 公开 API 签名不变，内部使用 context.Background() 作为 fallback。
 func UpgradeInstalled(name, version string, options InstallOptions) (UpgradeResult, error) {
-	result, candidate, err := checkUpgradeCandidate(name, version, options)
+	ctx := context.Background()
+	result, candidate, err := checkUpgradeCandidate(ctx, name, version, options)
 	if err != nil {
 		return result, err
 	}
@@ -334,7 +338,9 @@ func InfoInstalled(name, version string) (PluginInfo, error) {
 }
 
 // InfoInstalledWithOptions returns one installed plugin with install metadata and current selection state.
+// 公开 API 签名不变，内部使用 context.Background() 作为 fallback。
 func InfoInstalledWithOptions(name, version string, options DiscoveryOptions) (PluginInfo, error) {
+	ctx := context.Background()
 	root, err := pluginsRootDir()
 	if err != nil {
 		return PluginInfo{}, err
@@ -370,7 +376,8 @@ func InfoInstalledWithOptions(name, version string, options DiscoveryOptions) (P
 		Install:                 metadata,
 	}
 
-	capabilityInspection := inspectRuntimeCapabilities(context.Background(), manifest)
+	// 使用内部 ctx 替代硬编码的 context.Background()，保持 context 传播链路
+	capabilityInspection := inspectRuntimeCapabilities(ctx, manifest)
 	info.RuntimeCapabilities = capabilityInspection.RuntimeCapabilities
 	info.Warnings = append(info.Warnings, capabilityInspection.Warnings...)
 
@@ -421,7 +428,8 @@ func pluginsRootDir() (string, error) {
 	return filepath.Join(homeDir, ".clawrise", "plugins"), nil
 }
 
-func resolveInstallCandidate(source string, options InstallOptions) (installCandidate, func(), error) {
+// resolveInstallCandidate 解析插件安装源并准备候选安装包，使用调用方 context 控制远程请求生命周期。
+func resolveInstallCandidate(ctx context.Context, source string, options InstallOptions) (installCandidate, func(), error) {
 	source = strings.TrimSpace(source)
 	reference, err := parseInstallSourceReference(source)
 	if err != nil {
@@ -441,7 +449,7 @@ func resolveInstallCandidate(source string, options InstallOptions) (installCand
 		_ = os.RemoveAll(tempDir)
 	}
 
-	pluginDir, resolvedSource, artifactURL, err := materializeSource(reference, tempDir, options)
+	pluginDir, resolvedSource, artifactURL, err := materializeSource(ctx, reference, tempDir, options)
 	if err != nil {
 		cleanup()
 		return installCandidate{}, func() {}, err
@@ -467,7 +475,8 @@ func resolveInstallCandidate(source string, options InstallOptions) (installCand
 	return candidate, cleanup, nil
 }
 
-func checkUpgradeCandidate(name, version string, options InstallOptions) (UpgradeResult, *installCandidate, error) {
+// checkUpgradeCandidate 检查已安装插件是否有可升级版本，使用调用方 context 控制远程请求生命周期。
+func checkUpgradeCandidate(ctx context.Context, name, version string, options InstallOptions) (UpgradeResult, *installCandidate, error) {
 	info, err := InfoInstalled(name, version)
 	if err != nil {
 		return UpgradeResult{}, nil, err
@@ -505,7 +514,7 @@ func checkUpgradeCandidate(name, version string, options InstallOptions) (Upgrad
 		return result, nil, fmt.Errorf("plugin %s@%s failed pre-upgrade verification: %s", info.Manifest.Name, info.Manifest.Version, result.Error)
 	}
 
-	candidate, cleanup, err := resolveInstallCandidate(info.Install.Source, options)
+	candidate, cleanup, err := resolveInstallCandidate(ctx, info.Install.Source, options)
 	if err != nil {
 		return result, nil, err
 	}
@@ -749,28 +758,32 @@ func validateInstallManifest(manifest Manifest, options InstallOptions) error {
 	return nil
 }
 
-func materializeSource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
+// materializeSource 根据源类型将插件安装包下载或复制到临时目录，使用调用方 context 控制远程请求生命周期。
+func materializeSource(ctx context.Context, reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
 	source := strings.TrimSpace(reference.Raw)
 	switch reference.SourceType {
 	case pluginSourceTypeFile:
 		pluginDir, _, err := materializeFileSource(reference.ResolvedPath, tempDir)
 		return pluginDir, source, "", err
 	case pluginSourceTypeHTTP, pluginSourceTypeHTTPS:
-		downloaded, err := downloadRemoteSource(source, tempDir, options)
+		// HTTP/HTTPS 远程下载，传入 ctx 使下载可被取消
+		downloaded, err := downloadRemoteSource(ctx, source, tempDir, options)
 		if err != nil {
 			return "", "", "", err
 		}
 		pluginDir, _, err := materializeFileSource(downloaded.ArchivePath, tempDir)
 		return pluginDir, source, downloaded.FinalURL, err
 	case pluginSourceTypeNPM:
-		archivePath, resolvedSource, artifactURL, err := resolveNPMSource(reference, tempDir, options)
+		// NPM registry 解析，传入 ctx 使 npm 元数据查询和下载可被取消
+		archivePath, resolvedSource, artifactURL, err := resolveNPMSource(ctx, reference, tempDir, options)
 		if err != nil {
 			return "", "", "", err
 		}
 		pluginDir, _, err := materializeFileSource(archivePath, tempDir)
 		return pluginDir, resolvedSource, artifactURL, err
 	case pluginSourceTypeRegistry:
-		archivePath, resolvedSource, artifactURL, err := resolveRegistrySource(reference, tempDir, options)
+		// Registry source 插件解析，传入 ctx 使插件 RPC 调用和下载可被取消
+		archivePath, resolvedSource, artifactURL, err := resolveRegistrySource(ctx, reference, tempDir, options)
 		if err != nil {
 			return "", "", "", err
 		}
@@ -867,8 +880,10 @@ func locatePluginRoot(root string) (string, error) {
 	return candidate, nil
 }
 
-func downloadRemoteSource(source, tempDir string, options InstallOptions) (remoteDownloadResult, error) {
-	request, err := http.NewRequest(http.MethodGet, source, nil)
+// downloadRemoteSource 从远程 URL 下载插件安装包，使用调用方 context 控制请求生命周期。
+// 当 context 被取消时，进行中的 HTTP 请求会被立即终止。
+func downloadRemoteSource(ctx context.Context, source, tempDir string, options InstallOptions) (remoteDownloadResult, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
 		return remoteDownloadResult{}, fmt.Errorf("failed to build plugin download request: %w", err)
 	}
@@ -907,7 +922,8 @@ func downloadRemoteSource(source, tempDir string, options InstallOptions) (remot
 	}, nil
 }
 
-func resolveNPMSource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
+// resolveNPMSource 从 npm registry 解析插件包，使用调用方 context 控制请求生命周期。
+func resolveNPMSource(ctx context.Context, reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
 	if reference.PackageName == "" {
 		return "", "", "", fmt.Errorf("npm package spec is required")
 	}
@@ -916,7 +932,7 @@ func resolveNPMSource(reference installSourceReference, tempDir string, options 
 	if err := validateRemoteHostPolicy(packageURL, options); err != nil {
 		return "", "", "", err
 	}
-	request, err := http.NewRequest(http.MethodGet, packageURL, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, packageURL, nil)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to build npm metadata request: %w", err)
 	}
@@ -965,7 +981,7 @@ func resolveNPMSource(reference installSourceReference, tempDir string, options 
 		return "", "", "", err
 	}
 
-	downloaded, err := downloadRemoteSource(versionMetadata.Dist.Tarball, tempDir, options)
+	downloaded, err := downloadRemoteSource(ctx, versionMetadata.Dist.Tarball, tempDir, options)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -975,7 +991,8 @@ func resolveNPMSource(reference installSourceReference, tempDir string, options 
 	return downloaded.ArchivePath, reference.Raw, downloaded.FinalURL, nil
 }
 
-func resolveRegistrySource(reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
+// resolveRegistrySource 通过 registry source 插件解析插件包，使用调用方 context 控制请求生命周期。
+func resolveRegistrySource(ctx context.Context, reference installSourceReference, tempDir string, options InstallOptions) (string, string, string, error) {
 	runtimes, err := DiscoverRegistrySourceRuntimes(options.DiscoveryOptions)
 	if err != nil {
 		return "", "", "", err
@@ -1001,7 +1018,7 @@ func resolveRegistrySource(reference installSourceReference, tempDir string, opt
 			lastErr = fmt.Errorf("registry source plugin %s does not declare a capability id", runtime.Name())
 			continue
 		}
-		resolveResult, resolveErr := runtime.Resolve(context.Background(), RegistrySourceResolveParams{
+		resolveResult, resolveErr := runtime.Resolve(ctx, RegistrySourceResolveParams{
 			SourceID:  runtime.ID(),
 			Reference: reference.RegistryReference,
 			Version:   reference.RequestedTag,
@@ -1029,7 +1046,7 @@ func resolveRegistrySource(reference installSourceReference, tempDir string, opt
 			continue
 		}
 
-		downloaded, err := downloadRemoteSource(resolveResult.ArtifactURL, tempDir, options)
+		downloaded, err := downloadRemoteSource(ctx, resolveResult.ArtifactURL, tempDir, options)
 		if err != nil {
 			lastErr = err
 			if reference.RegistrySourceID != "" {
