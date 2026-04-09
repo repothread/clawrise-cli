@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -38,6 +40,10 @@ func (e ExitError) Error() string {
 
 // Run dispatches all CLI behavior from raw process arguments.
 func Run(args []string, deps Dependencies) error {
+	// 创建可取消的 context，支持用户通过 Ctrl+C (SIGINT) 中断操作
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
 	store, err := config.ResolveStore()
 	if err != nil {
 		return err
@@ -60,7 +66,7 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps, store)
+			manager, _ = resolvePluginManager(ctx, deps, store)
 		}
 		return runAccount(args[1:], store, deps.Stdout, manager)
 	case "subject":
@@ -72,20 +78,20 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps, store)
+			manager, _ = resolvePluginManager(ctx, deps, store)
 		}
-		return runDoctor(store, deps.Stdout, manager)
+		return runDoctor(ctx, store, deps.Stdout, manager)
 	case "plugin":
 		return runPlugin(args[1:], store, deps.Stdout, deps.Version)
 	case "spec":
-		manager, err := resolvePluginManager(deps, store)
+		manager, err := resolvePluginManager(ctx, deps, store)
 		if err != nil {
 			return err
 		}
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runSpec(args[1:], deps.Stdout, metadataService.Spec())
 	case "docs":
-		manager, err := resolvePluginManager(deps, store)
+		manager, err := resolvePluginManager(ctx, deps, store)
 		if err != nil {
 			return err
 		}
@@ -96,7 +102,7 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps, store)
+			manager, _ = resolvePluginManager(ctx, deps, store)
 		}
 		return runAuth(args[1:], store, deps.Stdout, manager)
 	case "secret":
@@ -110,41 +116,41 @@ func Run(args []string, deps Dependencies) error {
 		if deps.PluginManager != nil {
 			manager = deps.PluginManager
 		} else {
-			manager, _ = resolvePluginManager(deps, store)
+			manager, _ = resolvePluginManager(ctx, deps, store)
 		}
 		return runConfig(args[1:], store, deps.Stdout, manager)
 	case "completion":
-		manager, err := resolvePluginManager(deps, store)
+		manager, err := resolvePluginManager(ctx, deps, store)
 		if err != nil {
 			return err
 		}
 		metadataService := metadata.NewServiceWithCatalog(manager.Registry(), manager.CatalogEntries())
 		return runCompletion(args[1:], deps.Stdout, metadataService.Spec())
 	case "batch":
-		manager, err := resolvePluginManager(deps, store)
+		manager, err := resolvePluginManager(ctx, deps, store)
 		if err != nil {
 			return err
 		}
 		executor := runtime.NewExecutorWithManager(store, manager)
 		return runBatch(args[1:], deps.Stdout, deps.Stderr, executor)
 	default:
-		manager, err := resolvePluginManager(deps, store)
+		manager, err := resolvePluginManager(ctx, deps, store)
 		if err != nil {
 			return err
 		}
 		executor := runtime.NewExecutorWithManager(store, manager)
-		return runOperation(args, deps.Stdout, deps.Stderr, executor)
+		return runOperation(ctx, args, deps.Stdout, deps.Stderr, executor)
 	}
 }
 
-func resolvePluginManager(deps Dependencies, store *config.Store) (*pluginruntime.Manager, error) {
+func resolvePluginManager(ctx context.Context, deps Dependencies, store *config.Store) (*pluginruntime.Manager, error) {
 	if deps.PluginManager != nil {
 		return deps.PluginManager, nil
 	}
-	return newDefaultPluginManager(store)
+	return newDefaultPluginManager(ctx, store)
 }
 
-func newDefaultPluginManager(store *config.Store) (*pluginruntime.Manager, error) {
+func newDefaultPluginManager(ctx context.Context, store *config.Store) (*pluginruntime.Manager, error) {
 	cfg := config.New()
 	if store != nil {
 		loaded, err := store.Load()
@@ -154,7 +160,7 @@ func newDefaultPluginManager(store *config.Store) (*pluginruntime.Manager, error
 		cfg = loaded
 	}
 
-	return pluginruntime.NewDiscoveredManagerWithOptions(context.Background(), buildPluginDiscoveryOptions(cfg))
+	return pluginruntime.NewDiscoveredManagerWithOptions(ctx, buildPluginDiscoveryOptions(cfg))
 }
 
 func buildPluginDiscoveryOptions(cfg *config.Config) pluginruntime.DiscoveryOptions {
@@ -229,7 +235,7 @@ func buildAuditSinkSelectors(items []config.AuditSinkConfig) []pluginruntime.Aud
 	return selectors
 }
 
-func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
+func runOperation(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
 	flags := pflag.NewFlagSet("clawrise", pflag.ContinueOnError)
 	flags.SetInterspersed(true)
 	flags.SetOutput(stderr)
@@ -277,7 +283,7 @@ func runOperation(args []string, stdout io.Writer, stderr io.Writer, executor *r
 		return fmt.Errorf("only --output json is supported right now")
 	}
 
-	envelope, err := executor.ExecuteContext(context.Background(), runtime.ExecuteOptions{
+	envelope, err := executor.ExecuteContext(ctx, runtime.ExecuteOptions{
 		OperationInput:       positionals[0],
 		AccountName:          accountName,
 		SubjectName:          subjectName,
@@ -450,14 +456,14 @@ func runVersion(version string, stdout io.Writer) error {
 	})
 }
 
-func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
+func runDoctor(ctx context.Context, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
 	cfg, err := store.Load()
 	if err != nil {
 		return err
 	}
 	discoveryOptions := buildPluginDiscoveryOptions(cfg)
 
-	discovery, err := pluginruntime.InspectDiscoveryWithOptions(context.Background(), discoveryOptions)
+	discovery, err := pluginruntime.InspectDiscoveryWithOptions(ctx, discoveryOptions)
 	if err != nil {
 		return err
 	}
@@ -552,7 +558,7 @@ func runDoctor(store *config.Store, stdout io.Writer, manager *pluginruntime.Man
 		if err != nil {
 			return err
 		}
-		inspection, inspectErr := manager.InspectAuth(context.Background(), account.Platform, pluginruntime.AuthInspectParams{
+		inspection, inspectErr := manager.InspectAuth(ctx, account.Platform, pluginruntime.AuthInspectParams{
 			Account: authAccount,
 		})
 		if inspectErr != nil {
