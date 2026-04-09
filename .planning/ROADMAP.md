@@ -26,11 +26,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. 单次 CLI 调用中连续触发两次以上审计事件，所有事件均成功写入且无错误日志
   2. 审计 sink 插件进程仅在 CLI 主进程退出时关闭，而非首次 emit 后关闭
   3. 现有审计相关测试全部通过，无回归
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 01-01: 分析 audit_sink.go 中 runtime.Close() 的调用时机并设计修复方案
-- [ ] 01-02: 实现修复并更新/补充测试
+- [ ] 01-01-PLAN.md — 移除 Emit 中 defer Close，新增 runtimeGovernance.closeSinks 统一清理，添加多次 emit 测试
 
 ### Phase 2: Context 传播
 **Goal**: 所有关键生产路径尊重调用方 context，支持超时取消和 SIGINT 中断
@@ -71,6 +70,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Audit Sink 修复 | 0/2 | Not started | - |
+| 1. Audit Sink 修复 | 0/1 | Planning complete | - |
 | 2. Context 传播 | 0/4 | Not started | - |
 | 3. 发布验证 | 0/2 | Not started | - |
