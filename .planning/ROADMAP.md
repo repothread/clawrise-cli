@@ -43,9 +43,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — root.go 创建 signal.NotifyContext 并传递给操作执行路径 + runtime_options.go 验证（CTX-01, CTX-02）
-- [ ] 02-02-PLAN.md — pluginSecretStore 存储 ctx 引用并传递给底层 client（CTX-03）
-- [ ] 02-03-PLAN.md — install.go 内部函数链添加 ctx 参数，替换 HTTP 请求（CTX-04）
+- [x] 02-01-PLAN.md — root.go 创建 signal.NotifyContext 并传递给操作执行路径 + runtime_options.go 验证（CTX-01, CTX-02）
+- [x] 02-02-PLAN.md — pluginSecretStore 存储 ctx 引用并传递给底层 client（CTX-03）
+- [x] 02-03-PLAN.md — install.go 内部函数链添加 ctx 参数，替换 HTTP 请求（CTX-04）
 
 ### Phase 3: 发布验证
 **Goal**: 代码库处于可安全合入 main 的状态，所有测试通过且无新增警告
