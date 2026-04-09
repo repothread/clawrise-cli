@@ -25,8 +25,8 @@ Clawrise 是一个插件驱动的 CLI 运行时，通过 JSON-RPC over stdio 与
 
 <!-- 本次需要修复的范围 -->
 
-- [ ] 审计 sink 插件进程在首次 emit 后被错误关闭（`defer s.runtime.Close()` 导致后续审计事件失败）
-- [ ] 关键生产路径使用 `context.Background()` 替换为调用方 context 传播（CLI dispatch、adapter options、secret store、plugin install）
+- [x] 审计 sink 插件进程在首次 emit 后被错误关闭（`defer s.runtime.Close()` 导致后续审计事件失败）— Phase 1 完成
+- [x] 关键生产路径使用 `context.Background()` 替换为调用方 context 传播（CLI dispatch、adapter options、secret store、plugin install）— Phase 2 完成
 - [ ] 所有修复后 `go test ./...` 和 `node --test` 全部通过
 - [ ] `go vet ./...` 无新增警告
 - [ ] 工作区干净，可以合入 main
