@@ -15,6 +15,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 	"github.com/clawrise/clawrise-cli/internal/config"
 	"github.com/clawrise/clawrise-cli/internal/locator"
+	pluginruntime "github.com/clawrise/clawrise-cli/internal/plugin"
 )
 
 const (
@@ -26,8 +27,12 @@ const (
 type runtimeGovernance struct {
 	paths runtimePaths
 	store governanceStore
-	retry retryPolicy
-	now   func() time.Time
+	sinks []auditSink
+	// sinkWarnings 保存初始化 audit sink 时发现的配置或发现问题，
+	// 这样可以在不阻断主执行的前提下，把问题透传到最终 envelope。
+	sinkWarnings []string
+	retry        retryPolicy
+	now          func() time.Time
 }
 
 // runtimePaths describes local directories used by runtime governance data.
@@ -97,22 +102,31 @@ type auditRecord struct {
 	Error         *ErrorBody        `json:"error,omitempty"`
 	Meta          Meta              `json:"meta"`
 	Idempotency   *IdempotencyState `json:"idempotency,omitempty"`
+	Warnings      []string          `json:"warnings,omitempty"`
 }
 
 type fileGovernanceStore struct {
 	paths runtimePaths
 }
 
-func newRuntimeGovernance(configPath string, runtimeConfig config.RuntimeConfig, now func() time.Time) *runtimeGovernance {
+func newRuntimeGovernance(configPath string, cfg *config.Config, now func() time.Time) *runtimeGovernance {
 	if now == nil {
 		now = time.Now
 	}
+	if cfg == nil {
+		cfg = config.New()
+	}
 	paths := resolveRuntimePaths(configPath)
+	binding := config.ResolveStorageBinding(cfg, "governance")
+	enabledPlugins := config.ResolveEnabledPlugins(cfg)
+	sinks, sinkWarnings := openAuditSinks(cfg)
 	return &runtimeGovernance{
-		paths: paths,
-		store: openGovernanceStore(paths, runtimeConfig.Governance.Backend),
-		retry: resolveRetryPolicy(runtimeConfig),
-		now:   now,
+		paths:        paths,
+		store:        openGovernanceStore(paths, binding, enabledPlugins),
+		sinks:        sinks,
+		sinkWarnings: append([]string(nil), sinkWarnings...),
+		retry:        resolveRetryPolicy(cfg.Runtime),
+		now:          now,
 	}
 }
 
@@ -271,7 +285,7 @@ func (g *runtimeGovernance) validateIdempotencyConflict(state *IdempotencyState,
 	return nil
 }
 
-func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) error {
+func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) []string {
 	record := auditRecord{
 		Time:          g.now().UTC().Format(time.RFC3339),
 		RequestID:     envelope.RequestID,
@@ -283,8 +297,25 @@ func (g *runtimeGovernance) writeAudit(envelope Envelope, input map[string]any) 
 		Error:         redactError(envelope.Error),
 		Meta:          envelope.Meta,
 		Idempotency:   cloneIdempotencyState(envelope.Idempotency),
+		Warnings:      append([]string(nil), envelope.Warnings...),
 	}
-	return g.store.AppendAuditRecord(g.now().UTC().Format("2006-01-02"), record)
+
+	warnings := make([]string, 0)
+	warnings = append(warnings, g.sinkWarnings...)
+	if err := g.store.AppendAuditRecord(g.now().UTC().Format("2006-01-02"), record); err != nil {
+		warnings = append(warnings, "failed to write governance audit record: "+err.Error())
+	}
+	warnings = append(warnings, g.emitAuditSinks(record)...)
+	return warnings
+}
+
+// closeSinks 关闭所有需要显式清理的审计 sink（如插件进程）。
+// 在 runtimeGovernance 生命周期结束时调用。
+func (g *runtimeGovernance) closeSinks() {
+	if g == nil {
+		return
+	}
+	closePluginAuditSinks(g.sinks)
 }
 
 func (g *runtimeGovernance) shouldRetry(definition adapter.Definition, appErr *apperr.AppError, retryCount int) bool {
@@ -364,16 +395,32 @@ func atomicWriteJSONFile(path string, value any, perm os.FileMode) error {
 	return os.Rename(tempPath, path)
 }
 
-func openGovernanceStore(paths runtimePaths, backend string) governanceStore {
-	backend = strings.TrimSpace(strings.ToLower(backend))
+func openGovernanceStore(paths runtimePaths, binding config.StoragePluginBinding, enabledPlugins map[string]string) governanceStore {
+	backend := strings.TrimSpace(strings.ToLower(binding.Backend))
+	pluginName := strings.TrimSpace(binding.Plugin)
 	if backend == "" || backend == "auto" {
 		backend = "file"
 	}
-	factory, ok := governanceStoreFactories[backend]
-	if !ok {
-		factory = governanceStoreFactories["file"]
+
+	if pluginName != "" && pluginName != "builtin" {
+		store, ok, err := openPluginGovernanceStore(backend, pluginName, enabledPlugins)
+		if err != nil {
+			return &errorGovernanceStore{err: err}
+		}
+		if ok {
+			return store
+		}
+		return &errorGovernanceStore{err: fmt.Errorf("unsupported governance backend: %s", backend)}
 	}
-	return factory(paths)
+
+	if factory, ok := governanceStoreFactories[backend]; ok {
+		return factory(paths)
+	}
+
+	if store, ok, err := openPluginGovernanceStore(backend, pluginName, enabledPlugins); err == nil && ok {
+		return store
+	}
+	return governanceStoreFactories["file"](paths)
 }
 
 func (s *fileGovernanceStore) EnsureIdempotencyDir() error {
@@ -440,4 +487,195 @@ func buildRetryAbortError(err error) *apperr.AppError {
 		return nil
 	}
 	return apperr.New("RETRY_ABORTED", err.Error()).WithRetryable(false)
+}
+
+func openPluginGovernanceStore(backend string, pluginName string, enabledPlugins map[string]string) (governanceStore, bool, error) {
+	manifest, found, err := pluginruntime.FindStorageBackendManifest(pluginruntime.StorageBackendLookup{
+		Target:         "governance",
+		Backend:        backend,
+		Plugin:         pluginName,
+		EnabledPlugins: enabledPlugins,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if !found {
+		return nil, false, nil
+	}
+	return &pluginGovernanceStore{
+		client: pluginruntime.NewProcessGovernanceStore(manifest),
+	}, true, nil
+}
+
+type pluginGovernanceStore struct {
+	client *pluginruntime.ProcessGovernanceStore
+}
+
+type errorGovernanceStore struct {
+	err error
+}
+
+func (s *errorGovernanceStore) EnsureIdempotencyDir() error {
+	return s.err
+}
+
+func (s *errorGovernanceStore) LoadIdempotencyRecord(key string) (*persistedIdempotencyRecord, error) {
+	return nil, s.err
+}
+
+func (s *errorGovernanceStore) SaveIdempotencyRecord(record *persistedIdempotencyRecord) error {
+	return s.err
+}
+
+func (s *errorGovernanceStore) AppendAuditRecord(day string, record auditRecord) error {
+	return s.err
+}
+
+func (s *pluginGovernanceStore) EnsureIdempotencyDir() error {
+	// 外部治理后端自行处理目录或命名空间准备。
+	return nil
+}
+
+func (s *pluginGovernanceStore) LoadIdempotencyRecord(key string) (*persistedIdempotencyRecord, error) {
+	result, err := s.client.LoadIdempotency(context.Background(), pluginruntime.GovernanceIdempotencyLoadParams{
+		Key: key,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !result.Found || result.Record == nil {
+		return nil, nil
+	}
+	return convertGovernanceRecordFromPlugin(*result.Record), nil
+}
+
+func (s *pluginGovernanceStore) SaveIdempotencyRecord(record *persistedIdempotencyRecord) error {
+	if record == nil {
+		return nil
+	}
+	return s.client.SaveIdempotency(context.Background(), pluginruntime.GovernanceIdempotencySaveParams{
+		Record: convertGovernanceRecordToPlugin(*record),
+	})
+}
+
+func (s *pluginGovernanceStore) AppendAuditRecord(day string, record auditRecord) error {
+	return s.client.AppendAudit(context.Background(), pluginruntime.GovernanceAuditAppendParams{
+		Day:    day,
+		Record: convertAuditRecordToPlugin(record),
+	})
+}
+
+func convertGovernanceRecordFromPlugin(record pluginruntime.GovernanceIdempotencyRecord) *persistedIdempotencyRecord {
+	return &persistedIdempotencyRecord{
+		Key:        record.Key,
+		Operation:  record.Operation,
+		InputHash:  record.InputHash,
+		Status:     record.Status,
+		RequestID:  record.RequestID,
+		CreatedAt:  record.CreatedAt,
+		UpdatedAt:  record.UpdatedAt,
+		RetryCount: record.RetryCount,
+		Data:       record.Data,
+		Error:      convertGovernanceErrorFromPlugin(record.Error),
+		Meta:       convertGovernanceMetaFromPlugin(record.Meta),
+	}
+}
+
+func convertGovernanceRecordToPlugin(record persistedIdempotencyRecord) pluginruntime.GovernanceIdempotencyRecord {
+	return pluginruntime.GovernanceIdempotencyRecord{
+		Key:        record.Key,
+		Operation:  record.Operation,
+		InputHash:  record.InputHash,
+		Status:     record.Status,
+		RequestID:  record.RequestID,
+		CreatedAt:  record.CreatedAt,
+		UpdatedAt:  record.UpdatedAt,
+		RetryCount: record.RetryCount,
+		Data:       record.Data,
+		Error:      convertGovernanceErrorToPlugin(record.Error),
+		Meta:       convertGovernanceMetaToPlugin(record.Meta),
+	}
+}
+
+func convertAuditRecordToPlugin(record auditRecord) pluginruntime.GovernanceAuditRecord {
+	return pluginruntime.GovernanceAuditRecord{
+		Time:          record.Time,
+		RequestID:     record.RequestID,
+		Operation:     record.Operation,
+		Context:       convertGovernanceContextToPlugin(record.Context),
+		OK:            record.OK,
+		InputSummary:  record.InputSummary,
+		OutputSummary: record.OutputSummary,
+		Error:         convertGovernanceErrorToPlugin(record.Error),
+		Meta:          convertGovernanceMetaToPlugin(record.Meta),
+		Idempotency:   convertGovernanceIdempotencyStateToPlugin(record.Idempotency),
+		Warnings:      append([]string(nil), record.Warnings...),
+	}
+}
+
+func convertGovernanceErrorFromPlugin(value *pluginruntime.GovernanceErrorBody) *ErrorBody {
+	if value == nil {
+		return nil
+	}
+	return &ErrorBody{
+		Code:         value.Code,
+		Message:      value.Message,
+		Retryable:    value.Retryable,
+		UpstreamCode: value.UpstreamCode,
+		HTTPStatus:   value.HTTPStatus,
+	}
+}
+
+func convertGovernanceErrorToPlugin(value *ErrorBody) *pluginruntime.GovernanceErrorBody {
+	if value == nil {
+		return nil
+	}
+	return &pluginruntime.GovernanceErrorBody{
+		Code:         value.Code,
+		Message:      value.Message,
+		Retryable:    value.Retryable,
+		UpstreamCode: value.UpstreamCode,
+		HTTPStatus:   value.HTTPStatus,
+	}
+}
+
+func convertGovernanceMetaFromPlugin(value pluginruntime.GovernanceMeta) Meta {
+	return Meta{
+		Platform:   value.Platform,
+		DurationMS: value.DurationMS,
+		RetryCount: value.RetryCount,
+		DryRun:     value.DryRun,
+	}
+}
+
+func convertGovernanceMetaToPlugin(value Meta) pluginruntime.GovernanceMeta {
+	return pluginruntime.GovernanceMeta{
+		Platform:   value.Platform,
+		DurationMS: value.DurationMS,
+		RetryCount: value.RetryCount,
+		DryRun:     value.DryRun,
+	}
+}
+
+func convertGovernanceContextToPlugin(value *Context) *pluginruntime.GovernanceContext {
+	if value == nil {
+		return nil
+	}
+	return &pluginruntime.GovernanceContext{
+		Platform: value.Platform,
+		Subject:  value.Subject,
+		Account:  value.Account,
+	}
+}
+
+func convertGovernanceIdempotencyStateToPlugin(value *IdempotencyState) *pluginruntime.GovernanceIdempotencyState {
+	if value == nil {
+		return nil
+	}
+	return &pluginruntime.GovernanceIdempotencyState{
+		Key:       value.Key,
+		Status:    value.Status,
+		Persisted: value.Persisted,
+		UpdatedAt: value.UpdatedAt,
+	}
 }

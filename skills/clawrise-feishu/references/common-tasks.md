@@ -1,5 +1,9 @@
 # Feishu Common Tasks
 
+This is a deprecated legacy compatibility reference for the currently documented Feishu-through-Clawrise flows.
+
+Do not use it as the default path for new Feishu automation. Prefer the official Feishu command path for new work, and use this reference only when an existing Clawrise Feishu flow still needs maintenance.
+
 This reference assumes that `clawrise-core` and `clawrise-feishu` have already been installed for the current client.
 
 If the user still needs Feishu support installed, run:
@@ -35,6 +39,15 @@ clawrise auth check feishu_bot
 ```
 
 ## High-Signal Tasks
+
+If a Feishu task falls outside the flows below, rely on:
+
+```bash
+clawrise spec list feishu
+clawrise spec get <operation>
+```
+
+If the task is greenfield rather than legacy maintenance, stop and switch away from this skill.
 
 ### 1. Create Or Update A Feishu Calendar Event
 

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
   pull_request:
   workflow_dispatch:
 
@@ -33,8 +34,51 @@ jobs:
       - name: Run npm packaging unit tests
         run: node --test packaging/npm/root/lib/*.test.js
 
+      - name: Run release artifact unit tests
+        run: node --test scripts/release/verify-release-artifacts.test.mjs
+
+      - name: Run skill packaging unit tests
+        run: node --test scripts/release/prepare-skill-packages.test.mjs
+
+      - name: Run publish script regression tests
+        run: bash scripts/release/publish-npm.test.sh
+
       - name: Run unit tests
         run: go test ./...
+
+  hardening:
+    name: Hardening
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: go1.25.9
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install static analysis tools
+        run: |
+          echo "${HOME}/go/bin" >> "${GITHUB_PATH}"
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run race-enabled tests
+        run: go test -race ./...
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   build:
     name: Build
@@ -52,3 +96,66 @@ jobs:
 
       - name: Build all packages
         run: go build ./...
+
+  script-smoke:
+    name: Script Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify first-party provider CLI smoke flow
+        run: bash scripts/ci/verify-first-party-provider-smoke.sh
+
+      - name: Verify sample policy and audit plugins
+        run: bash scripts/plugin/verify-sample-plugins.sh
+
+      - name: Verify released skill installer smoke flow
+        run: bash scripts/ci/verify-skills-install.sh 0.0.0-skills-smoke.1
+
+  release-smoke:
+    name: Release Smoke
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - hardening
+      - script-smoke
+    timeout-minutes: 20
+    env:
+      CLAWRISE_NPM_SCOPE: '@clawrise'
+      CLAWRISE_NPM_PACKAGE_PREFIX: 'clawrise-cli'
+      CLAWRISE_NPM_DIST_TAG: 'next'
+      CLAWRISE_SMOKE_RELEASE_VERSION: '0.0.0-smoke.${{ github.run_number }}'
+      CLAWRISE_RELEASE_ALLOW_DETACHED: '1'
+      CLAWRISE_RELEASE_BASE_BRANCH: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run release readiness smoke script
+        run: ./scripts/release/check-release-ready.sh "${CLAWRISE_SMOKE_RELEASE_VERSION}"

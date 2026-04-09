@@ -173,6 +173,12 @@ func TestRunConfigInitSelectsMachinePresetByDefault(t *testing.T) {
 	if cfg.Auth.SecretStore.Backend != "encrypted_file" {
 		t.Fatalf("unexpected default secret backend: %+v", cfg.Auth.SecretStore)
 	}
+	if cfg.Plugins.Bindings.Storage.SecretStore.Backend != "encrypted_file" || cfg.Plugins.Bindings.Storage.SecretStore.Plugin != "builtin" {
+		t.Fatalf("expected secret store binding to use new plugins model, got: %+v", cfg.Plugins.Bindings.Storage.SecretStore)
+	}
+	if cfg.Plugins.Bindings.Storage.SessionStore.Backend != "file" || cfg.Plugins.Bindings.Storage.SessionStore.Plugin != "builtin" {
+		t.Fatalf("expected session store binding to use new plugins model, got: %+v", cfg.Plugins.Bindings.Storage.SessionStore)
+	}
 	if cfg.Defaults.Account != "notion_integration_default" || cfg.Defaults.Platform != "notion" {
 		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
 	}
@@ -247,11 +253,241 @@ func TestRunConfigSecretStoreUseUpdatesBackend(t *testing.T) {
 	if cfg.Auth.SecretStore.Backend != "keychain" {
 		t.Fatalf("unexpected secret backend: %+v", cfg.Auth.SecretStore)
 	}
+	if cfg.Plugins.Bindings.Storage.SecretStore.Backend != "keychain" || cfg.Plugins.Bindings.Storage.SecretStore.Plugin != "builtin" {
+		t.Fatalf("expected plugins storage binding to be updated, got: %+v", cfg.Plugins.Bindings.Storage.SecretStore)
+	}
 	if cfg.Auth.SecretStore.FallbackBackend != "" {
 		t.Fatalf("unexpected fallback backend: %+v", cfg.Auth.SecretStore)
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"secret_backend": "keychain"`)) {
 		t.Fatalf("expected config command output to include keychain backend, got: %s", stdout.String())
+	}
+}
+
+func TestRunConfigProviderUseUpdatesBinding(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+
+	pluginDir := filepath.Join(pluginRoot, "demo-provider", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo-provider",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-provider"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "provider", "use", "demo", "demo-provider"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if got := cfg.Plugins.Bindings.Providers["demo"].Plugin; got != "demo-provider" {
+		t.Fatalf("unexpected provider binding: %+v", cfg.Plugins.Bindings.Providers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"plugin": "demo-provider"`)) {
+		t.Fatalf("expected output to include provider plugin, got: %s", stdout.String())
+	}
+}
+
+func TestRunConfigProviderUseRejectsDisabledPlugin(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Enabled["demo-provider"] = "disabled"
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	pluginDir := filepath.Join(pluginRoot, "demo-provider", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo-provider",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-provider"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "provider", "use", "demo", "demo-provider"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err == nil {
+		t.Fatalf("expected disabled provider use command to fail, stdout=%s", stdout.String())
+	}
+	if err.Error() != "plugin demo-provider supports platform demo, but it is disabled by plugins.enabled" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	updatedCfg, loadErr := config.NewStore(configPath).Load()
+	if loadErr != nil {
+		t.Fatalf("failed to reload config: %v", loadErr)
+	}
+	if _, exists := updatedCfg.Plugins.Bindings.Providers["demo"]; exists {
+		t.Fatalf("expected provider binding to remain unset, got: %+v", updatedCfg.Plugins.Bindings.Providers)
+	}
+}
+
+func TestRunConfigProviderUnsetRemovesBinding(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Bindings.Providers["demo"] = config.ProviderPluginBinding{
+		Plugin: "demo-provider",
+	}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "provider", "unset", "demo"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	updatedCfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if _, exists := updatedCfg.Plugins.Bindings.Providers["demo"]; exists {
+		t.Fatalf("expected provider binding to be removed, got: %+v", updatedCfg.Plugins.Bindings.Providers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"unset": true`)) {
+		t.Fatalf("expected unset marker in output, got: %s", stdout.String())
+	}
+}
+
+func TestRunConfigAuthLauncherPreferUpdatesPreference(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	manager := newTestPluginManagerWithManagerOptions(t, []pluginruntime.AuthLauncherRuntime{
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "browser",
+				DisplayName: "Browser",
+				ActionTypes: []string{"open_url"},
+			},
+		},
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "device",
+				DisplayName: "Device",
+				ActionTypes: []string{"open_url"},
+			},
+		},
+	}, map[string][]string{
+		"open_url": {"browser"},
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "auth-launcher", "prefer", "open_url", "device"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: manager,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	preferences := cfg.Plugins.Bindings.AuthLaunchers["open_url"]
+	if len(preferences) != 1 || preferences[0] != "device" {
+		t.Fatalf("unexpected auth launcher preferences: %+v", cfg.Plugins.Bindings.AuthLaunchers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"launcher_id": "device"`)) {
+		t.Fatalf("expected output to include launcher id, got: %s", stdout.String())
+	}
+}
+
+func TestRunConfigAuthLauncherUnsetRemovesLauncherPreference(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Bindings.AuthLaunchers["open_url"] = []string{"browser", "device"}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"config", "auth-launcher", "unset", "open_url", "browser"}, Dependencies{
+		Version: "test",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	updatedCfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	preferences := updatedCfg.Plugins.Bindings.AuthLaunchers["open_url"]
+	if len(preferences) != 1 || preferences[0] != "device" {
+		t.Fatalf("unexpected auth launcher preferences after unset: %+v", updatedCfg.Plugins.Bindings.AuthLaunchers)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"unset": true`)) {
+		t.Fatalf("expected unset marker in output, got: %s", stdout.String())
 	}
 }
 
@@ -995,8 +1231,197 @@ func TestRunPluginHelpFlag(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|info|remove|verify]")) {
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise plugin [list|install|info|remove|verify|upgrade]")) {
 		t.Fatalf("expected plugin help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunPluginUpgradeCommand(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	homeDir := t.TempDir()
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", homeDir)
+
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	writeManifest := func(version string) {
+		t.Helper()
+		manifest := `{
+  "schema_version": 1,
+  "name": "demo",
+  "version": "` + version + `",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`
+		if err := os.WriteFile(filepath.Join(sourceDir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(sourceDir, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("failed to write plugin binary: %v", err)
+		}
+	}
+
+	writeManifest("0.1.0")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := Run([]string{"plugin", "install", sourceDir}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	}); err != nil {
+		t.Fatalf("plugin install returned error: %v", err)
+	}
+
+	writeManifest("0.2.0")
+	stdout.Reset()
+	stderr.Reset()
+
+	if err := Run([]string{"plugin", "upgrade", "demo", "0.1.0"}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	}); err != nil {
+		t.Fatalf("plugin upgrade returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"to_version": "0.2.0"`)) {
+		t.Fatalf("expected plugin upgrade output to include upgraded version, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunPluginUpgradeAllCommand(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	homeDir := t.TempDir()
+	sourceDirA := filepath.Join(t.TempDir(), "plugin-src-a")
+	sourceDirB := filepath.Join(t.TempDir(), "plugin-src-b")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", homeDir)
+
+	writeManifest := func(dir string, name string, version string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
+			t.Fatalf("failed to create source dir: %v", err)
+		}
+		manifest := `{
+  "schema_version": 1,
+  "name": "` + name + `",
+  "version": "` + version + `",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`
+		if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatalf("failed to write manifest: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("failed to write plugin binary: %v", err)
+		}
+	}
+
+	writeManifest(sourceDirA, "demo-a", "0.1.0")
+	writeManifest(sourceDirB, "demo-b", "0.1.0")
+
+	if _, err := pluginruntime.InstallLocal(sourceDirA); err != nil {
+		t.Fatalf("failed to install plugin A: %v", err)
+	}
+	if _, err := pluginruntime.InstallLocal(sourceDirB); err != nil {
+		t.Fatalf("failed to install plugin B: %v", err)
+	}
+
+	writeManifest(sourceDirA, "demo-a", "0.2.0")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := Run([]string{"plugin", "upgrade", "--all"}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	}); err != nil {
+		t.Fatalf("plugin upgrade --all returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"upgraded": 1`)) {
+		t.Fatalf("expected plugin upgrade --all output to include one upgraded plugin, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"name": "demo-b"`)) {
+		t.Fatalf("expected plugin upgrade --all output to include unchanged plugin results, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunPluginVerifyUsesConfiguredTrustPolicy(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	homeDir := t.TempDir()
+	sourceDir := filepath.Join(t.TempDir(), "plugin-src")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", homeDir)
+
+	cfg := config.New()
+	cfg.Plugins.Install.AllowedSources = []string{"https"}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./bin/demo-plugin"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "bin", "demo-plugin"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to write plugin binary: %v", err)
+	}
+
+	if _, err := pluginruntime.InstallLocal(sourceDir); err != nil {
+		t.Fatalf("failed to install plugin: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"plugin", "verify", "demo", "0.1.0"}, Dependencies{
+		Version: "0.2.0",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+	})
+	if err == nil {
+		t.Fatal("expected plugin verify to fail when current trust policy rejects the recorded source")
+	}
+	if exitErr, ok := err.(ExitError); !ok || exitErr.Code != 1 {
+		t.Fatalf("expected verify command to exit with code 1, got: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"allowed": false`)) {
+		t.Fatalf("expected verify output to expose trust rejection, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
@@ -1388,7 +1813,7 @@ accounts:
 			AuthProvider: provider,
 		},
 	)
-	manager := newTestPluginManagerWithOptions(t, feishuClient, nil, []pluginruntime.AuthLauncherRuntime{launcher}, []pluginruntime.Runtime{deviceRuntime})
+	manager := newTestPluginManagerWithOptions(t, feishuClient, nil, []pluginruntime.AuthLauncherRuntime{launcher}, []pluginruntime.Runtime{deviceRuntime}, nil)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -1656,6 +2081,503 @@ func TestRunDoctor(t *testing.T) {
 	}
 }
 
+func TestRunDoctorShowsResolvedAuthLauncherPreferences(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Defaults.Account = "demo_account"
+	cfg.Accounts["demo_account"] = config.Account{
+		Platform: "notion",
+		Subject:  "integration",
+		Auth: config.AccountAuth{
+			Method:     "notion.internal_token",
+			SecretRefs: map[string]string{"token": "secret://demo_account/token"},
+		},
+	}
+	cfg.Plugins.Bindings.AuthLaunchers["open_url"] = []string{"device"}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	manager := newTestPluginManagerWithManagerOptions(t, []pluginruntime.AuthLauncherRuntime{
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "browser",
+				DisplayName: "Browser",
+				ActionTypes: []string{"open_url"},
+				Priority:    100,
+			},
+		},
+		&testAuthLauncherRuntime{
+			descriptor: pluginruntime.AuthLauncherDescriptor{
+				ID:          "device",
+				DisplayName: "Device",
+				ActionTypes: []string{"open_url"},
+				Priority:    1,
+			},
+		},
+	}, map[string][]string{
+		"open_url": {"device"},
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: manager,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &payload); decodeErr != nil {
+		t.Fatalf("failed to decode doctor output: %v", decodeErr)
+	}
+
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected doctor payload: %+v", payload)
+	}
+	runtimeData, ok := data["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected runtime payload: %+v", data)
+	}
+	preferences, ok := runtimeData["auth_launcher_preferences"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected auth launcher preferences in doctor output, got: %+v", runtimeData)
+	}
+	openURL, ok := preferences["open_url"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected open_url preference summary, got: %+v", preferences)
+	}
+	resolved, ok := openURL["resolved"].([]any)
+	if !ok || len(resolved) < 2 {
+		t.Fatalf("expected resolved launcher order, got: %+v", openURL)
+	}
+	first, ok := resolved[0].(map[string]any)
+	if !ok || first["id"] != "device" {
+		t.Fatalf("expected configured launcher to be resolved first, got: %+v", resolved)
+	}
+}
+
+func TestRunDoctorShowsPolicyAndAuditChains(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CLAWRISE_TEST_NOTION_TOKEN", "notion-token")
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Defaults.Account = "demo_account"
+	cfg.Runtime.Policy = config.PolicyConfig{
+		Mode:           "manual",
+		DenyOperations: []string{"demo.page.delete"},
+		Plugins: []config.PolicyPluginBinding{
+			{Plugin: "policy-demo", PolicyID: "review"},
+		},
+	}
+	cfg.Runtime.Audit = config.AuditConfig{
+		Mode: "manual",
+		Sinks: []config.AuditSinkConfig{
+			{Type: "stdout"},
+			{Plugin: "audit-demo", SinkID: "capture"},
+		},
+	}
+	cfg.Accounts["demo_account"] = config.Account{
+		Platform: "notion",
+		Subject:  "integration",
+		Auth: config.AccountAuth{
+			Method:     "notion.internal_token",
+			SecretRefs: map[string]string{"token": "env:CLAWRISE_TEST_NOTION_TOKEN"},
+		},
+	}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	policyDir := filepath.Join(pluginRoot, "policy-demo", "0.1.0")
+	if err := os.MkdirAll(policyDir, 0o755); err != nil {
+		t.Fatalf("failed to create policy plugin dir: %v", err)
+	}
+	policyScript := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"policy-demo","version":"0.1.0","platforms":["demo"]}}'"\n"
+      ;;
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"policy","id":"review","priority":80,"platforms":["demo"]}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(policyDir, "policy-demo.sh"), []byte(policyScript), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(policyDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "policy-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 80,
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write policy plugin manifest: %v", err)
+	}
+
+	auditDir := filepath.Join(pluginRoot, "audit-demo", "0.1.0")
+	if err := os.MkdirAll(auditDir, 0o755); err != nil {
+		t.Fatalf("failed to create audit plugin dir: %v", err)
+	}
+	auditScript := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.handshake"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"protocol_version":1,"name":"audit-demo","version":"0.1.0","platforms":[]}}'"\n"
+      ;;
+    *'"method":"clawrise.capabilities.list"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"capabilities":[{"type":"audit_sink","id":"capture","priority":50}]}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(auditDir, "audit-demo.sh"), []byte(auditScript), 0o755); err != nil {
+		t.Fatalf("failed to write audit plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(auditDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "audit-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./audit-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write audit plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &payload); decodeErr != nil {
+		t.Fatalf("failed to decode doctor output: %v", decodeErr)
+	}
+	data := payload["data"].(map[string]any)
+	runtimeData := data["runtime"].(map[string]any)
+
+	policyData, ok := runtimeData["policy"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected policy summary in doctor output, got: %+v", runtimeData)
+	}
+	activePolicy, ok := policyData["active_chain"].([]any)
+	if !ok || len(activePolicy) != 1 {
+		t.Fatalf("expected one active policy runtime, got: %+v", policyData)
+	}
+	firstPolicy := activePolicy[0].(map[string]any)
+	if firstPolicy["plugin"] != "policy-demo" || firstPolicy["policy_id"] != "review" {
+		t.Fatalf("unexpected policy chain item: %+v", firstPolicy)
+	}
+	localPolicy := policyData["local"].(map[string]any)
+	if localPolicy["rule_count"] != float64(1) {
+		t.Fatalf("expected local policy summary to report one rule, got: %+v", localPolicy)
+	}
+
+	auditData, ok := runtimeData["audit"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected audit summary in doctor output, got: %+v", runtimeData)
+	}
+	activeSinks, ok := auditData["active_sinks"].([]any)
+	if !ok || len(activeSinks) != 2 {
+		t.Fatalf("expected two active audit sinks, got: %+v", auditData)
+	}
+	firstSink := activeSinks[0].(map[string]any)
+	secondSink := activeSinks[1].(map[string]any)
+	if firstSink["type"] != "stdout" {
+		t.Fatalf("expected builtin stdout sink to appear first, got: %+v", firstSink)
+	}
+	if secondSink["plugin"] != "audit-demo" || secondSink["sink_id"] != "capture" {
+		t.Fatalf("unexpected plugin audit sink summary: %+v", secondSink)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunDoctorReportsDisabledPluginBinding(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Plugins.Enabled["demo-provider"] = "disabled"
+	cfg.Plugins.Bindings.Providers["demo"] = config.ProviderPluginBinding{
+		Plugin: "demo-provider",
+	}
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	pluginDir := filepath.Join(pluginRoot, "demo-provider", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "demo-provider.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to write plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 1,
+  "name": "demo-provider",
+  "version": "0.1.0",
+  "kind": "provider",
+  "protocol_version": 1,
+  "platforms": ["demo"],
+  "entry": {
+    "type": "binary",
+    "command": ["./demo-provider.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write plugin manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"doctor"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`"enabled": false`)) {
+		t.Fatalf("expected doctor output to mark plugin as disabled, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"selected": false`)) {
+		t.Fatalf("expected doctor output to mark plugin as unselected, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`disabled by plugins.enabled`)) {
+		t.Fatalf("expected disabled binding warning, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunConfigPolicyCommandsWriteBack(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := config.New()
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+	writePolicyCapabilityFixture(t, pluginRoot, "policy-demo", "review")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"config", "policy", "mode", "manual"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config policy mode returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "policy", "use", "policy-demo", "--policy-id", "review"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config policy use returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	store := config.NewStore(configPath)
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load written config: %v", err)
+	}
+	if loaded.Runtime.Policy.Mode != "manual" {
+		t.Fatalf("expected manual policy mode, got: %+v", loaded.Runtime.Policy)
+	}
+	if len(loaded.Runtime.Policy.Plugins) != 1 || loaded.Runtime.Policy.Plugins[0].Plugin != "policy-demo" || loaded.Runtime.Policy.Plugins[0].PolicyID != "review" {
+		t.Fatalf("unexpected policy plugin bindings: %+v", loaded.Runtime.Policy.Plugins)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "policy", "remove", "policy-demo", "--policy-id", "review"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config policy remove returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	loaded, err = store.Load()
+	if err != nil {
+		t.Fatalf("failed to reload written config: %v", err)
+	}
+	if len(loaded.Runtime.Policy.Plugins) != 0 {
+		t.Fatalf("expected policy selectors to be removed, got: %+v", loaded.Runtime.Policy.Plugins)
+	}
+}
+
+func TestRunConfigAuditCommandsWriteBack(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := config.New()
+	if err := config.NewStore(configPath).Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+	writeAuditSinkCapabilityFixture(t, pluginRoot, "audit-demo", "capture")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run([]string{"config", "audit", "mode", "manual"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config audit mode returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "audit", "add", "stdout"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config audit add stdout returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "audit", "add", "webhook", "env:CLAWRISE_AUDIT_WEBHOOK_URL", "--header", "Authorization=env:CLAWRISE_AUDIT_TOKEN", "--timeout-ms", "3000"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config audit add webhook returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "audit", "add", "plugin", "audit-demo", "--sink-id", "capture"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config audit add plugin returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	store := config.NewStore(configPath)
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load written config: %v", err)
+	}
+	if loaded.Runtime.Audit.Mode != "manual" {
+		t.Fatalf("expected manual audit mode, got: %+v", loaded.Runtime.Audit)
+	}
+	if len(loaded.Runtime.Audit.Sinks) != 3 {
+		t.Fatalf("expected three audit sinks, got: %+v", loaded.Runtime.Audit.Sinks)
+	}
+	if loaded.Runtime.Audit.Sinks[0].Type != "stdout" {
+		t.Fatalf("unexpected first audit sink: %+v", loaded.Runtime.Audit.Sinks[0])
+	}
+	if loaded.Runtime.Audit.Sinks[1].Type != "webhook" || loaded.Runtime.Audit.Sinks[1].URL != "env:CLAWRISE_AUDIT_WEBHOOK_URL" {
+		t.Fatalf("unexpected webhook sink: %+v", loaded.Runtime.Audit.Sinks[1])
+	}
+	if loaded.Runtime.Audit.Sinks[2].Plugin != "audit-demo" || loaded.Runtime.Audit.Sinks[2].SinkID != "capture" {
+		t.Fatalf("unexpected plugin sink: %+v", loaded.Runtime.Audit.Sinks[2])
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "audit", "remove", "plugin", "audit-demo", "--sink-id", "capture"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config audit remove plugin returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	loaded, err = store.Load()
+	if err != nil {
+		t.Fatalf("failed to reload written config: %v", err)
+	}
+	if len(loaded.Runtime.Audit.Sinks) != 2 {
+		t.Fatalf("expected plugin audit sink to be removed, got: %+v", loaded.Runtime.Audit.Sinks)
+	}
+}
+
 func TestRunDoctorUsesLocatorResolvedPaths(t *testing.T) {
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "config.yaml")
@@ -1702,7 +2624,7 @@ func newTestPluginManager(t *testing.T) *pluginruntime.Manager {
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithOptions(t, feishuClient, nil, nil, nil)
+	return newTestPluginManagerWithOptions(t, feishuClient, nil, nil, nil, nil)
 }
 
 func newTestPluginManagerWithNotionClient(t *testing.T, factory func(sessionStore authcache.Store) (*notionadapter.Client, error)) *pluginruntime.Manager {
@@ -1712,20 +2634,24 @@ func newTestPluginManagerWithNotionClient(t *testing.T, factory func(sessionStor
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithOptions(t, feishuClient, factory, nil, nil)
+	return newTestPluginManagerWithOptions(t, feishuClient, factory, nil, nil, nil)
 }
 
 func newTestPluginManagerWithLaunchers(t *testing.T, launchers []pluginruntime.AuthLauncherRuntime) *pluginruntime.Manager {
+	return newTestPluginManagerWithManagerOptions(t, launchers, nil)
+}
+
+func newTestPluginManagerWithManagerOptions(t *testing.T, launchers []pluginruntime.AuthLauncherRuntime, preferences map[string][]string) *pluginruntime.Manager {
 	t.Helper()
 
 	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
 	if err != nil {
 		t.Fatalf("failed to construct feishu test client: %v", err)
 	}
-	return newTestPluginManagerWithOptions(t, feishuClient, nil, launchers, nil)
+	return newTestPluginManagerWithOptions(t, feishuClient, nil, launchers, nil, preferences)
 }
 
-func newTestPluginManagerWithOptions(t *testing.T, feishuClient *feishuadapter.Client, notionFactory func(sessionStore authcache.Store) (*notionadapter.Client, error), launchers []pluginruntime.AuthLauncherRuntime, extraRuntimes []pluginruntime.Runtime) *pluginruntime.Manager {
+func newTestPluginManagerWithOptions(t *testing.T, feishuClient *feishuadapter.Client, notionFactory func(sessionStore authcache.Store) (*notionadapter.Client, error), launchers []pluginruntime.AuthLauncherRuntime, extraRuntimes []pluginruntime.Runtime, preferences map[string][]string) *pluginruntime.Manager {
 	t.Helper()
 
 	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
@@ -1753,7 +2679,8 @@ func newTestPluginManagerWithOptions(t *testing.T, feishuClient *feishuadapter.C
 	runtimes = append(runtimes, extraRuntimes...)
 
 	manager, err := pluginruntime.NewManagerWithOptions(context.Background(), runtimes, pluginruntime.ManagerOptions{
-		AuthLaunchers: launchers,
+		AuthLaunchers:           launchers,
+		AuthLauncherPreferences: preferences,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct test plugin manager: %v", err)
@@ -1973,4 +2900,66 @@ func nestedStringFromBytes(t *testing.T, data []byte, keys ...string) string {
 		t.Fatalf("failed to decode json output: %v; output=%s", err, string(data))
 	}
 	return nestedString(result, keys...)
+}
+
+func writePolicyCapabilityFixture(t *testing.T, root string, pluginName string, policyID string) {
+	t.Helper()
+
+	pluginDir := filepath.Join(root, pluginName, "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create policy plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, pluginName+".sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin executable: %v", err)
+	}
+	manifest := `{
+  "schema_version": 2,
+  "name": "` + pluginName + `",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "` + policyID + `"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./` + pluginName + `.sh"]
+  }
+}`
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("failed to write policy plugin manifest: %v", err)
+	}
+}
+
+func writeAuditSinkCapabilityFixture(t *testing.T, root string, pluginName string, sinkID string) {
+	t.Helper()
+
+	pluginDir := filepath.Join(root, pluginName, "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create audit plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, pluginName+".sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to write audit plugin executable: %v", err)
+	}
+	manifest := `{
+  "schema_version": 2,
+  "name": "` + pluginName + `",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "` + sinkID + `"
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./` + pluginName + `.sh"]
+  }
+}`
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("failed to write audit plugin manifest: %v", err)
+	}
 }

@@ -67,7 +67,10 @@ CLAWRISE_RELEASE_CHECK_REMOTE=1 NODE_AUTH_TOKEN=... ./scripts/release/check-rele
 
 - 不要改版本号
 - 直接重新执行发布脚本或重新跑 workflow
-- `scripts/release/publish-npm.sh` 会自动跳过已存在的包，只发布缺失部分
+- `scripts/release/publish-npm.sh` 现在会先输出部分发布状态摘要
+- 如果只是“部分平台包已存在，但根包还没发”，脚本会把它视为可恢复状态，并继续只发布缺失项
+- 如果已经出现“根包已存在，但仍有平台包缺失”，脚本默认会停止，因为这属于不一致状态
+- 只有在明确知道自己在做什么时，才使用 `CLAWRISE_RELEASE_ALLOW_INCONSISTENT_PUBLISH=1` 强制继续
 
 ### 2. 根包已经发布，但 dist-tag 错了
 

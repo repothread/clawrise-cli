@@ -25,11 +25,24 @@ var sessionAccountNameSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // StoreFactory describes a session-store backend constructor.
 type StoreFactory func(configPath string) Store
 
+// StoreOptions 描述打开 session store 时的可选参数。
+type StoreOptions struct {
+	ConfigPath     string
+	Backend        string
+	Plugin         string
+	EnabledPlugins map[string]string
+}
+
+// ExternalStoreResolver 描述一个外部 session store 解析器。
+type ExternalStoreResolver func(options StoreOptions) (Store, bool, error)
+
 var sessionStoreFactories = map[string]StoreFactory{
 	"file": func(configPath string) Store {
 		return NewFileStore(configPath)
 	},
 }
+
+var externalStoreResolvers []ExternalStoreResolver
 
 // Session describes reusable runtime auth state for one account.
 type Session struct {
@@ -100,17 +113,76 @@ func RegisterStoreBackend(name string, factory StoreFactory) {
 	sessionStoreFactories[name] = factory
 }
 
+// RegisterExternalStoreResolver 注册一个外部 session store 解析器。
+func RegisterExternalStoreResolver(resolver ExternalStoreResolver) {
+	if resolver == nil {
+		return
+	}
+	externalStoreResolvers = append(externalStoreResolvers, resolver)
+}
+
 // OpenStore creates a session store from the selected backend name.
 func OpenStore(configPath string, backend string) (Store, error) {
-	backend = strings.TrimSpace(strings.ToLower(backend))
+	return OpenStoreWithOptions(StoreOptions{
+		ConfigPath: configPath,
+		Backend:    backend,
+	})
+}
+
+// OpenStoreWithOptions 根据配置与 plugin 绑定打开 session store。
+func OpenStoreWithOptions(options StoreOptions) (Store, error) {
+	backend := strings.TrimSpace(strings.ToLower(options.Backend))
 	if backend == "" || backend == "auto" {
 		backend = "file"
 	}
-	factory, ok := sessionStoreFactories[backend]
-	if !ok {
+
+	pluginName := strings.TrimSpace(options.Plugin)
+	if pluginName != "" && pluginName != "builtin" {
+		store, handled, err := openExternalStore(StoreOptions{
+			ConfigPath:     options.ConfigPath,
+			Backend:        backend,
+			Plugin:         pluginName,
+			EnabledPlugins: options.EnabledPlugins,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if handled {
+			return store, nil
+		}
 		return nil, fmt.Errorf("unsupported session store backend: %s", backend)
 	}
-	return factory(configPath), nil
+
+	if factory, ok := sessionStoreFactories[backend]; ok {
+		return factory(options.ConfigPath), nil
+	}
+
+	store, handled, err := openExternalStore(StoreOptions{
+		ConfigPath:     options.ConfigPath,
+		Backend:        backend,
+		Plugin:         pluginName,
+		EnabledPlugins: options.EnabledPlugins,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if handled {
+		return store, nil
+	}
+	return nil, fmt.Errorf("unsupported session store backend: %s", backend)
+}
+
+func openExternalStore(options StoreOptions) (Store, bool, error) {
+	for _, resolver := range externalStoreResolvers {
+		store, handled, err := resolver(options)
+		if err != nil {
+			return nil, false, err
+		}
+		if handled {
+			return store, true, nil
+		}
+	}
+	return nil, false, nil
 }
 
 // NewFileStore derives the session cache directory from the main config path.

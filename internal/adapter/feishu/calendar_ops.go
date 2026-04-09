@@ -2,8 +2,6 @@ package feishu
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -400,18 +398,4 @@ func normalizeCalendar(record map[string]any) map[string]any {
 		result["is_third_party"] = isThirdParty
 	}
 	return result
-}
-
-func decodeCalendarEventResponse(responseBody []byte) (*createCalendarEventResponse, *apperr.AppError) {
-	var response createCalendarEventResponse
-	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode calendar event response: %v", err))
-	}
-	if response.Code != 0 {
-		return nil, normalizeFeishuError(response.Code, response.Msg, 0)
-	}
-	if strings.TrimSpace(response.Data.Event.EventID) == "" {
-		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "event_id is empty in Feishu response")
-	}
-	return &response, nil
 }

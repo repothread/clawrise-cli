@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,6 +140,46 @@ func TestExecutorReadOperationOmitsIdempotency(t *testing.T) {
 	}
 	if envelope.Idempotency != nil {
 		t.Fatalf("expected no idempotency section for read operation, got: %+v", envelope.Idempotency)
+	}
+}
+
+func TestExecutorDryRunWarnsWhenWriteEnhancementsAreSkipped(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	executor := NewExecutor(store, newTestRegistry(t, nil, nil))
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput:       "page.create",
+		DryRun:               true,
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+		InputJSON:            `{"title":"Dry Run","parent":{"type":"page_id","id":"page_demo"}}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected dry-run success, got error: %+v", envelope.Error)
+	}
+	joined := strings.Join(envelope.Warnings, " ")
+	if !strings.Contains(joined, "skipped --debug-provider-payload") || !strings.Contains(joined, "skipped --verify") {
+		t.Fatalf("expected dry-run enhancement warnings, got: %+v", envelope.Warnings)
 	}
 }
 
@@ -402,6 +445,198 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	data := envelope.Data.(map[string]any)
 	if data["title"] != "执行器验证" {
 		t.Fatalf("unexpected title: %+v", data["title"])
+	}
+}
+
+func TestExecutorExportsProviderDebugForSupportedNotionWrite(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/pages" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"id":       "page_debug_demo",
+					"url":      "https://www.notion.so/page_debug_demo",
+					"in_trash": false,
+					"parent": map[string]any{
+						"type":    "page_id",
+						"page_id": "page_demo",
+					},
+					"properties": map[string]any{
+						"title": map[string]any{
+							"title": []map[string]any{
+								{
+									"type":       "text",
+									"plain_text": "调试页面",
+									"text": map[string]any{
+										"content": "调试页面",
+									},
+								},
+							},
+						},
+					},
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput:       "page.create",
+		DebugProviderPayload: true,
+		InputJSON:            `{"title":"调试页面","parent":{"type":"page_id","id":"page_demo"}}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion execution success, got error: %+v", envelope.Error)
+	}
+	if envelope.Debug == nil {
+		t.Fatal("expected debug payload to be present")
+	}
+	requests := envelope.Debug["provider_requests"].([]map[string]any)
+	if len(requests) != 1 {
+		t.Fatalf("unexpected debug payload: %+v", envelope.Debug)
+	}
+	if requests[0]["path"] != "/v1/pages" {
+		t.Fatalf("unexpected debug request entry: %+v", requests[0])
+	}
+}
+
+func TestExecutorSupportsVerificationAndDebugForNotionPageUpdate(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				switch request.URL.Path {
+				case "/v1/pages/page_demo":
+					switch request.Method {
+					case http.MethodPatch, http.MethodGet:
+						return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+							"id":       "page_demo",
+							"url":      "https://www.notion.so/page_demo",
+							"in_trash": false,
+							"parent": map[string]any{
+								"type":    "page_id",
+								"page_id": "parent_demo",
+							},
+							"properties": map[string]any{
+								"title": map[string]any{
+									"title": []map[string]any{
+										{
+											"type":       "text",
+											"plain_text": "执行器更新验证",
+											"text": map[string]any{
+												"content": "执行器更新验证",
+											},
+										},
+									},
+								},
+							},
+						}), nil
+					default:
+						t.Fatalf("unexpected method: %s", request.Method)
+						return nil, nil
+					}
+				default:
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+					return nil, nil
+				}
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput:       "page.update",
+		DebugProviderPayload: true,
+		VerifyAfterWrite:     true,
+		InputJSON:            `{"page_id":"page_demo","title":"执行器更新验证"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion page update success, got error: %+v", envelope.Error)
+	}
+	if envelope.Debug == nil {
+		t.Fatal("expected debug payload to be present")
+	}
+	data := envelope.Data.(map[string]any)
+	verification := data["verification"].(map[string]any)
+	if verification["ok"] != true {
+		t.Fatalf("unexpected verification result: %+v", verification)
+	}
+	requests := envelope.Debug["provider_requests"].([]map[string]any)
+	if len(requests) != 2 {
+		t.Fatalf("unexpected debug payload: %+v", envelope.Debug)
 	}
 }
 
@@ -1282,6 +1517,763 @@ func TestExecutorWritesRedactedAuditLog(t *testing.T) {
 	}
 }
 
+func TestExecutorLocalPolicyRequiresApproval(t *testing.T) {
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Policy: config.PolicyConfig{
+				RequireApprovalOperations: []string{"demo.page.update"},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test local policy approval.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		DryRun:         true,
+		InputJSON:      `{"id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if envelope.OK {
+		t.Fatalf("expected approval-required policy to block execution: %+v", envelope)
+	}
+	if envelope.Error == nil || envelope.Error.Code != "POLICY_APPROVAL_REQUIRED" {
+		t.Fatalf("unexpected policy error: %+v", envelope.Error)
+	}
+	if envelope.Policy == nil {
+		t.Fatalf("expected structured policy result, got: %+v", envelope)
+	}
+	if envelope.Policy.FinalDecision != "require_approval" {
+		t.Fatalf("unexpected final policy decision: %+v", envelope.Policy)
+	}
+	if len(envelope.Policy.Hits) != 1 {
+		t.Fatalf("expected one policy hit, got: %+v", envelope.Policy)
+	}
+	if envelope.Policy.Hits[0].SourceType != "local" || envelope.Policy.Hits[0].SourceName != "runtime.policy.require_approval_operations" {
+		t.Fatalf("unexpected policy hit source: %+v", envelope.Policy.Hits[0])
+	}
+	if envelope.Policy.Hits[0].MatchedRule != "demo.page.update" {
+		t.Fatalf("unexpected matched rule: %+v", envelope.Policy.Hits[0])
+	}
+}
+
+func TestExecutorLocalPolicyDenyProducesStructuredResult(t *testing.T) {
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Policy: config.PolicyConfig{
+				DenyOperations: []string{"demo.page.delete"},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.delete",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test local policy deny.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.delete",
+		DryRun:         true,
+		InputJSON:      `{"id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if envelope.OK {
+		t.Fatalf("expected deny policy to block execution: %+v", envelope)
+	}
+	if envelope.Error == nil || envelope.Error.Code != "POLICY_DENIED" {
+		t.Fatalf("unexpected policy error: %+v", envelope.Error)
+	}
+	if envelope.Policy == nil || envelope.Policy.FinalDecision != "deny" {
+		t.Fatalf("expected deny decision in structured policy result, got: %+v", envelope.Policy)
+	}
+	if len(envelope.Policy.Hits) != 1 || envelope.Policy.Hits[0].MatchedRule != "demo.page.delete" {
+		t.Fatalf("unexpected policy hits: %+v", envelope.Policy)
+	}
+}
+
+func TestExecutorPluginPolicyAnnotatesExecution(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	pluginDir := filepath.Join(pluginRoot, "policy-demo", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create policy plugin dir: %v", err)
+	}
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.policy.evaluate"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"manual review of the output is recommended","annotations":{"reviewer":"ops","severity":"medium"}}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(pluginDir, "policy-demo.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "policy-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 90,
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write policy plugin manifest: %v", err)
+	}
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test policy plugin annotation.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_demo"}`,
+		IdempotencyKey: "idem_demo",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected policy annotation to keep execution successful, got: %+v", envelope.Error)
+	}
+	if len(envelope.Warnings) == 0 || !strings.Contains(envelope.Warnings[0], "manual review of the output is recommended") {
+		t.Fatalf("expected policy warning to be surfaced, got: %+v", envelope.Warnings)
+	}
+	if envelope.Policy == nil {
+		t.Fatalf("expected structured policy result, got: %+v", envelope)
+	}
+	if envelope.Policy.FinalDecision != "allow" {
+		t.Fatalf("unexpected final policy decision: %+v", envelope.Policy)
+	}
+	if len(envelope.Policy.Hits) != 1 {
+		t.Fatalf("expected one policy hit, got: %+v", envelope.Policy)
+	}
+	if envelope.Policy.Hits[0].SourceType != "plugin" || envelope.Policy.Hits[0].SourceName != "policy-demo" || envelope.Policy.Hits[0].MatchedRule != "review" {
+		t.Fatalf("unexpected policy hit source: %+v", envelope.Policy.Hits[0])
+	}
+	if envelope.Policy.Hits[0].Annotations["reviewer"] != "ops" {
+		t.Fatalf("expected policy annotations to be preserved, got: %+v", envelope.Policy.Hits[0].Annotations)
+	}
+}
+
+func TestExecutorPolicyManualSelectionSkipsUnconfiguredPlugins(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	annotateDir := filepath.Join(pluginRoot, "policy-annotate", "0.1.0")
+	if err := os.MkdirAll(annotateDir, 0o755); err != nil {
+		t.Fatalf("failed to create annotate policy plugin dir: %v", err)
+	}
+	annotateScript := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.policy.evaluate"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"selected policy executed"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(annotateDir, "policy-annotate.sh"), []byte(annotateScript), 0o755); err != nil {
+		t.Fatalf("failed to write annotate policy executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(annotateDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "policy-annotate",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 90,
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-annotate.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write annotate policy manifest: %v", err)
+	}
+
+	denyDir := filepath.Join(pluginRoot, "policy-deny", "0.1.0")
+	if err := os.MkdirAll(denyDir, 0o755); err != nil {
+		t.Fatalf("failed to create deny policy plugin dir: %v", err)
+	}
+	denyScript := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.policy.evaluate"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"deny","message":"this plugin should not run"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(denyDir, "policy-deny.sh"), []byte(denyScript), 0o755); err != nil {
+		t.Fatalf("failed to write deny policy executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(denyDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "policy-deny",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "blocker",
+      "priority": 100,
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-deny.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write deny policy manifest: %v", err)
+	}
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Policy: config.PolicyConfig{
+				Mode: "manual",
+				Plugins: []config.PolicyPluginBinding{
+					{Plugin: "policy-annotate", PolicyID: "review"},
+				},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test manual policy selection.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		DryRun:         true,
+		InputJSON:      `{"id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected manual policy selection to skip unconfigured deny plugin, got: %+v", envelope.Error)
+	}
+	if len(envelope.Warnings) == 0 || !strings.Contains(strings.Join(envelope.Warnings, " "), "selected policy executed") {
+		t.Fatalf("expected selected policy warning to be surfaced, got: %+v", envelope.Warnings)
+	}
+	if envelope.Policy == nil || len(envelope.Policy.Hits) != 1 || envelope.Policy.Hits[0].MatchedRule != "review" {
+		t.Fatalf("unexpected structured policy result: %+v", envelope.Policy)
+	}
+}
+
+func TestExecutorPolicyHitOrderKeepsLocalBeforePlugin(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	pluginDir := filepath.Join(pluginRoot, "policy-demo", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create policy plugin dir: %v", err)
+	}
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.policy.evaluate"'*)
+      printf '{"jsonrpc":"2.0","id":"1","result":{"decision":"annotate","message":"plugin review is recommended"}}'"\n"
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(pluginDir, "policy-demo.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write policy plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "policy-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "policy",
+      "id": "review",
+      "priority": 90,
+      "platforms": ["demo"]
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./policy-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write policy plugin manifest: %v", err)
+	}
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Policy: config.PolicyConfig{
+				AnnotateOperations: map[string]string{
+					"demo.page.update": "local review is recommended",
+				},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test policy hit order.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		DryRun:         true,
+		InputJSON:      `{"id":"page_demo"}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected annotated execution to succeed, got: %+v", envelope.Error)
+	}
+	if envelope.Policy == nil || len(envelope.Policy.Hits) != 2 {
+		t.Fatalf("expected two ordered policy hits, got: %+v", envelope.Policy)
+	}
+	if envelope.Policy.Hits[0].SourceType != "local" || envelope.Policy.Hits[1].SourceType != "plugin" {
+		t.Fatalf("expected local hit before plugin hit, got: %+v", envelope.Policy.Hits)
+	}
+	if envelope.Policy.Hits[0].Message != "local review is recommended" || envelope.Policy.Hits[1].Message != "plugin review is recommended" {
+		t.Fatalf("unexpected policy hit messages: %+v", envelope.Policy.Hits)
+	}
+}
+
+func TestExecutorEmitsAuditSinkPlugin(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	markerPath := filepath.Join(t.TempDir(), "audit-sink.jsonl")
+	pluginDir := filepath.Join(pluginRoot, "audit-demo", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create audit sink plugin dir: %v", err)
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+marker=%q
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.audit.emit"'*)
+      printf '%%s\n' "$line" >> "$marker"
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`, markerPath)
+	if err := os.WriteFile(filepath.Join(pluginDir, "audit-demo.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write audit sink plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "audit-demo",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./audit-demo.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write audit sink plugin manifest: %v", err)
+	}
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test audit sink fan-out.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_demo"}`,
+		IdempotencyKey: "idem_audit_demo",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected audit sink execution to succeed, got: %+v", envelope.Error)
+	}
+
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("failed to read audit sink marker: %v", err)
+	}
+	if !strings.Contains(string(data), `"method":"clawrise.audit.emit"`) {
+		t.Fatalf("expected audit sink plugin to receive emit request, got: %s", string(data))
+	}
+}
+
+func TestExecutorEmitsBuiltinStdoutAuditSink(t *testing.T) {
+	var sinkOutput bytes.Buffer
+	previousWriter := builtinAuditStdoutWriter
+	builtinAuditStdoutWriter = &sinkOutput
+	t.Cleanup(func() {
+		builtinAuditStdoutWriter = previousWriter
+	})
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Audit: config.AuditConfig{
+				Mode: "manual",
+				Sinks: []config.AuditSinkConfig{
+					{Type: "stdout"},
+				},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test builtin stdout audit sink.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_demo"}`,
+		IdempotencyKey: "idem_stdout_audit",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected builtin stdout audit sink execution to succeed, got: %+v", envelope.Error)
+	}
+	if !strings.Contains(sinkOutput.String(), `"operation":"demo.page.update"`) {
+		t.Fatalf("expected builtin stdout audit sink to write audit json, got: %s", sinkOutput.String())
+	}
+}
+
+func TestExecutorEmitsBuiltinWebhookAuditSink(t *testing.T) {
+	var (
+		receivedBody   []byte
+		receivedHeader string
+	)
+	server := newIPv4TestServer(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		receivedHeader = request.Header.Get("Authorization")
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatalf("failed to read webhook body: %v", err)
+		}
+		receivedBody = append([]byte(nil), body...)
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	t.Setenv("CLAWRISE_AUDIT_WEBHOOK_TOKEN", "Bearer audit-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Runtime: config.RuntimeConfig{
+			Audit: config.AuditConfig{
+				Mode: "manual",
+				Sinks: []config.AuditSinkConfig{
+					{
+						Type:      "webhook",
+						URL:       server.URL,
+						Headers:   map[string]string{"Authorization": "env:CLAWRISE_AUDIT_WEBHOOK_TOKEN"},
+						TimeoutMS: 3000,
+					},
+				},
+			},
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "Test builtin webhook audit sink.",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_demo"}`,
+		IdempotencyKey: "idem_webhook_audit",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected builtin webhook audit sink execution to succeed, got: %+v", envelope.Error)
+	}
+	if receivedHeader != "Bearer audit-token" {
+		t.Fatalf("expected webhook header to be resolved from env, got: %s", receivedHeader)
+	}
+	if !strings.Contains(string(receivedBody), `"operation":"demo.page.update"`) {
+		t.Fatalf("expected webhook body to carry audit record, got: %s", string(receivedBody))
+	}
+}
+
+func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+
+	// 显式绑定到 127.0.0.1，避免在 IPv6 受限环境下默认监听 [::1] 造成测试不稳定。
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on ipv4 loopback: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(handler)
+	server.Listener = listener
+	server.Start()
+	return server
+}
+
 type roundTripFunc func(request *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -1424,6 +2416,148 @@ func accountsFromLegacyAccounts(profiles map[string]legacyTestAccount) map[strin
 		accounts[name] = account
 	}
 	return accounts
+}
+
+// TestExecutorPluginAuditSinkSupportsMultipleEmitsInOneCall 验证 BUG-02 修复：
+// 同一 CLI 调用中多次审计事件写入不会因插件进程被关闭而失败。
+func TestExecutorPluginAuditSinkSupportsMultipleEmitsInOneCall(t *testing.T) {
+	pluginRoot := t.TempDir()
+	t.Setenv("CLAWRISE_PLUGIN_PATHS", pluginRoot)
+	t.Setenv("HOME", t.TempDir())
+
+	markerPath := filepath.Join(t.TempDir(), "audit-sink-multi.jsonl")
+	pluginDir := filepath.Join(pluginRoot, "audit-multi", "0.1.0")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create audit sink plugin dir: %v", err)
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+marker=%q
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"clawrise.audit.emit"'*)
+      printf '%%s\n' "$line" >> "$marker"
+      printf '{"jsonrpc":"2.0","id":"1","result":{}}'"\n"
+      ;;
+  esac
+done
+`, markerPath)
+	if err := os.WriteFile(filepath.Join(pluginDir, "audit-multi.sh"), []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write audit sink plugin executable: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{
+  "schema_version": 2,
+  "name": "audit-multi",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./audit-multi.sh"]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("failed to write audit sink plugin manifest: %v", err)
+	}
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "demo",
+			Account:  "demo_operator",
+		},
+		Accounts: map[string]config.Account{
+			"demo_operator": {
+				Platform: "demo",
+				Subject:  "integration",
+				Auth: config.AccountAuth{
+					Method: "demo.token",
+				},
+			},
+		},
+	})
+
+	registry := adapter.NewRegistry()
+	registry.Register(adapter.Definition{
+		Operation:       "demo.page.update",
+		Platform:        "demo",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"integration"},
+		Spec: adapter.OperationSpec{
+			Summary: "测试审计 sink 多次写入。",
+			Idempotency: adapter.IdempotencySpec{
+				Required: true,
+			},
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			return map[string]any{"ok": true}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+
+	// 第一次执行
+	firstEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_1"}`,
+		IdempotencyKey: "idem_multi_first",
+	})
+	if err != nil {
+		t.Fatalf("first ExecuteContext returned error: %v", err)
+	}
+	if !firstEnvelope.OK {
+		t.Fatalf("expected first execution to succeed, got: %+v", firstEnvelope.Error)
+	}
+
+	// 第二次执行 - 使用不同的 idempotency key
+	secondEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.page.update",
+		InputJSON:      `{"id":"page_2"}`,
+		IdempotencyKey: "idem_multi_second",
+	})
+	if err != nil {
+		t.Fatalf("second ExecuteContext returned error: %v", err)
+	}
+	if !secondEnvelope.OK {
+		t.Fatalf("expected second execution to succeed, got: %+v", secondEnvelope.Error)
+	}
+
+	// 验证插件收到两次 emit
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("failed to read audit sink marker: %v", err)
+	}
+	lines := strings.Count(string(data), `"method":"clawrise.audit.emit"`)
+	if lines != 2 {
+		t.Fatalf("expected 2 audit emit calls to plugin, got %d; marker content:\n%s", lines, string(data))
+	}
+}
+
+// TestPluginAuditSinkCloseLifecycle 验证 closePluginAuditSinks 的行为正确性：
+// 仅关闭 plugin 类型的 sink，不影响 stdout/webhook sink。
+func TestPluginAuditSinkCloseLifecycle(t *testing.T) {
+	t.Run("closes_only_plugin_sinks", func(t *testing.T) {
+		var stdoutBuf bytes.Buffer
+		sinks := []auditSink{
+			&stdoutAuditSink{writer: &stdoutBuf},
+			&pluginAuditSink{runtime: nil}, // nil runtime 不应 panic
+		}
+		// 调用 closePluginAuditSinks 不应 panic
+		closePluginAuditSinks(sinks)
+
+		// stdout sink 仍然可用
+		record := auditRecord{Operation: "test.op", OK: true}
+		if err := sinks[0].Emit(context.Background(), record); err != nil {
+			t.Fatalf("stdout sink should still work after closePluginAuditSinks: %v", err)
+		}
+		if !strings.Contains(stdoutBuf.String(), "test.op") {
+			t.Fatalf("expected stdout output to contain operation, got: %s", stdoutBuf.String())
+		}
+	})
 }
 
 func newTestRegistry(t *testing.T, feishuClient *feishuadapter.Client, notionClient *notionadapter.Client) *adapter.Registry {

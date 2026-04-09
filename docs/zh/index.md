@@ -1,10 +1,15 @@
 # 文档索引
 
-## 用户与使用
+## 安装与使用
 
+- [AI 安装引导](./ai-install.md)
 - [飞书用户授权凭证获取说明](./feishu-user-auth-setup.md)
-- [近期路线图](./roadmap.md)
 - [本地 Playbooks 索引](../playbooks/index.yaml)
+- [插件作者规范](./plugin-authoring-spec.md)
+
+## 路线图
+
+- [近期路线图](./roadmap.md)
 
 ## 设计与规格
 

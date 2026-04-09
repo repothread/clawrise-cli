@@ -20,14 +20,16 @@ type batchRequestEnvelope struct {
 }
 
 type batchRequest struct {
-	Operation      string         `json:"operation"`
-	Account        string         `json:"account,omitempty"`
-	Subject        string         `json:"subject,omitempty"`
-	Input          map[string]any `json:"input,omitempty"`
-	Timeout        string         `json:"timeout,omitempty"`
-	DryRun         bool           `json:"dry_run,omitempty"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-	Quiet          bool           `json:"quiet,omitempty"`
+	Operation            string         `json:"operation"`
+	Account              string         `json:"account,omitempty"`
+	Subject              string         `json:"subject,omitempty"`
+	Input                map[string]any `json:"input,omitempty"`
+	Timeout              string         `json:"timeout,omitempty"`
+	DryRun               bool           `json:"dry_run,omitempty"`
+	DebugProviderPayload bool           `json:"debug_provider_payload,omitempty"`
+	VerifyAfterWrite     bool           `json:"verify_after_write,omitempty"`
+	IdempotencyKey       string         `json:"idempotency_key,omitempty"`
+	Quiet                bool           `json:"quiet,omitempty"`
 }
 
 func runBatch(args []string, stdout io.Writer, stderr io.Writer, executor *runtime.Executor) error {
@@ -71,15 +73,17 @@ func runBatch(args []string, stdout io.Writer, stderr io.Writer, executor *runti
 		}
 
 		envelope, err := executor.ExecuteContext(context.Background(), runtime.ExecuteOptions{
-			OperationInput: request.Operation,
-			AccountName:    strings.TrimSpace(request.Account),
-			SubjectName:    strings.TrimSpace(request.Subject),
-			InputJSON:      inputJSON,
-			Timeout:        timeout,
-			DryRun:         request.DryRun,
-			IdempotencyKey: strings.TrimSpace(request.IdempotencyKey),
-			Output:         "json",
-			Quiet:          request.Quiet,
+			OperationInput:       request.Operation,
+			AccountName:          strings.TrimSpace(request.Account),
+			SubjectName:          strings.TrimSpace(request.Subject),
+			InputJSON:            inputJSON,
+			Timeout:              timeout,
+			DryRun:               request.DryRun,
+			DebugProviderPayload: request.DebugProviderPayload,
+			VerifyAfterWrite:     request.VerifyAfterWrite,
+			IdempotencyKey:       strings.TrimSpace(request.IdempotencyKey),
+			Output:               "json",
+			Quiet:                request.Quiet,
 		})
 		if err != nil {
 			return err

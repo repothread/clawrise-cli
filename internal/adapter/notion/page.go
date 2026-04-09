@@ -45,7 +45,11 @@ func (c *Client) CreatePage(ctx context.Context, profile ExecutionProfile, input
 		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "page id is empty in Notion response")
 	}
 
-	return mapPageData(response), nil
+	data := mapPageData(response)
+	if verifyAfterWriteEnabled(ctx) {
+		data = attachVerification(data, c.verifyPageCreate(ctx, profile, payload, data))
+	}
+	return data, nil
 }
 
 // GetPage reads page details.
@@ -60,11 +64,16 @@ func (c *Client) GetPage(ctx context.Context, profile ExecutionProfile, input ma
 		return nil, appErr
 	}
 
+	query := url.Values{}
+	if appErr := addFilterPropertiesQuery(query, input["filter_properties"]); appErr != nil {
+		return nil, appErr
+	}
+
 	responseBody, appErr := c.doJSONRequest(
 		ctx,
 		http.MethodGet,
 		"/v1/pages/"+url.PathEscape(pageID),
-		nil,
+		query,
 		nil,
 		"Bearer "+accessToken,
 		notionVersion,
@@ -119,6 +128,55 @@ func (c *Client) UpdatePage(ctx context.Context, profile ExecutionProfile, input
 	var response notionPage
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion page update response: %v", err))
+	}
+	if strings.TrimSpace(response.ID) == "" {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "page id is empty in Notion response")
+	}
+
+	data := mapPageData(response)
+	if verifyAfterWriteEnabled(ctx) {
+		data = attachVerification(data, c.verifyPageUpdate(ctx, profile, input, data))
+	}
+	return data, nil
+}
+
+// MovePage 把页面移动到另一个 page 或 data source 父级下。
+// MovePage moves a page to another page or data source parent.
+func (c *Client) MovePage(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	pageID, appErr := requireIDField(input, "page_id")
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	parent, appErr := normalizeMovePageParent(input["parent"])
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	responseBody, appErr := c.doJSONRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/pages/"+url.PathEscape(pageID)+"/move",
+		nil,
+		map[string]any{
+			"parent": parent,
+		},
+		"Bearer "+accessToken,
+		notionVersion,
+		nil,
+	)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	var response notionPage
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", fmt.Sprintf("failed to decode Notion page move response: %v", err))
 	}
 	if strings.TrimSpace(response.ID) == "" {
 		return nil, apperr.New("UPSTREAM_INVALID_RESPONSE", "page id is empty in Notion response")
@@ -205,19 +263,21 @@ func (c *Client) UpdatePageMarkdown(ctx context.Context, profile ExecutionProfil
 
 // buildCreatePagePayload builds the request payload used to create a page.
 func buildCreatePagePayload(profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
-	title, ok := asString(input["title"])
-	if !ok || strings.TrimSpace(title) == "" {
-		return nil, apperr.New("INVALID_INPUT", "title is required")
-	}
-
 	parent, parentType, appErr := buildPageParent(profile, input["parent"])
 	if appErr != nil {
 		return nil, appErr
 	}
 
-	properties, appErr := buildCreatePageProperties(parentType, title, input["title_property"], input["properties"])
+	title := ""
+	if value, ok := asString(input["title"]); ok {
+		title = strings.TrimSpace(value)
+	}
+	markdown, hasMarkdown, appErr := extractCreatePageMarkdown(input)
 	if appErr != nil {
 		return nil, appErr
+	}
+	if hasMarkdown && input["children"] != nil {
+		return nil, apperr.New("INVALID_INPUT", "markdown cannot be combined with children")
 	}
 
 	children, appErr := buildBlockChildren(input["children"])
@@ -225,12 +285,62 @@ func buildCreatePagePayload(profile ExecutionProfile, input map[string]any) (map
 		return nil, appErr
 	}
 
-	payload := map[string]any{
-		"parent":     parent,
-		"properties": properties,
+	if template, exists := input["template"]; exists {
+		// Notion 模板会异步填充正文，因此这里显式禁止与 markdown / children 混用，避免请求语义含混。
+		// Notion templates populate body content asynchronously, so we explicitly reject mixing them with markdown or children.
+		if len(children) > 0 || hasMarkdown {
+			return nil, apperr.New("INVALID_INPUT", "template cannot be combined with children or markdown")
+		}
+		normalizedTemplate, appErr := normalizePageTemplate(template)
+		if appErr != nil {
+			return nil, appErr
+		}
+
+		position, appErr := normalizeCreatePagePosition(parentType, input["position"], input["after"])
+		if appErr != nil {
+			return nil, appErr
+		}
+
+		properties, appErr := buildCreatePageProperties(parentType, title, input["title_property"], input["properties"], false)
+		if appErr != nil {
+			return nil, appErr
+		}
+
+		payload := map[string]any{
+			"parent":     parent,
+			"properties": properties,
+			"template":   normalizedTemplate,
+		}
+		if position != nil {
+			payload["position"] = position
+		}
+		return payload, nil
+	}
+
+	properties, appErr := buildCreatePageProperties(parentType, title, input["title_property"], input["properties"], hasMarkdown)
+	if appErr != nil {
+		return nil, appErr
+	}
+	position, appErr := normalizeCreatePagePosition(parentType, input["position"], input["after"])
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	payload := map[string]any{"parent": parent}
+	if len(properties) > 0 {
+		payload["properties"] = properties
 	}
 	if len(children) > 0 {
 		payload["children"] = children
+	}
+	if hasMarkdown {
+		payload["markdown"] = markdown
+	}
+	if position != nil {
+		payload["position"] = position
+	}
+	if len(properties) == 0 && len(children) == 0 && !hasMarkdown {
+		return nil, apperr.New("INVALID_INPUT", "at least one of title, markdown, children, template, or provider-native title properties is required")
 	}
 	return payload, nil
 }
@@ -258,8 +368,25 @@ func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppEr
 	if len(properties) > 0 {
 		payload["properties"] = properties
 	}
-	if archived, ok := asBool(input["archived"]); ok {
-		payload["archived"] = archived
+	if inTrash, ok := asBool(input["in_trash"]); ok {
+		payload["in_trash"] = inTrash
+	} else if archived, ok := asBool(input["archived"]); ok {
+		// archived 继续保留为兼容别名，但实际向新版 Notion API 发送 in_trash。
+		// Keep archived as a backward-compatible alias, but send in_trash to current Notion API versions.
+		payload["in_trash"] = archived
+	}
+	if isLocked, ok := asBool(input["is_locked"]); ok {
+		payload["is_locked"] = isLocked
+	}
+	if eraseContent, ok := asBool(input["erase_content"]); ok {
+		payload["erase_content"] = eraseContent
+	}
+	if template, exists := input["template"]; exists {
+		normalizedTemplate, appErr := normalizePageTemplate(template)
+		if appErr != nil {
+			return nil, appErr
+		}
+		payload["template"] = normalizedTemplate
 	}
 	if icon, exists := input["icon"]; exists {
 		normalized, appErr := normalizeNotionFileObject(icon, true)
@@ -281,6 +408,97 @@ func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppEr
 	return payload, nil
 }
 
+func normalizeMovePageParent(raw any) (map[string]any, *apperr.AppError) {
+	parent, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "parent must be an object")
+	}
+
+	parentType, ok := asString(parent["type"])
+	if !ok || strings.TrimSpace(parentType) == "" {
+		return nil, apperr.New("INVALID_INPUT", "parent.type is required")
+	}
+	parentType = strings.TrimSpace(parentType)
+
+	requestKey := ""
+	switch parentType {
+	case "page_id":
+		requestKey = "page_id"
+	case "data_source_id":
+		requestKey = "data_source_id"
+	default:
+		return nil, apperr.New("INVALID_INPUT", "parent.type must be page_id or data_source_id")
+	}
+
+	parentID, ok := asString(parent["id"])
+	if !ok || strings.TrimSpace(parentID) == "" {
+		if directID, ok := asString(parent[requestKey]); ok && strings.TrimSpace(directID) != "" {
+			parentID = directID
+		} else {
+			return nil, apperr.New("INVALID_INPUT", "parent.id is required")
+		}
+	}
+
+	return map[string]any{
+		"type":     parentType,
+		requestKey: strings.TrimSpace(parentID),
+	}, nil
+}
+
+func addFilterPropertiesQuery(query url.Values, raw any) *apperr.AppError {
+	if raw == nil {
+		return nil
+	}
+
+	list, ok := asArray(raw)
+	if !ok {
+		return apperr.New("INVALID_INPUT", "filter_properties must be an array")
+	}
+	for _, item := range list {
+		property, ok := asString(item)
+		if !ok || strings.TrimSpace(property) == "" {
+			return apperr.New("INVALID_INPUT", "each filter_properties item must be a non-empty string")
+		}
+		query.Add("filter_properties", strings.TrimSpace(property))
+	}
+	return nil
+}
+
+func normalizePageTemplate(raw any) (map[string]any, *apperr.AppError) {
+	record, ok := asMap(raw)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "template must be an object")
+	}
+
+	templateType, ok := asString(record["type"])
+	if !ok || strings.TrimSpace(templateType) == "" {
+		return nil, apperr.New("INVALID_INPUT", "template.type is required")
+	}
+	templateType = strings.TrimSpace(templateType)
+
+	normalized := map[string]any{
+		"type": templateType,
+	}
+	switch templateType {
+	case "default":
+		// default 模板不要求额外字段。
+		// The default template does not require extra fields.
+	case "template_id":
+		templateID, ok := asString(record["template_id"])
+		if !ok || strings.TrimSpace(templateID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "template.template_id is required when template.type is template_id")
+		}
+		normalized["template_id"] = strings.TrimSpace(templateID)
+	default:
+		return nil, apperr.New("INVALID_INPUT", "template.type must be default or template_id")
+	}
+
+	if timezone, ok := asString(record["timezone"]); ok && strings.TrimSpace(timezone) != "" {
+		normalized["timezone"] = strings.TrimSpace(timezone)
+	}
+	return normalized, nil
+}
+
 func normalizeNotionFileObject(raw any, allowEmoji bool) (map[string]any, *apperr.AppError) {
 	switch value := raw.(type) {
 	case string:
@@ -300,6 +518,14 @@ func normalizeNotionFileObject(raw any, allowEmoji bool) (map[string]any, *apper
 			},
 		}, nil
 	case map[string]any:
+		if fileUploadID, ok := asString(value["file_upload_id"]); ok && strings.TrimSpace(fileUploadID) != "" {
+			return map[string]any{
+				"type": "file_upload",
+				"file_upload": map[string]any{
+					"id": strings.TrimSpace(fileUploadID),
+				},
+			}, nil
+		}
 		return cloneMap(value), nil
 	default:
 		return nil, apperr.New("INVALID_INPUT", "file object must be a string or an object")
@@ -355,7 +581,7 @@ func buildPageParent(profile ExecutionProfile, raw any) (map[string]any, string,
 	}
 }
 
-func buildCreatePageProperties(parentType, title string, titlePropertyInput any, propertiesInput any) (map[string]any, *apperr.AppError) {
+func buildCreatePageProperties(parentType, title string, titlePropertyInput any, propertiesInput any, allowMarkdownOnly bool) (map[string]any, *apperr.AppError) {
 	properties := map[string]any{}
 	if propertiesInput != nil {
 		record, ok := asMap(propertiesInput)
@@ -372,8 +598,13 @@ func buildCreatePageProperties(parentType, title string, titlePropertyInput any,
 				return nil, apperr.New("INVALID_INPUT", "only the title property is supported when creating a child page under another page or workspace")
 			}
 		}
-		properties["title"] = map[string]any{
-			"title": buildPlainTextRichText(title),
+		if title != "" {
+			properties["title"] = map[string]any{
+				"title": buildPlainTextRichText(title),
+			}
+		}
+		if len(properties) == 0 && !allowMarkdownOnly {
+			return nil, apperr.New("INVALID_INPUT", "title is required when markdown is not provided")
 		}
 		return properties, nil
 	case "data_source_id", "database_id":
@@ -381,7 +612,7 @@ func buildCreatePageProperties(parentType, title string, titlePropertyInput any,
 		if value, ok := asString(titlePropertyInput); ok {
 			titlePropertyName = strings.TrimSpace(value)
 		}
-		if titlePropertyName != "" {
+		if titlePropertyName != "" && title != "" {
 			properties[titlePropertyName] = map[string]any{
 				"title": buildPlainTextRichText(title),
 			}
@@ -392,6 +623,78 @@ func buildCreatePageProperties(parentType, title string, titlePropertyInput any,
 		return properties, nil
 	default:
 		return nil, apperr.New("INVALID_INPUT", fmt.Sprintf("unsupported parent.type %s", parentType))
+	}
+}
+
+func extractCreatePageMarkdown(input map[string]any) (string, bool, *apperr.AppError) {
+	rawMarkdown, exists := input["markdown"]
+	if !exists {
+		return "", false, nil
+	}
+
+	markdown, ok := asString(rawMarkdown)
+	if !ok {
+		return "", false, apperr.New("INVALID_INPUT", "markdown must be a string")
+	}
+	return markdown, true, nil
+}
+
+// normalizeCreatePagePosition 把 AI 友好的 after 简写和 provider-native position 统一映射为 Notion create page payload。
+// normalizeCreatePagePosition normalizes the AI-friendly after shorthand and provider-native position input into the Notion create page payload.
+func normalizeCreatePagePosition(parentType string, rawPosition any, rawAfter any) (map[string]any, *apperr.AppError) {
+	if rawPosition == nil && rawAfter == nil {
+		return nil, nil
+	}
+	if parentType != "page_id" {
+		return nil, apperr.New("INVALID_INPUT", "position and after are supported only when parent.type is page_id")
+	}
+	if rawPosition != nil && rawAfter != nil {
+		return nil, apperr.New("INVALID_INPUT", "position and after cannot be used together")
+	}
+	if rawAfter != nil {
+		afterBlockID, ok := asString(rawAfter)
+		if !ok || strings.TrimSpace(afterBlockID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "after must be a non-empty string")
+		}
+		return map[string]any{
+			"type": "after_block",
+			"after_block": map[string]any{
+				"id": strings.TrimSpace(afterBlockID),
+			},
+		}, nil
+	}
+
+	position, ok := asMap(rawPosition)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "position must be an object")
+	}
+	positionType, ok := asString(position["type"])
+	if !ok || strings.TrimSpace(positionType) == "" {
+		return nil, apperr.New("INVALID_INPUT", "position.type is required")
+	}
+	positionType = strings.TrimSpace(positionType)
+	switch positionType {
+	case "page_start", "page_end":
+		return map[string]any{
+			"type": positionType,
+		}, nil
+	case "after_block":
+		afterBlock, ok := asMap(position["after_block"])
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "position.after_block must be an object")
+		}
+		afterBlockID, ok := asString(afterBlock["id"])
+		if !ok || strings.TrimSpace(afterBlockID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "position.after_block.id is required")
+		}
+		return map[string]any{
+			"type": "after_block",
+			"after_block": map[string]any{
+				"id": strings.TrimSpace(afterBlockID),
+			},
+		}, nil
+	default:
+		return nil, apperr.New("INVALID_INPUT", "position.type must be page_start, page_end, or after_block")
 	}
 }
 
@@ -415,6 +718,8 @@ func mapPageData(page notionPage) map[string]any {
 		"parent":     normalizeParent(page.Parent),
 		"url":        page.URL,
 		"archived":   page.Archived || page.InTrash,
+		"in_trash":   page.InTrash,
+		"is_locked":  page.IsLocked,
 		"properties": page.Properties,
 	}
 }

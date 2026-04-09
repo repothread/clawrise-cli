@@ -19,24 +19,33 @@ type DiscoveryRootInspection struct {
 
 // DiscoveredPluginInspection 描述一个被发现 plugin 的详细状态。
 type DiscoveredPluginInspection struct {
-	RootPath        string                  `json:"root_path"`
-	ManifestPath    string                  `json:"manifest_path"`
-	Name            string                  `json:"name,omitempty"`
-	Version         string                  `json:"version,omitempty"`
-	Kind            string                  `json:"kind,omitempty"`
-	Platforms       []string                `json:"platforms,omitempty"`
-	StorageBackend  *StorageBackendManifest `json:"storage_backend,omitempty"`
-	Path            string                  `json:"path,omitempty"`
-	Command         []string                `json:"command,omitempty"`
-	CommandPath     string                  `json:"command_path,omitempty"`
-	CommandExists   bool                    `json:"command_exists"`
-	Install         *InstallMetadata        `json:"install,omitempty"`
-	Handshake       *HandshakeResult        `json:"handshake,omitempty"`
-	OperationCount  int                     `json:"operation_count"`
-	CatalogCount    int                     `json:"catalog_count"`
-	Health          *HealthResult           `json:"health,omitempty"`
-	Healthy         bool                    `json:"healthy"`
-	InspectionError string                  `json:"inspection_error,omitempty"`
+	RootPath                string                  `json:"root_path"`
+	ManifestPath            string                  `json:"manifest_path"`
+	Name                    string                  `json:"name,omitempty"`
+	Version                 string                  `json:"version,omitempty"`
+	Kind                    string                  `json:"kind,omitempty"`
+	Platforms               []string                `json:"platforms,omitempty"`
+	StorageBackend          *StorageBackendManifest `json:"storage_backend,omitempty"`
+	Capabilities            []CapabilityDescriptor  `json:"capabilities,omitempty"`
+	CapabilityRoutes        []CapabilityRouteStatus `json:"capability_routes,omitempty"`
+	Path                    string                  `json:"path,omitempty"`
+	Command                 []string                `json:"command,omitempty"`
+	CommandPath             string                  `json:"command_path,omitempty"`
+	CommandExists           bool                    `json:"command_exists"`
+	Enabled                 bool                    `json:"enabled"`
+	EnableRule              string                  `json:"enable_rule,omitempty"`
+	Selected                bool                    `json:"selected"`
+	SelectionReason         string                  `json:"selection_reason,omitempty"`
+	MatchedProviderBindings []string                `json:"matched_provider_bindings,omitempty"`
+	Install                 *InstallMetadata        `json:"install,omitempty"`
+	Handshake               *HandshakeResult        `json:"handshake,omitempty"`
+	RuntimeCapabilities     []CapabilityDescriptor  `json:"runtime_capabilities,omitempty"`
+	OperationCount          int                     `json:"operation_count"`
+	CatalogCount            int                     `json:"catalog_count"`
+	Health                  *HealthResult           `json:"health,omitempty"`
+	Healthy                 bool                    `json:"healthy"`
+	InspectionWarnings      []string                `json:"inspection_warnings,omitempty"`
+	InspectionError         string                  `json:"inspection_error,omitempty"`
 }
 
 // DiscoveryInspection 汇总当前环境下可发现 plugin 的状态。
@@ -47,6 +56,11 @@ type DiscoveryInspection struct {
 
 // InspectDiscovery 在不依赖 Manager 聚合成功的前提下，逐个检查发现到的 plugin。
 func InspectDiscovery(ctx context.Context) (DiscoveryInspection, error) {
+	return InspectDiscoveryWithOptions(ctx, DiscoveryOptions{})
+}
+
+// InspectDiscoveryWithOptions 在不依赖 Manager 聚合成功的前提下，逐个检查发现到的 plugin。
+func InspectDiscoveryWithOptions(ctx context.Context, options DiscoveryOptions) (DiscoveryInspection, error) {
 	roots, err := DefaultDiscoveryRoots()
 	if err != nil {
 		return DiscoveryInspection{}, err
@@ -77,7 +91,7 @@ func InspectDiscovery(ctx context.Context) (DiscoveryInspection, error) {
 		}
 
 		rootItem.Exists = true
-		plugins, walkErr := inspectRoot(ctx, root)
+		plugins, walkErr := inspectRoot(ctx, root, options)
 		if walkErr != nil {
 			rootItem.Error = walkErr.Error()
 		}
@@ -95,7 +109,7 @@ func InspectDiscovery(ctx context.Context) (DiscoveryInspection, error) {
 	return report, nil
 }
 
-func inspectRoot(ctx context.Context, root string) ([]DiscoveredPluginInspection, error) {
+func inspectRoot(ctx context.Context, root string, options DiscoveryOptions) ([]DiscoveredPluginInspection, error) {
 	items := []DiscoveredPluginInspection{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -105,7 +119,7 @@ func inspectRoot(ctx context.Context, root string) ([]DiscoveredPluginInspection
 			return nil
 		}
 
-		item := inspectManifest(ctx, root, path)
+		item := inspectManifest(ctx, root, path, options)
 		items = append(items, item)
 		return nil
 	})
@@ -115,7 +129,7 @@ func inspectRoot(ctx context.Context, root string) ([]DiscoveredPluginInspection
 	return items, nil
 }
 
-func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredPluginInspection {
+func inspectManifest(ctx context.Context, root, manifestPath string, options DiscoveryOptions) DiscoveredPluginInspection {
 	item := DiscoveredPluginInspection{
 		RootPath:     root,
 		ManifestPath: manifestPath,
@@ -133,8 +147,16 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	item.Kind = manifest.Kind
 	item.Platforms = append([]string(nil), manifest.Platforms...)
 	item.StorageBackend = cloneStorageBackendManifest(manifest.StorageBackend)
+	item.Capabilities = cloneCapabilityList(manifest.CapabilityList())
+	item.CapabilityRoutes = inspectCapabilityRoutes(manifest, options)
 	item.Command = append([]string(nil), manifest.Entry.Command...)
 	item.CommandPath = manifest.ResolveCommand()[0]
+	selectionState := resolveManifestSelectionState(manifest, options)
+	item.Enabled = selectionState.Enabled
+	item.EnableRule = selectionState.EnableRule
+	item.Selected = selectionState.Selected
+	item.SelectionReason = selectionState.SelectionReason
+	item.MatchedProviderBindings = matchedProviderBindingPlatforms(manifest, options.ProviderBindings)
 	if _, err := os.Stat(item.CommandPath); err == nil {
 		item.CommandExists = true
 	} else if !os.IsNotExist(err) {
@@ -149,6 +171,9 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 		item.InspectionError = "plugin executable does not exist"
 		return item
 	}
+	if !item.Enabled {
+		return item
+	}
 
 	runtime := NewProcessRuntime(manifest)
 	defer func() { _ = runtime.Close() }()
@@ -160,8 +185,14 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 	}
 	item.Handshake = &handshake
 
-	switch manifest.Kind {
-	case ManifestKindProvider:
+	capabilityInspection := inspectRuntimeCapabilities(ctx, manifest)
+	item.RuntimeCapabilities = capabilityInspection.RuntimeCapabilities
+	item.InspectionWarnings = append(item.InspectionWarnings, capabilityInspection.Warnings...)
+	if len(item.RuntimeCapabilities) > 0 && manifestHasStandaloneRuntimeCapability(manifest) {
+		item.Healthy = true
+	}
+
+	if manifest.SupportsKind(ManifestKindProvider) {
 		operations, err := runtime.ListOperations(ctx)
 		if err != nil {
 			item.InspectionError = err.Error()
@@ -183,34 +214,83 @@ func inspectManifest(ctx context.Context, root, manifestPath string) DiscoveredP
 		}
 		item.Health = &health
 		item.Healthy = health.OK
-	case ManifestKindAuthLauncher:
+	}
+	if manifest.SupportsKind(ManifestKindAuthLauncher) {
 		descriptor, err := runtime.DescribeAuthLauncher(ctx)
 		if err != nil {
 			item.InspectionError = err.Error()
 			return item
 		}
-		item.Healthy = strings.TrimSpace(descriptor.ID) != ""
-	case ManifestKindStorageBackend:
+		item.Healthy = item.Healthy || strings.TrimSpace(descriptor.ID) != ""
+	}
+	if manifest.SupportsKind(ManifestKindStorageBackend) {
+		for index, capability := range manifest.StorageBackendCapabilities() {
+			if index == 0 {
+				item.StorageBackend = &StorageBackendManifest{
+					Target:      capability.Target,
+					Backend:     capability.Backend,
+					DisplayName: capability.DisplayName,
+					Description: capability.Description,
+				}
+			}
+
+			healthy, err := inspectStorageCapability(ctx, manifest, capability)
+			if err != nil {
+				item.InspectionError = err.Error()
+				return item
+			}
+			item.Healthy = item.Healthy || healthy
+		}
+	}
+	return item
+}
+
+func inspectStorageCapability(ctx context.Context, manifest Manifest, capability CapabilityDescriptor) (bool, error) {
+	switch capability.Target {
+	case "secret_store":
 		store := NewProcessSecretStore(manifest)
 		defer func() { _ = store.Close() }()
 
-		descriptor, err := store.DescribeStorageBackend(ctx)
-		if err != nil {
-			item.InspectionError = err.Error()
-			return item
-		}
-		item.StorageBackend = &StorageBackendManifest{
-			Target:      descriptor.Target,
-			Backend:     descriptor.Backend,
-			DisplayName: descriptor.DisplayName,
-			Description: descriptor.Description,
-		}
 		status, err := store.Status(ctx)
 		if err != nil {
-			item.InspectionError = err.Error()
-			return item
+			return false, err
 		}
-		item.Healthy = status.Supported
+		return status.Supported, nil
+	case "session_store":
+		store := NewProcessSessionStore(manifest)
+		defer func() { _ = store.Close() }()
+
+		status, err := store.Status(ctx)
+		if err != nil {
+			return false, err
+		}
+		return status.Supported, nil
+	case "authflow_store":
+		store := NewProcessAuthFlowStore(manifest)
+		defer func() { _ = store.Close() }()
+
+		status, err := store.Status(ctx)
+		if err != nil {
+			return false, err
+		}
+		return status.Supported, nil
+	case "governance":
+		store := NewProcessGovernanceStore(manifest)
+		defer func() { _ = store.Close() }()
+
+		status, err := store.Status(ctx)
+		if err != nil {
+			return false, err
+		}
+		return status.Supported, nil
+	default:
+		return false, fmt.Errorf("unsupported storage backend target: %s", strings.TrimSpace(capability.Target))
 	}
-	return item
+}
+
+func manifestHasStandaloneRuntimeCapability(manifest Manifest) bool {
+	return len(manifest.CapabilitiesByType(CapabilityTypePolicy)) > 0 ||
+		len(manifest.CapabilitiesByType(CapabilityTypeAuditSink)) > 0 ||
+		len(manifest.CapabilitiesByType(CapabilityTypeWorkflow)) > 0 ||
+		len(manifest.CapabilitiesByType(CapabilityTypeRegistrySource)) > 0
 }

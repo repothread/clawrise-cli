@@ -2,6 +2,8 @@
 
 英文版见 [../en/plugin-system-design.md](../en/plugin-system-design.md)。
 
+> 面向第三方插件仓库的当前作者规范、协议面与分发建议，以 [plugin-authoring-spec.md](./plugin-authoring-spec.md) 为准。本文保留“系统设计文档”的定位。
+
 ## 1. 文档目的
 
 这份文档定义 Clawrise 的目标插件系统形态，用于解决以下问题：
@@ -23,10 +25,44 @@
   - manifest 解析、插件发现和外部进程 runtime 已落地
 - `M3` 已完成：
   - Feishu / Notion 第一方能力已经通过 plugin binary 暴露
-- `M4` 已部分完成：
-  - 已具备 `plugin list/install/info/remove`
-  - 已支持本地目录、`file://`、`https://`、`npm://` 安装
-  - release hardening、trust policy、upgrade workflow 仍需继续完善
+- `M4` 已基本完成：
+  - 已具备 `plugin list/install/info/remove/verify/upgrade`
+  - 已支持本地目录、`file://`、`https://`、直接 npm 包名、`npm://` 与 `registry://` 安装
+  - capability 化的 `inspect` / `verify` / `doctor` / provider binding 诊断输出已落地
+  - storage 四个位点、auth launcher 偏好配置、新配置模型产出已落地
+  - 安装器已记录 source、artifact URL 与 checksum，并在安装期前移 `protocol_version` / `min_core_version` 兼容性校验
+  - trust policy 第一阶段已落地：
+    - 已支持 `plugins.install.allowed_sources`
+    - 已支持 `plugins.install.allowed_hosts`
+    - 已支持 `plugins.install.allowed_npm_scopes`
+    - `plugin verify` 已能输出结构化 trust 结果
+  - upgrade workflow 第一阶段已落地：
+    - 已支持单插件 `plugin upgrade`
+    - 已支持批量 `plugin upgrade --all`
+    - 已支持“有新版本 / 无变化 / 来源已钉死 / 当前来源解析到更旧版本”的结构化区分
+- `M5` 第一阶段已完成：
+  - `policy` / `audit_sink` capability 已接入第一版主链路
+  - executor 已支持本地 policy 链与外部 policy plugin
+  - governance 已可把审计事件继续扇出到 audit sink plugin
+- `M5` 收尾已完成：
+  - executor 输出已包含结构化 `policy.final_decision` 与 `policy.hits[]`
+  - plugin `annotations` 已稳定写入结构化 envelope
+  - `plugin list` / `plugin info` / `inspect` / `doctor.plugins` 已能解释 policy / audit capability 是否 active 以及未命中原因
+- `M6` 已完成第一阶段：
+  - `workflow.plan` capability 骨架已落地
+  - `registry_source` capability 骨架已落地
+- 当前仓库内继续保留的第一批 authoring kit 基线包括：
+  - `examples/config.example.yaml` 中的 `runtime.policy` / `runtime.audit` 示例
+  - 最小 `policy` / `audit_sink` 示例插件已补齐
+  - 协议兼容测试夹具与快速校验脚本已补齐
+- 面向插件作者与运行时治理的社区配套说明，现由独立 `clawrise` 项目的根目录 Markdown 文档承载
+- AI 友好的 runtime 配置写回入口已补齐：
+  - `clawrise config policy ...`
+  - `clawrise config audit ...`
+- 仍待继续完善：
+  - release hardening
+  - trust policy hardening
+  - upgrade workflow hardening
 
 ## 2. 非目标
 
@@ -51,7 +87,7 @@ Clawrise 应采用：
 分发层与运行层解耦：
 
 - 运行层使用插件目录与 manifest 发现插件
-- 分发层可支持 `file://`、`https://`、`npm://`、未来的其他源
+- 分发层可支持 `file://`、`https://`、直接 npm 包名、`npm://`、`registry://`、未来的其他源
 
 ## 4. 架构分层
 
@@ -452,6 +488,7 @@ core 的插件发现优先级建议为：
 - `file://`
 - `https://`
 - `npm://`
+- `registry://`
 - 后续可扩展 `gh://`
 
 示例：
@@ -459,7 +496,9 @@ core 的插件发现优先级建议为：
 ```bash
 clawrise plugin install file:///tmp/clawrise-plugin-feishu.tar.gz
 clawrise plugin install https://example.com/clawrise-plugin-feishu.tar.gz
-clawrise plugin install npm://@clawrise/plugin-feishu
+clawrise plugin install @clawrise/clawrise-plugin-feishu
+clawrise plugin install npm://@clawrise/clawrise-plugin-feishu
+clawrise plugin install registry://community/clawrise-plugin-feishu
 ```
 
 如果使用 `npm`：
@@ -664,74 +703,27 @@ core 加载插件时应执行：
 - first-party plugin 用 Go 迁移成本最低
 - 协议层保持无关语言，便于未来开放生态
 
-## 17. 实施路径
+## 17. 阶段状态摘要
 
-建议分四步推进：
-
-### 17.1 M1: 抽象 provider runtime
-
-状态：
-
-- 已完成
-
-- 从 core 中移除平台硬编码构造逻辑
-- 引入 `ProviderRuntime`
-- 通过 in-process runtime shim 作为过渡层，为第一方 provider 脱离 core 做准备
-
-### 17.2 M2: 实现本地插件协议与插件发现
-
-状态：
-
-- 已完成
-
-- 实现 `stdio + JSON-RPC`
-- 实现 manifest 解析
-- 实现插件目录发现与懒启动
-- 实现 `handshake` / `operations.list` / `execute`
-
-### 17.3 M3: 将 Feishu / Notion 迁移为 first-party plugin
-
-状态：
-
-- 已完成
-
-- 复用当前 adapter 与 registry
-- 为每个平台提供单独二进制入口
-- core 不再直接 import 平台 adapter
-
-### 17.4 M4: 安装器与远程分发
-
-状态：
-
-- 部分完成
-
-- `clawrise plugin install`
-- `clawrise plugin list`
-- `clawrise plugin info`
-- `clawrise plugin remove`
-- 支持 `file://`、`https://`、`npm://`
-- 增加 trust、verify 与 upgrade policy
+- `M1` 到 `M3` 已经构成当前的 plugin-first 基线。
+- `M4` 第一轮可用链路已完成。安装、校验、升级已经是正式 CLI 能力，当前重点是 release、trust 与 upgrade 的 hardening。
+- `M5` 第一轮可用链路已完成。`policy` 与 `audit_sink` 已进入执行主链路和诊断输出。
+- `M6` 第一轮扩展点已完成。`workflow.plan` 与 `registry_source` 已作为协议级扩展点存在，高层编排仍保持 capability 可选扩展，而不是 core 强制能力。
 
 ## 18. 对当前仓库的直接影响
 
-当前硬编码入口位于：
+当前仓库已经体现出这套架构的几个直接结果：
 
-- `internal/cli/root.go`
+- `internal/cli/root.go` 仍负责统一 CLI bootstrap 与跨能力 runtime 装配
+- `spec` 已改为从 plugin 聚合 operation 与 catalog 元数据
+- 第一方 Feishu / Notion 的执行路径已经通过 provider runtime 路由，而不是在 core 里直接执行业务 handler
 
-未来需要拆分的重点区域：
+## 19. 当前可运行基线
 
-- 平台注册逻辑从 core 中移除
-- `spec` 改为从 plugin 聚合 operation 与 catalog
-- runtime 执行从直接调用本地 handler 改为通过 provider runtime 调用 plugin
+当前仓库的可运行基线是：
 
-## 19. 最小可执行范围
-
-如果只做一个可上线的最小版本，建议范围是：
-
-- 只支持 first-party plugin
-- 只支持本地目录安装
-- 只支持 `binary + manifest`
-- 只实现 5 个核心 RPC 方法
-- 先迁移 Feishu / Notion
-
-这个范围已经足够解除 core 与平台的静态耦合，并为后续增加 Google 与其他平台提供稳定底座。
+- 第一方 Feishu / Notion 以外部 plugin binary 形式分发
+- 本地与远程安装路径并存，包括直接 npm 包名与 `registry://`
+- core / plugin 合同围绕 `handshake`、`operations.list`、`catalog.get`、`execute`、`health`
+- trust 校验与 upgrade 已成为正式 CLI 面的一部分
+- 更高层 workflow planning 仍保持 capability 可选扩展，而不是 core 强制能力

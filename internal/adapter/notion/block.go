@@ -101,7 +101,8 @@ func (c *Client) ListBlockChildren(ctx context.Context, profile ExecutionProfile
 	}, nil
 }
 
-// AppendBlockChildren appends child blocks to the end of a page or block.
+// AppendBlockChildren 追加子 block，并支持控制插入位置。
+// AppendBlockChildren appends child blocks to a page or block and can control the insertion position.
 func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
@@ -119,8 +120,12 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfi
 	payload := map[string]any{
 		"children": children,
 	}
-	if after, ok := asString(input["after"]); ok && strings.TrimSpace(after) != "" {
-		payload["after"] = strings.TrimSpace(after)
+	position, appErr := normalizeBlockAppendPosition(input["position"], input["after"])
+	if appErr != nil {
+		return nil, appErr
+	}
+	if position != nil {
+		payload["position"] = position
 	}
 
 	accessToken, notionVersion, appErr := c.requireAccessToken(ctx, profile)
@@ -154,11 +159,69 @@ func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfi
 		}
 	}
 
-	return map[string]any{
+	data := map[string]any{
 		"block_id":       blockID,
 		"appended_count": len(childIDs),
 		"child_ids":      childIDs,
-	}, nil
+	}
+	if verifyAfterWriteEnabled(ctx) {
+		data = attachVerification(data, c.verifyBlockAppend(ctx, profile, payload, data))
+	}
+	return data, nil
+}
+
+func normalizeBlockAppendPosition(rawPosition any, rawAfter any) (map[string]any, *apperr.AppError) {
+	if rawPosition == nil && rawAfter == nil {
+		return nil, nil
+	}
+	if rawPosition != nil && rawAfter != nil {
+		return nil, apperr.New("INVALID_INPUT", "position and after cannot be used together")
+	}
+	if rawAfter != nil {
+		afterBlockID, ok := asString(rawAfter)
+		if !ok || strings.TrimSpace(afterBlockID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "after must be a non-empty string")
+		}
+		return map[string]any{
+			"type": "after_block",
+			"after_block": map[string]any{
+				"id": strings.TrimSpace(afterBlockID),
+			},
+		}, nil
+	}
+
+	position, ok := asMap(rawPosition)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", "position must be an object")
+	}
+	positionType, ok := asString(position["type"])
+	if !ok || strings.TrimSpace(positionType) == "" {
+		return nil, apperr.New("INVALID_INPUT", "position.type is required")
+	}
+	positionType = strings.TrimSpace(positionType)
+	switch positionType {
+	case "start", "end":
+		return map[string]any{
+			"type": positionType,
+		}, nil
+	case "after_block":
+		afterBlock, ok := asMap(position["after_block"])
+		if !ok {
+			return nil, apperr.New("INVALID_INPUT", "position.after_block must be an object")
+		}
+		afterBlockID, ok := asString(afterBlock["id"])
+		if !ok || strings.TrimSpace(afterBlockID) == "" {
+			return nil, apperr.New("INVALID_INPUT", "position.after_block.id is required")
+		}
+		return map[string]any{
+			"type": "after_block",
+			"after_block": map[string]any{
+				"id": strings.TrimSpace(afterBlockID),
+			},
+		}, nil
+	default:
+		return nil, apperr.New("INVALID_INPUT", "position.type must be start, end, or after_block")
+	}
 }
 
 // UpdateBlock updates the content of the specified block.
@@ -196,7 +259,11 @@ func (c *Client) UpdateBlock(ctx context.Context, profile ExecutionProfile, inpu
 	if appErr != nil {
 		return nil, appErr
 	}
-	return normalizeBlockData(block), nil
+	data := normalizeBlockData(block)
+	if verifyAfterWriteEnabled(ctx) {
+		data = attachVerification(data, c.verifyBlockUpdate(ctx, profile, payload, data))
+	}
+	return data, nil
 }
 
 // DeleteBlock moves the specified block to the trash.
@@ -235,7 +302,7 @@ func (c *Client) DeleteBlock(ctx context.Context, profile ExecutionProfile, inpu
 	return data, nil
 }
 
-// buildBlockChildren maps Clawrise's simplified block structure to Notion blocks.
+// buildBlockChildren 将 Clawrise shorthand 与 provider-native block body 统一映射为 Notion blocks。
 func buildBlockChildren(raw any) ([]map[string]any, *apperr.AppError) {
 	if raw == nil {
 		return nil, nil
@@ -263,7 +330,7 @@ func buildBlockChildren(raw any) ([]map[string]any, *apperr.AppError) {
 }
 
 func buildUpdateBlockPayload(input map[string]any) (map[string]any, *apperr.AppError) {
-	blockInput := map[string]any{}
+	var blockInput map[string]any
 	if rawBlock, exists := input["block"]; exists {
 		record, ok := asMap(rawBlock)
 		if !ok {
@@ -296,11 +363,15 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 	}
 	blockType = strings.TrimSpace(blockType)
 
-	richText, appErr := buildRichText(input["text"], input["rich_text"])
+	bodyInput, appErr := extractProviderBlockBody(input, blockType)
 	if appErr != nil {
 		return nil, appErr
 	}
-	children, appErr := buildBlockChildren(input["children"])
+	richText, appErr := buildNamedRichText(input, bodyInput, "text", "rich_text")
+	if appErr != nil {
+		return nil, appErr
+	}
+	children, appErr := buildBlockChildren(blockValue(input, bodyInput, "children"))
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -312,12 +383,12 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 
 	switch blockType {
 	case "paragraph", "quote", "bulleted_list_item", "numbered_list_item":
-		payload[blockType] = buildTextualBlockBody(richText, children, input["color"])
+		payload[blockType] = buildTextualBlockBody(richText, children, blockValue(input, bodyInput, "color"))
 	case "toggle":
-		payload[blockType] = buildTextualBlockBody(richText, children, input["color"])
+		payload[blockType] = buildTextualBlockBody(richText, children, blockValue(input, bodyInput, "color"))
 	case "callout":
-		body := buildTextualBlockBody(richText, children, input["color"])
-		icon, appErr := buildCalloutIcon(input)
+		body := buildTextualBlockBody(richText, children, blockValue(input, bodyInput, "color"))
+		icon, appErr := buildCalloutIcon(input, bodyInput)
 		if appErr != nil {
 			return nil, appErr
 		}
@@ -326,8 +397,8 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 		}
 		payload[blockType] = body
 	case "heading_1", "heading_2", "heading_3":
-		body := buildTextualBlockBody(richText, children, input["color"])
-		if toggleable, ok := asBool(input["is_toggleable"]); ok {
+		body := buildTextualBlockBody(richText, children, blockValue(input, bodyInput, "color"))
+		if toggleable, ok := blockBool(input, bodyInput, "is_toggleable"); ok {
 			body["is_toggleable"] = toggleable
 		} else if len(children) > 0 {
 			// Enable toggleable automatically when nested children exist to satisfy Notion validation.
@@ -335,8 +406,8 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 		}
 		payload[blockType] = body
 	case "to_do":
-		body := buildTextualBlockBody(richText, children, input["color"])
-		if checked, ok := asBool(input["checked"]); ok {
+		body := buildTextualBlockBody(richText, children, blockValue(input, bodyInput, "color"))
+		if checked, ok := blockBool(input, bodyInput, "checked"); ok {
 			body["checked"] = checked
 		}
 		payload[blockType] = body
@@ -347,7 +418,7 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 		body := map[string]any{
 			"rich_text": richText,
 		}
-		if language, ok := asString(input["language"]); ok && strings.TrimSpace(language) != "" {
+		if language, ok := blockString(input, bodyInput, "language"); ok && strings.TrimSpace(language) != "" {
 			body["language"] = strings.TrimSpace(language)
 		} else {
 			body["language"] = "plain text"
@@ -365,13 +436,13 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 		if len(children) > 0 {
 			return nil, apperr.New("INVALID_INPUT", blockType+" blocks do not support nested children")
 		}
-		body, appErr := buildExternalFileBlockBody(input)
+		body, appErr := buildExternalFileBlockBody(blockType, input, bodyInput)
 		if appErr != nil {
 			return nil, appErr
 		}
 		payload[blockType] = body
 	case "table":
-		body, appErr := buildTableBlockBody(input, children)
+		body, appErr := buildTableBlockBody(input, bodyInput, children)
 		if appErr != nil {
 			return nil, appErr
 		}
@@ -380,7 +451,7 @@ func buildBlock(input map[string]any) (map[string]any, *apperr.AppError) {
 		if len(children) > 0 {
 			return nil, apperr.New("INVALID_INPUT", "table_row blocks do not support nested children")
 		}
-		body, appErr := buildTableRowBlockBody(input)
+		body, appErr := buildTableRowBlockBody(input, bodyInput)
 		if appErr != nil {
 			return nil, appErr
 		}
@@ -405,11 +476,11 @@ func buildTextualBlockBody(richText []map[string]any, children []map[string]any,
 	return body
 }
 
-func buildCalloutIcon(input map[string]any) (map[string]any, *apperr.AppError) {
-	if rawIcon, exists := input["icon"]; exists {
+func buildCalloutIcon(input map[string]any, bodyInput map[string]any) (map[string]any, *apperr.AppError) {
+	if rawIcon, exists := selectBlockValue(input, bodyInput, "icon"); exists && rawIcon != nil {
 		return normalizeNotionFileObject(rawIcon, true)
 	}
-	if emoji, ok := asString(input["emoji"]); ok && strings.TrimSpace(emoji) != "" {
+	if emoji, ok := blockString(input, bodyInput, "emoji"); ok && strings.TrimSpace(emoji) != "" {
 		return map[string]any{
 			"type":  "emoji",
 			"emoji": strings.TrimSpace(emoji),
@@ -418,21 +489,52 @@ func buildCalloutIcon(input map[string]any) (map[string]any, *apperr.AppError) {
 	return nil, nil
 }
 
-func buildExternalFileBlockBody(input map[string]any) (map[string]any, *apperr.AppError) {
+func buildExternalFileBlockBody(blockType string, input map[string]any, bodyInput map[string]any) (map[string]any, *apperr.AppError) {
 	body := map[string]any{}
-	if urlValue, ok := asString(input["url"]); ok && strings.TrimSpace(urlValue) != "" {
+	if fileUploadID, ok := blockString(input, bodyInput, "file_upload_id"); ok && strings.TrimSpace(fileUploadID) != "" {
+		body["type"] = "file_upload"
+		body["file_upload"] = map[string]any{
+			"id": strings.TrimSpace(fileUploadID),
+		}
+	} else if fileUpload, ok := blockMap(input, bodyInput, "file_upload"); ok && len(fileUpload) > 0 {
+		body["type"] = "file_upload"
+		body["file_upload"] = cloneMap(fileUpload)
+	} else if urlValue, ok := blockString(input, bodyInput, "url"); ok && strings.TrimSpace(urlValue) != "" {
 		body["type"] = "external"
 		body["external"] = map[string]any{
 			"url": strings.TrimSpace(urlValue),
 		}
-	} else if external, ok := asMap(input["external"]); ok && len(external) > 0 {
+	} else if external, ok := blockMap(input, bodyInput, "external"); ok && len(external) > 0 {
 		body["type"] = "external"
 		body["external"] = cloneMap(external)
+	} else if bodyInput != nil {
+		providerType, ok := asString(bodyInput["type"])
+		if !ok || strings.TrimSpace(providerType) == "" {
+			return nil, apperr.New("INVALID_INPUT", "url is required for external file blocks")
+		}
+		switch strings.TrimSpace(providerType) {
+		case "external":
+			if external, ok := blockMap(input, bodyInput, "external"); ok && len(external) > 0 {
+				body["type"] = "external"
+				body["external"] = cloneMap(external)
+			} else {
+				return nil, apperr.New("INVALID_INPUT", "external is required for external file blocks")
+			}
+		case "file_upload":
+			if fileUpload, ok := blockMap(input, bodyInput, "file_upload"); ok && len(fileUpload) > 0 {
+				body["type"] = "file_upload"
+				body["file_upload"] = cloneMap(fileUpload)
+			} else {
+				return nil, apperr.New("INVALID_INPUT", "file_upload is required for file_upload-backed file blocks")
+			}
+		default:
+			return nil, apperr.New("INVALID_INPUT", blockType+" blocks currently support only external or file_upload payloads")
+		}
 	} else {
-		return nil, apperr.New("INVALID_INPUT", "url is required for external file blocks")
+		return nil, apperr.New("INVALID_INPUT", "one of url, file_upload_id, or file_upload is required for file blocks")
 	}
 
-	caption, appErr := buildRichText(input["caption"], input["caption_rich_text"])
+	caption, appErr := buildNamedRichText(input, bodyInput, "caption", "caption_rich_text")
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -442,8 +544,8 @@ func buildExternalFileBlockBody(input map[string]any) (map[string]any, *apperr.A
 	return body, nil
 }
 
-func buildTableBlockBody(input map[string]any, children []map[string]any) (map[string]any, *apperr.AppError) {
-	if rows, exists := input["rows"]; exists {
+func buildTableBlockBody(input map[string]any, bodyInput map[string]any, children []map[string]any) (map[string]any, *apperr.AppError) {
+	if rows, exists := selectBlockValue(input, bodyInput, "rows"); exists {
 		var appErr *apperr.AppError
 		children, appErr = buildBlockChildren(rows)
 		if appErr != nil {
@@ -457,7 +559,7 @@ func buildTableBlockBody(input map[string]any, children []map[string]any) (map[s
 	}
 
 	tableWidth := 0
-	if value, ok := asInt(input["table_width"]); ok && value > 0 {
+	if value, ok := blockInt(input, bodyInput, "table_width"); ok && value > 0 {
 		tableWidth = value
 	} else {
 		tableWidth = inferTableWidth(children)
@@ -469,10 +571,10 @@ func buildTableBlockBody(input map[string]any, children []map[string]any) (map[s
 	body := map[string]any{
 		"table_width": tableWidth,
 	}
-	if hasColumnHeader, ok := asBool(input["has_column_header"]); ok {
+	if hasColumnHeader, ok := blockBool(input, bodyInput, "has_column_header"); ok {
 		body["has_column_header"] = hasColumnHeader
 	}
-	if hasRowHeader, ok := asBool(input["has_row_header"]); ok {
+	if hasRowHeader, ok := blockBool(input, bodyInput, "has_row_header"); ok {
 		body["has_row_header"] = hasRowHeader
 	}
 	if len(children) > 0 {
@@ -481,30 +583,32 @@ func buildTableBlockBody(input map[string]any, children []map[string]any) (map[s
 	return body, nil
 }
 
-func buildTableRowBlockBody(input map[string]any) (map[string]any, *apperr.AppError) {
-	rawCells, ok := asArray(input["cells"])
+func buildTableRowBlockBody(input map[string]any, bodyInput map[string]any) (map[string]any, *apperr.AppError) {
+	rawCells, ok := blockArray(input, bodyInput, "cells")
 	if !ok || len(rawCells) == 0 {
 		return nil, apperr.New("INVALID_INPUT", "cells is required for table_row blocks")
 	}
 
 	cells := make([][]map[string]any, 0, len(rawCells))
 	for _, rawCell := range rawCells {
-		switch value := rawCell.(type) {
-		case string:
+		if value, ok := rawCell.(string); ok {
 			cells = append(cells, buildPlainTextRichText(value))
-		case []any:
-			richText := make([]map[string]any, 0, len(value))
-			for _, rawRichText := range value {
-				record, ok := asMap(rawRichText)
-				if !ok {
-					return nil, apperr.New("INVALID_INPUT", "table_row cell rich text items must be objects")
-				}
-				richText = append(richText, cloneMap(record))
-			}
-			cells = append(cells, richText)
-		default:
+			continue
+		}
+
+		items, ok := asArray(rawCell)
+		if !ok {
 			return nil, apperr.New("INVALID_INPUT", "each table_row cell must be a string or a rich_text array")
 		}
+		richText := make([]map[string]any, 0, len(items))
+		for _, rawRichText := range items {
+			record, ok := asMap(rawRichText)
+			if !ok {
+				return nil, apperr.New("INVALID_INPUT", "table_row cell rich text items must be objects")
+			}
+			richText = append(richText, cloneMap(record))
+		}
+		cells = append(cells, richText)
 	}
 	return map[string]any{
 		"cells": cells,
@@ -519,11 +623,20 @@ func inferTableWidth(children []map[string]any) int {
 	if !ok {
 		return 0
 	}
-	cells, ok := asArray(body["cells"])
-	if !ok {
+
+	// 这里同时兼容两种中间形态：
+	// 1. 运行时经过 JSON 反序列化后的 []any
+	// 2. 单测 / 本地构造阶段仍保持强类型的二维切片
+	switch cells := body["cells"].(type) {
+	case []any:
+		return len(cells)
+	case [][]map[string]any:
+		return len(cells)
+	case [][]any:
+		return len(cells)
+	default:
 		return 0
 	}
-	return len(cells)
 }
 
 func buildRichText(textInput any, richTextInput any) ([]map[string]any, *apperr.AppError) {
@@ -550,6 +663,99 @@ func buildRichText(textInput any, richTextInput any) ([]map[string]any, *apperr.
 		return []map[string]any{}, nil
 	}
 	return nil, apperr.New("INVALID_INPUT", "text must be a string")
+}
+
+func extractProviderBlockBody(input map[string]any, blockType string) (map[string]any, *apperr.AppError) {
+	rawBody, exists := input[blockType]
+	if !exists || rawBody == nil {
+		return nil, nil
+	}
+
+	body, ok := asMap(rawBody)
+	if !ok {
+		return nil, apperr.New("INVALID_INPUT", fmt.Sprintf("block.%s must be an object", blockType))
+	}
+	return cloneMap(body), nil
+}
+
+func buildNamedRichText(input map[string]any, bodyInput map[string]any, textKey string, richTextKey string) ([]map[string]any, *apperr.AppError) {
+	if value, exists := input[richTextKey]; exists {
+		return buildRichText(nil, value)
+	}
+	if value, exists := input[textKey]; exists {
+		if _, ok := asArray(value); ok {
+			return buildRichText(nil, value)
+		}
+		return buildRichText(value, nil)
+	}
+	if bodyInput != nil {
+		if value, exists := bodyInput[richTextKey]; exists {
+			return buildRichText(nil, value)
+		}
+		if value, exists := bodyInput[textKey]; exists {
+			if _, ok := asArray(value); ok {
+				return buildRichText(nil, value)
+			}
+			return buildRichText(value, nil)
+		}
+	}
+	return buildRichText(nil, nil)
+}
+
+func selectBlockValue(input map[string]any, bodyInput map[string]any, key string) (any, bool) {
+	if value, exists := input[key]; exists {
+		return value, true
+	}
+	if bodyInput == nil {
+		return nil, false
+	}
+	value, exists := bodyInput[key]
+	return value, exists
+}
+
+func blockValue(input map[string]any, bodyInput map[string]any, key string) any {
+	value, _ := selectBlockValue(input, bodyInput, key)
+	return value
+}
+
+func blockString(input map[string]any, bodyInput map[string]any, key string) (string, bool) {
+	value, exists := selectBlockValue(input, bodyInput, key)
+	if !exists {
+		return "", false
+	}
+	return asString(value)
+}
+
+func blockBool(input map[string]any, bodyInput map[string]any, key string) (bool, bool) {
+	value, exists := selectBlockValue(input, bodyInput, key)
+	if !exists {
+		return false, false
+	}
+	return asBool(value)
+}
+
+func blockInt(input map[string]any, bodyInput map[string]any, key string) (int, bool) {
+	value, exists := selectBlockValue(input, bodyInput, key)
+	if !exists {
+		return 0, false
+	}
+	return asInt(value)
+}
+
+func blockMap(input map[string]any, bodyInput map[string]any, key string) (map[string]any, bool) {
+	value, exists := selectBlockValue(input, bodyInput, key)
+	if !exists {
+		return nil, false
+	}
+	return asMap(value)
+}
+
+func blockArray(input map[string]any, bodyInput map[string]any, key string) ([]any, bool) {
+	value, exists := selectBlockValue(input, bodyInput, key)
+	if !exists {
+		return nil, false
+	}
+	return asArray(value)
 }
 
 func decodeBlockResponse(responseBody []byte, decodeErrorMessage string) (map[string]any, *apperr.AppError) {

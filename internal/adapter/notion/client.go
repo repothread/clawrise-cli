@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"reflect"
 	"strings"
 	"time"
 
@@ -115,6 +116,17 @@ func (c *Client) doJSONRequest(ctx context.Context, method, rawPath string, quer
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, apperr.New("HTTP_READ_FAILED", fmt.Sprintf("failed to read Notion response: %v", err))
+	}
+	if providerDebugEnabled(ctx) {
+		adapter.AddProviderDebugEvent(ctx, map[string]any{
+			"provider":        "notion",
+			"method":          method,
+			"path":            endpoint.Path,
+			"query":           endpoint.RawQuery,
+			"request_body":    adapter.RedactDebugValue(cloneDebugValue(body)),
+			"response_status": response.StatusCode,
+			"response_body":   adapter.RedactDebugValue(decodeDebugResponseBody(responseBody)),
+		})
 	}
 
 	if response.StatusCode >= 400 {
@@ -424,8 +436,26 @@ func asMap(value any) (map[string]any, bool) {
 }
 
 func asArray(value any) ([]any, bool) {
-	list, ok := value.([]any)
-	return list, ok
+	if list, ok := value.([]any); ok {
+		return list, true
+	}
+	if value == nil {
+		return nil, false
+	}
+	if _, ok := value.([]byte); ok {
+		return nil, false
+	}
+
+	typed := reflect.ValueOf(value)
+	if typed.Kind() != reflect.Slice {
+		return nil, false
+	}
+
+	items := make([]any, typed.Len())
+	for index := 0; index < typed.Len(); index++ {
+		items[index] = typed.Index(index).Interface()
+	}
+	return items, true
 }
 
 func asInt(value any) (int, bool) {
@@ -485,6 +515,7 @@ type notionPage struct {
 	URL        string         `json:"url"`
 	Archived   bool           `json:"archived"`
 	InTrash    bool           `json:"in_trash"`
+	IsLocked   bool           `json:"is_locked"`
 	Parent     map[string]any `json:"parent"`
 	Properties map[string]any `json:"properties"`
 }
@@ -505,6 +536,24 @@ type notionSearchResponse struct {
 
 type notionQueryDataSourceResponse struct {
 	Type       string           `json:"type"`
+	Results    []map[string]any `json:"results"`
+	HasMore    bool             `json:"has_more"`
+	NextCursor *string          `json:"next_cursor"`
+}
+
+type notionDataSourceTemplateListResponse struct {
+	Templates  []notionDataSourceTemplate `json:"templates"`
+	HasMore    bool                       `json:"has_more"`
+	NextCursor *string                    `json:"next_cursor"`
+}
+
+type notionDataSourceTemplate struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default"`
+}
+
+type notionFileUploadListResponse struct {
 	Results    []map[string]any `json:"results"`
 	HasMore    bool             `json:"has_more"`
 	NextCursor *string          `json:"next_cursor"`

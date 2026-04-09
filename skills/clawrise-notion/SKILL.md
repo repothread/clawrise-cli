@@ -1,48 +1,25 @@
 ---
 name: clawrise-notion
-description: Use when the task is to access Notion through Clawrise, including Notion auth setup, page updates, markdown updates, data source queries, comments, blocks, or any other `notion.*` operation. Pair with clawrise-core.
+description: Use when a task explicitly targets Notion through Clawrise, including `notion.page.*`, `notion.block.*`, `notion.database.*`, `notion.data_source.*`, `notion.file_upload.*`, `notion.comment.*`, `notion.user.*`, `notion.search.query`, and `notion.task.*` workflows such as markdown import, section patching, file attachment, target resolution, meeting notes extraction, or data-source sync. Pair with clawrise-core for generic setup, spec discovery, and auth inspection.
 ---
 
 # Clawrise Notion
 
-This skill adds Notion-specific guidance. Use `clawrise-core` for the common execution workflow.
+This skill adds Notion-specific routing and payload guidance on top of `clawrise-core`.
 
-This skill assumes that the current client has already been prepared with:
-
-```bash
-clawrise setup <client> notion
-clawrise setup notion
-```
-
-or:
-
-```bash
-npx @clawrise/clawrise-cli setup <client> notion
-npx @clawrise/clawrise-cli setup notion
-```
-
-Preferred setup example:
-
-```bash
-NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
-```
-
-Default account name:
-
-- `notion_bot`
-
-## Usage
+## Fast Path
 
 1. Start with the `clawrise-core` workflow to inspect the local environment and specs.
-2. Add this skill only when the task is Notion-specific.
-3. Do not use this skill to explain generic client setup unless the user is explicitly setting up Notion support.
-
-## Check These First
+2. Check these first:
 
 ```bash
 clawrise spec list notion
 clawrise auth methods --platform notion
 ```
+
+3. Keep the subject fixed to `integration` for current Notion auth methods. Do not switch to `bot` or `user`.
+4. For mutating tasks: run `clawrise spec get <operation>`, prefer `--dry-run`, and read before write when page or block content may be overwritten.
+5. Use `--verify` and `--debug-provider-payload` only on `notion.page.create`, `notion.page.update`, `notion.block.append`, and `notion.block.update`.
 
 ## Auth Constraints
 
@@ -51,15 +28,17 @@ clawrise auth methods --platform notion
 - `notion.oauth_public`
   - for `integration`
 
-Both current Notion auth methods use the `integration` subject. Do not switch to `bot` or `user`.
+Both current Notion auth methods use the `integration` subject.
 
-## Task Rules
+## Route By Intent
 
-- Run `clawrise spec get <operation>` before building JSON
-- Prefer `--dry-run` for write operations
-- Read before write to avoid overwriting page or block content
-- Keep pages, blocks, comments, and data sources in Notion-native fields
+- exact provider-native page, block, database, or data-source payloads: `notion.page.*`, `notion.block.*`, `notion.database.*`, `notion.data_source.*`
+- markdown, heading, path, or section workflows: `notion.task.page.*`
+- loose target discovery from a URL, id, or vague workspace context: `notion.search.query`, `notion.task.database.resolve_target`
+- one-step upload and append: `notion.task.block.attach_file`; manual upload lifecycle or external upload URLs: `notion.file_upload.*`
+- collaboration or meeting context: `notion.comment.*`, `notion.user.*`, `notion.task.meeting_notes.get`
 
-## Read This Reference Only When The Task Matches
+## Read These References Only When The Task Matches
 
-- `references/common-tasks.md`
+- `references/common-tasks.md` — decision guide, safety notes, and playbook links
+- `references/operation-map.md` — exact operation lookup when the user intent is known but the command name is not

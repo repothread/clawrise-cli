@@ -20,14 +20,17 @@ func runAuthSecret(args []string, cfg *config.Config, store *config.Store, stdou
 		return nil
 	}
 
-	secretBackend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
+	binding := config.ResolveStorageBinding(cfg, "secret_store")
+	secretBackend := strings.TrimSpace(binding.Backend)
 	if secretBackend == "" {
 		secretBackend = "encrypted_file"
 	}
 	secretStore, err := secretstore.Open(secretstore.Options{
 		ConfigPath:      store.Path(),
 		Backend:         secretBackend,
-		FallbackBackend: cfg.Auth.SecretStore.FallbackBackend,
+		FallbackBackend: binding.FallbackBackend,
+		Plugin:          binding.Plugin,
+		EnabledPlugins:  config.ResolveEnabledPlugins(cfg),
 	})
 	if err != nil {
 		return err

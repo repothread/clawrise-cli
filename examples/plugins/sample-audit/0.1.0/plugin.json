@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "name": "sample-audit",
+  "version": "0.1.0",
+  "protocol_version": 1,
+  "capabilities": [
+    {
+      "type": "audit_sink",
+      "id": "file_capture",
+      "priority": 50
+    }
+  ],
+  "entry": {
+    "type": "binary",
+    "command": ["./run.sh"]
+  }
+}

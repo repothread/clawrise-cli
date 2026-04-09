@@ -96,6 +96,7 @@ clawrise doctor
 ## Related Docs
 
 - [AI Installation Guide](docs/en/ai-install.md)
+- Community companion docs for plugin authors and runtime governance now live in the separate `clawrise` project root markdown files.
 
 ## License
 

@@ -3,7 +3,9 @@
 set -euo pipefail
 
 # 这组 live 测试专门跑 GitHub CI 的真实 Notion 联调。
-# 所有资源都挂在一次运行专属的临时页面下，结束后统一归档，避免污染固定 sandbox 页面。
+# 流程固定为：先确认当前 integration 可见页面与父页面，再创建一次运行专属子页面，
+# 所有写操作都限制在这个子页面内，结束后统一归档，避免污染固定 sandbox 页面。
+# 注意：Notion 对页面的“删除”公开语义本质上是归档 / 移入回收站，这里按该语义清理。
 
 log() {
   printf '[notion-live] %s\n' "$*"
@@ -58,7 +60,7 @@ cleanup() {
     cat > "${cleanup_input}" <<EOF
 {
   "page_id": "${RUN_PAGE_ID}",
-  "archived": true
+  "in_trash": true
 }
 EOF
     if (cd "${REPO_ROOT}" && "${CLI_BIN}" notion.page.update --idempotency-key "${RUN_KEY_BASE}-cleanup-page" --input "${cleanup_input}" >/dev/null); then
@@ -137,8 +139,31 @@ write_json_file() {
   printf '%s\n' "${content}" > "${path}"
 }
 
+# assert_block_round_trip 读取单个 block 并校验类型、plain_text，以及可选的 checked 状态。
+assert_block_round_trip() {
+  local block_id="$1"
+  local expected_type="$2"
+  local expected_text="$3"
+  local expected_checked="${4:-}"
+  local block_output
+
+  block_output="$(clawrise_json notion.block.get --json "{\"block_id\":\"${block_id}\"}")"
+  extract_json '.data.type == "'"${expected_type}"'"' "${block_output}" >/dev/null
+  extract_json '.data.plain_text == "'"${expected_text}"'"' "${block_output}" >/dev/null
+
+  if [[ -n "${expected_checked}" ]]; then
+    extract_json '.data.checked == '"${expected_checked}"'' "${block_output}" >/dev/null
+  fi
+}
+
 log "验证 Notion CI 账号鉴权"
 clawrise_json auth check notion_ci >/dev/null
+
+log "检查当前 integration 可访问页面，并确认父页面可访问"
+visible_pages_output="$(clawrise_json notion.search.query --json '{"filter":{"property":"object","value":"page"},"page_size":20}')"
+extract_json '.data.items | length >= 1' "${visible_pages_output}" >/dev/null
+parent_page_output="$(clawrise_json notion.page.get --json "{\"page_id\":\"${NOTION_PARENT_PAGE_ID}\"}")"
+extract_json '.data.page_id == "'"${NOTION_PARENT_PAGE_ID}"'"' "${parent_page_output}" >/dev/null
 
 create_run_page_input="${LIVE_ROOT}/create_run_page.json"
 write_json_file "${create_run_page_input}" "$(cat <<EOF
@@ -192,6 +217,8 @@ user_me_output="$(clawrise_json notion.user.get --json '{"user_id":"me"}')"
 extract_json '.data.user_id' "${user_me_output}" >/dev/null
 user_list_output="$(clawrise_json notion.user.list --json '{"page_size":20}')"
 extract_json '.data.items | length >= 1' "${user_list_output}" >/dev/null
+page_search_output="$(clawrise_json notion.search.query --json "{\"query\":\"${RUN_TITLE}\",\"filter\":{\"property\":\"object\",\"value\":\"page\"},\"page_size\":10}")"
+extract_json '.data.items | map(select(.object == "page")) | length >= 1' "${page_search_output}" >/dev/null
 page_get_output="$(clawrise_json notion.page.get --json "{\"page_id\":\"${RUN_PAGE_ID}\"}")"
 extract_json '.data.page_id' "${page_get_output}" >/dev/null
 page_property_output="$(clawrise_json notion.page.property_item.get --json "{\"page_id\":\"${RUN_PAGE_ID}\",\"property_id\":\"title\"}")"
@@ -354,6 +381,111 @@ extract_json '.data.checked == true' "${block_todo_update_output}" >/dev/null
 log "验证 block delete"
 block_delete_output="$(clawrise_json notion.block.delete --idempotency-key "${RUN_KEY_BASE}-block-delete" --json "{\"block_id\":\"${image_block_id}\"}")"
 extract_json '.data.deleted == true' "${block_delete_output}" >/dev/null
+
+provider_heading_text="ProviderHeading_${RUN_STAMP}"
+provider_paragraph_text="ProviderParagraph_${RUN_STAMP}"
+provider_bullet_text="ProviderBullet_${RUN_STAMP}"
+provider_numbered_text="ProviderNumbered_${RUN_STAMP}"
+provider_todo_text="ProviderTodo_${RUN_STAMP}"
+
+provider_round_trip_input="${LIVE_ROOT}/provider_round_trip.json"
+write_json_file "${provider_round_trip_input}" "$(cat <<EOF
+{
+  "block_id": "${RUN_PAGE_ID}",
+  "children": [
+    {
+      "type": "heading_1",
+      "heading_1": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "${provider_heading_text}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "paragraph",
+      "paragraph": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "${provider_paragraph_text}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "bulleted_list_item",
+      "bulleted_list_item": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "${provider_bullet_text}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "numbered_list_item",
+      "numbered_list_item": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "${provider_numbered_text}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "to_do",
+      "to_do": {
+        "checked": false,
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "${provider_todo_text}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+EOF
+)"
+log "验证 provider-native block append round-trip"
+provider_round_trip_output="$(clawrise_json notion.block.append --verify --idempotency-key "${RUN_KEY_BASE}-provider-round-trip" --input "${provider_round_trip_input}")"
+extract_json '.ok == true' "${provider_round_trip_output}" >/dev/null
+extract_json '.data.appended_count == 5' "${provider_round_trip_output}" >/dev/null
+
+provider_heading_block_id="$(extract_json '.data.child_ids[0]' "${provider_round_trip_output}")"
+provider_paragraph_block_id="$(extract_json '.data.child_ids[1]' "${provider_round_trip_output}")"
+provider_bullet_block_id="$(extract_json '.data.child_ids[2]' "${provider_round_trip_output}")"
+provider_numbered_block_id="$(extract_json '.data.child_ids[3]' "${provider_round_trip_output}")"
+provider_todo_block_id="$(extract_json '.data.child_ids[4]' "${provider_round_trip_output}")"
+
+assert_block_round_trip "${provider_heading_block_id}" "heading_1" "${provider_heading_text}"
+assert_block_round_trip "${provider_paragraph_block_id}" "paragraph" "${provider_paragraph_text}"
+assert_block_round_trip "${provider_bullet_block_id}" "bulleted_list_item" "${provider_bullet_text}"
+assert_block_round_trip "${provider_numbered_block_id}" "numbered_list_item" "${provider_numbered_text}"
+assert_block_round_trip "${provider_todo_block_id}" "to_do" "${provider_todo_text}" "false"
+
+provider_round_trip_markdown_output="$(clawrise_json notion.page.markdown.get --json "{\"page_id\":\"${RUN_PAGE_ID}\",\"include_transcript\":true}")"
+extract_json '.data.markdown | contains("'"${provider_heading_text}"'")' "${provider_round_trip_markdown_output}" >/dev/null
+extract_json '.data.markdown | contains("'"${provider_paragraph_text}"'")' "${provider_round_trip_markdown_output}" >/dev/null
+extract_json '.data.markdown | contains("'"${provider_bullet_text}"'")' "${provider_round_trip_markdown_output}" >/dev/null
+extract_json '.data.markdown | contains("'"${provider_numbered_text}"'")' "${provider_round_trip_markdown_output}" >/dev/null
+extract_json '.data.markdown | contains("'"${provider_todo_text}"'")' "${provider_round_trip_markdown_output}" >/dev/null
 
 data_source_create_input="${LIVE_ROOT}/data_source_create.json"
 write_json_file "${data_source_create_input}" "$(cat <<EOF

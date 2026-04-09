@@ -1,11 +1,13 @@
 ---
 name: clawrise-core
-description: Use when a task needs to use the local Clawrise CLI as an execution tool. This includes discovering platforms and operations, checking config and plugin health with doctor, inspecting auth methods, exporting specs, and executing third-party platform operations through `clawrise`. Pair with clawrise-feishu or clawrise-notion for platform-specific work.
+description: Use when a task needs the generic Clawrise CLI workflow rather than provider-specific field semantics. This includes setup through the published `clawrise` command or `npx @clawrise/clawrise-cli`, checking config and plugin health with `doctor`, discovering platforms and operations with `spec`, inspecting auth methods and accounts, exporting specs/docs, and executing validated operations with provider-native payloads. Pair with clawrise-feishu or clawrise-notion when the task becomes platform-specific.
 ---
 
 # Clawrise Core
 
 Treat Clawrise as the local execution layer, not as a cross-platform business schema layer.
+
+## Boundary
 
 This skill owns:
 
@@ -20,33 +22,9 @@ This skill does not own:
 - Notion-specific auth and task guidance
 - provider-specific field semantics beyond generic guardrails
 
-## Use This Skill When
+## Fast Path
 
-- You need to confirm that a local `clawrise` CLI is available
-- You need to run `setup <client> [platform...]`
-- You need to inspect plugins, config, runtime state, or playbooks
-- You need to discover available platforms or operations
-- You need to inspect the input fields, examples, or constraints of one operation
-- You need to execute a Clawrise operation
-
-## Workflow
-
-1. Prefer `clawrise` from `PATH`.
-2. If `clawrise` is not in `PATH`, but `npx` is available, use:
-
-```bash
-npx @clawrise/clawrise-cli ...
-```
-
-3. If the host still needs initial setup, run:
-
-```bash
-clawrise setup <client>
-clawrise setup <client> <platform>
-clawrise setup <platform>
-```
-
-or:
+1. For setup, prefer the published wrapper from `PATH`. If it is not installed, use `npx`:
 
 ```bash
 npx @clawrise/clawrise-cli setup <client>
@@ -54,31 +32,31 @@ npx @clawrise/clawrise-cli setup <client> <platform>
 npx @clawrise/clawrise-cli setup <platform>
 ```
 
-When platform setup is requested, prefer environment variables for credentials:
-
 ```bash
-NOTION_INTERNAL_TOKEN=secret_xxx clawrise setup codex notion
-FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
+clawrise setup <client>
+clawrise setup <client> <platform>
+clawrise setup <platform>
 ```
 
-Default setup-created account names are:
+2. If you are developing inside this repository and need repo-local fallback, use:
 
-- `notion_bot`
-- `feishu_bot`
-
-4. If `clawrise` is not in `PATH`, but the current workspace is this repository, fall back to:
+```bash
+npx @clawrise/clawrise-cli ...
+```
 
 ```bash
 GOCACHE=/tmp/clawrise-go-build GOMODCACHE=/tmp/clawrise-gomodcache go run ./cmd/clawrise ...
 ```
 
-5. Start with:
+Use the repo-local `go run ./cmd/clawrise ...` fallback for runtime commands, not for the npm-only `setup` wrapper.
+
+3. Start with:
 
 ```bash
 clawrise doctor
 ```
 
-6. Then discover capabilities:
+4. Then discover capabilities:
 
 ```bash
 clawrise spec list
@@ -86,21 +64,28 @@ clawrise spec list <path>
 clawrise spec get <operation>
 ```
 
-7. Inspect auth only when the task needs it:
+5. Inspect auth or accounts only when the task needs them:
 
 ```bash
 clawrise auth methods --platform <platform>
 clawrise auth inspect <account>
 clawrise auth check <account>
+clawrise account list
+clawrise account inspect <name>
 ```
 
-8. For write operations, always run `--dry-run` first and only perform the real call after the input shape is validated.
+6. For mutating operations:
 
-9. When building input JSON, keep provider-native field names exactly as defined by the operation. Do not invent a unified cross-platform schema.
+```bash
+clawrise spec get <operation>
+clawrise <operation> --dry-run --json '<payload>'
+clawrise <operation> --json '<payload>'
+```
 
-10. If the task is Feishu-specific or Notion-specific, use the matching platform skill together with this one.
+7. Keep provider-native field names exactly as defined by the operation. Do not invent a unified cross-platform schema.
+8. If the task is Notion-specific, add `clawrise-notion` after this one. Add `clawrise-feishu` only for legacy Feishu-through-Clawrise flows that still need maintenance.
 
 ## Read These References Only When Needed
 
-- `references/workflow.md`
-- `references/install-and-layout.md`
+- `references/workflow.md` — full command checklist and runtime rules
+- `references/install-and-layout.md` — install targets, packaging layout, and distribution notes

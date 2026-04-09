@@ -1,10 +1,15 @@
 # Documentation Index
 
-## User And Usage
+## Setup And Usage
 
+- [AI Install Guide](./ai-install.md)
 - [Feishu User Auth Setup](./feishu-user-auth-setup.md)
-- [Roadmap](./roadmap.md)
 - [Local Playbooks Index](../playbooks/index.yaml)
+- [Plugin Authoring Spec](./plugin-authoring-spec.md)
+
+## Roadmaps
+
+- [Roadmap](./roadmap.md)
 
 ## Design And Specs
 

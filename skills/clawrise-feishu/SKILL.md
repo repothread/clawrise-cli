@@ -1,43 +1,19 @@
 ---
 name: clawrise-feishu
-description: Use when the task is to access Feishu through Clawrise, including Feishu auth setup, calendar events, docs updates, bitable records, wiki nodes, contacts, or any other `feishu.*` operation. Pair with clawrise-core.
+description: Deprecated legacy skill. Use only when maintaining or operating existing Feishu-through-Clawrise workflows (`feishu.*`) such as calendar, docs, bitable, wiki, or contact work. Pair with clawrise-core for generic setup, spec discovery, and auth inspection. Do not use this skill for new Feishu integrations; prefer the official Feishu command path instead.
 ---
 
-# Clawrise Feishu
+# Clawrise Feishu (Deprecated)
 
-This skill adds Feishu-specific guidance. Use `clawrise-core` for the common execution workflow.
+Status: deprecated for new work.
 
-This skill assumes that the current client has already been prepared with:
+Use this skill only for legacy Feishu-through-Clawrise workflows that still need maintenance or operation. Use `clawrise-core` for the common execution workflow.
 
-```bash
-clawrise setup <client> feishu
-clawrise setup feishu
-```
-
-or:
-
-```bash
-npx @clawrise/clawrise-cli setup <client> feishu
-npx @clawrise/clawrise-cli setup feishu
-```
-
-Preferred setup example:
-
-```bash
-FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feishu
-```
-
-Default account name:
-
-- `feishu_bot`
-
-## Usage
+## Fast Path
 
 1. Start with the `clawrise-core` workflow to inspect the local environment and specs.
-2. Add this skill only when the task is Feishu-specific.
-3. Do not use this skill to explain generic client setup unless the user is explicitly setting up Feishu support.
-
-## Check These First
+2. Use this skill only when the task explicitly names `feishu.*` operations or legacy Feishu objects that are still handled by Clawrise.
+3. Check these first:
 
 ```bash
 clawrise spec list feishu
@@ -59,7 +35,9 @@ If the user does not explicitly say whether the task should use a bot or a user 
 - Prefer `--dry-run` for write operations
 - Read before write to avoid overwriting existing data
 - Prefer RFC3339 for time fields
+- Do not start brand-new Feishu automation here; prefer the official Feishu command path instead.
+- Keep this skill focused on existing Clawrise Feishu flows until they are retired.
 
 ## Read This Reference Only When The Task Matches
 
-- `references/common-tasks.md`
+- `references/common-tasks.md` — currently documented legacy Feishu task families and safety reminders

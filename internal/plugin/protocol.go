@@ -6,6 +6,7 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/adapter"
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 	authcache "github.com/clawrise/clawrise-cli/internal/auth"
+	"github.com/clawrise/clawrise-cli/internal/authflow"
 	speccatalog "github.com/clawrise/clawrise-cli/internal/spec/catalog"
 )
 
@@ -49,6 +50,11 @@ type CoreVersion struct {
 	Version string `json:"version"`
 }
 
+// CapabilityListResult 描述 capability 列表响应。
+type CapabilityListResult struct {
+	Capabilities []CapabilityDescriptor `json:"capabilities"`
+}
+
 // OperationsListResult describes the operation list response payload.
 type OperationsListResult struct {
 	Operations []OperationDescriptor `json:"operations"`
@@ -77,12 +83,14 @@ type ExecuteParams struct {
 
 // ExecuteEnvelope describes the normalized provider request body.
 type ExecuteEnvelope struct {
-	RequestID      string         `json:"request_id"`
-	Operation      string         `json:"operation"`
-	Input          map[string]any `json:"input"`
-	TimeoutMS      int64          `json:"timeout_ms"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-	DryRun         bool           `json:"dry_run"`
+	RequestID            string         `json:"request_id"`
+	Operation            string         `json:"operation"`
+	Input                map[string]any `json:"input"`
+	TimeoutMS            int64          `json:"timeout_ms"`
+	IdempotencyKey       string         `json:"idempotency_key,omitempty"`
+	DryRun               bool           `json:"dry_run"`
+	DebugProviderPayload bool           `json:"debug_provider_payload,omitempty"`
+	VerifyAfterWrite     bool           `json:"verify_after_write,omitempty"`
 }
 
 // ExecuteIdentity describes the resolved execution identity.
@@ -103,6 +111,7 @@ type ExecuteAuth struct {
 type ExecuteRPCResult struct {
 	OK    bool             `json:"ok"`
 	Data  map[string]any   `json:"data"`
+	Debug map[string]any   `json:"debug,omitempty"`
 	Error *apperr.AppError `json:"error,omitempty"`
 	Meta  map[string]any   `json:"meta,omitempty"`
 }
@@ -402,4 +411,273 @@ type SecretStoreSetParams struct {
 type SecretStoreDeleteParams struct {
 	AccountName string `json:"account_name"`
 	Field       string `json:"field"`
+}
+
+// SessionStoreStatusResult 描述 session store 状态响应。
+type SessionStoreStatusResult struct {
+	Status StorageStatus `json:"status"`
+}
+
+// SessionStoreLoadParams 描述 session store 读取请求。
+type SessionStoreLoadParams struct {
+	AccountName string `json:"account_name"`
+}
+
+// SessionStoreLoadResult 描述 session store 读取结果。
+type SessionStoreLoadResult struct {
+	Found   bool               `json:"found"`
+	Session *authcache.Session `json:"session,omitempty"`
+}
+
+// SessionStoreSaveParams 描述 session store 写入请求。
+type SessionStoreSaveParams struct {
+	Session authcache.Session `json:"session"`
+}
+
+// SessionStoreDeleteParams 描述 session store 删除请求。
+type SessionStoreDeleteParams struct {
+	AccountName string `json:"account_name"`
+}
+
+// AuthFlowStoreStatusResult 描述 authflow store 状态响应。
+type AuthFlowStoreStatusResult struct {
+	Status StorageStatus `json:"status"`
+}
+
+// AuthFlowStoreLoadParams 描述 authflow store 读取请求。
+type AuthFlowStoreLoadParams struct {
+	FlowID string `json:"flow_id"`
+}
+
+// AuthFlowStoreLoadResult 描述 authflow store 读取结果。
+type AuthFlowStoreLoadResult struct {
+	Found bool           `json:"found"`
+	Flow  *authflow.Flow `json:"flow,omitempty"`
+}
+
+// AuthFlowStoreSaveParams 描述 authflow store 写入请求。
+type AuthFlowStoreSaveParams struct {
+	Flow authflow.Flow `json:"flow"`
+}
+
+// AuthFlowStoreDeleteParams 描述 authflow store 删除请求。
+type AuthFlowStoreDeleteParams struct {
+	FlowID string `json:"flow_id"`
+}
+
+// GovernanceStoreStatusResult 描述 governance store 状态响应。
+type GovernanceStoreStatusResult struct {
+	Status StorageStatus `json:"status"`
+}
+
+// GovernanceErrorBody 描述治理记录中的错误体。
+type GovernanceErrorBody struct {
+	Code         string `json:"code"`
+	Message      string `json:"message"`
+	Retryable    bool   `json:"retryable"`
+	UpstreamCode string `json:"upstream_code,omitempty"`
+	HTTPStatus   int    `json:"http_status,omitempty"`
+}
+
+// GovernanceMeta 描述治理记录中的元信息。
+type GovernanceMeta struct {
+	Platform   string `json:"platform"`
+	DurationMS int64  `json:"duration_ms"`
+	RetryCount int    `json:"retry_count"`
+	DryRun     bool   `json:"dry_run"`
+}
+
+// GovernanceContext 描述治理审计记录中的上下文。
+type GovernanceContext struct {
+	Platform string `json:"platform,omitempty"`
+	Subject  string `json:"subject,omitempty"`
+	Account  string `json:"account,omitempty"`
+}
+
+// GovernanceIdempotencyState 描述治理审计记录中的幂等状态。
+type GovernanceIdempotencyState struct {
+	Key       string `json:"key"`
+	Status    string `json:"status"`
+	Persisted bool   `json:"persisted,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// GovernanceIdempotencyRecord 描述幂等持久化记录。
+type GovernanceIdempotencyRecord struct {
+	Key        string               `json:"key"`
+	Operation  string               `json:"operation"`
+	InputHash  string               `json:"input_hash"`
+	Status     string               `json:"status"`
+	RequestID  string               `json:"request_id"`
+	CreatedAt  string               `json:"created_at"`
+	UpdatedAt  string               `json:"updated_at"`
+	RetryCount int                  `json:"retry_count"`
+	Data       any                  `json:"data,omitempty"`
+	Error      *GovernanceErrorBody `json:"error,omitempty"`
+	Meta       GovernanceMeta       `json:"meta"`
+}
+
+// GovernanceAuditRecord 描述审计持久化记录。
+type GovernanceAuditRecord struct {
+	Time          string                      `json:"time"`
+	RequestID     string                      `json:"request_id"`
+	Operation     string                      `json:"operation"`
+	Context       *GovernanceContext          `json:"context,omitempty"`
+	OK            bool                        `json:"ok"`
+	InputSummary  any                         `json:"input_summary,omitempty"`
+	OutputSummary any                         `json:"output_summary,omitempty"`
+	Error         *GovernanceErrorBody        `json:"error,omitempty"`
+	Meta          GovernanceMeta              `json:"meta"`
+	Idempotency   *GovernanceIdempotencyState `json:"idempotency,omitempty"`
+	Warnings      []string                    `json:"warnings,omitempty"`
+}
+
+// GovernanceIdempotencyLoadParams 描述幂等记录读取请求。
+type GovernanceIdempotencyLoadParams struct {
+	Key string `json:"key"`
+}
+
+// GovernanceIdempotencyLoadResult 描述幂等记录读取结果。
+type GovernanceIdempotencyLoadResult struct {
+	Found  bool                         `json:"found"`
+	Record *GovernanceIdempotencyRecord `json:"record,omitempty"`
+}
+
+// GovernanceIdempotencySaveParams 描述幂等记录写入请求。
+type GovernanceIdempotencySaveParams struct {
+	Record GovernanceIdempotencyRecord `json:"record"`
+}
+
+// GovernanceAuditAppendParams 描述审计记录追加请求。
+type GovernanceAuditAppendParams struct {
+	Day    string                `json:"day"`
+	Record GovernanceAuditRecord `json:"record"`
+}
+
+// PolicyEvaluationContext describes the execution context required for one policy decision.
+type PolicyEvaluationContext struct {
+	AccountName string `json:"account_name,omitempty"`
+	Platform    string `json:"platform,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	AuthMethod  string `json:"auth_method,omitempty"`
+}
+
+// PolicyEvaluationRequest describes one execution request to be evaluated by policy.
+type PolicyEvaluationRequest struct {
+	RequestID string                  `json:"request_id"`
+	Operation string                  `json:"operation"`
+	DryRun    bool                    `json:"dry_run"`
+	Mutating  bool                    `json:"mutating"`
+	Input     map[string]any          `json:"input,omitempty"`
+	Context   PolicyEvaluationContext `json:"context"`
+}
+
+// PolicyEvaluateParams describes one policy evaluation request.
+type PolicyEvaluateParams struct {
+	PolicyID string                  `json:"policy_id,omitempty"`
+	Request  PolicyEvaluationRequest `json:"request"`
+}
+
+// PolicyEvaluateResult describes one policy evaluation result.
+type PolicyEvaluateResult struct {
+	Decision    string         `json:"decision"`
+	Message     string         `json:"message,omitempty"`
+	Annotations map[string]any `json:"annotations,omitempty"`
+}
+
+// WorkflowAvailableOperation describes one operation that can be referenced by a workflow plan.
+type WorkflowAvailableOperation struct {
+	Operation string `json:"operation"`
+	Platform  string `json:"platform,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+	Mutating  bool   `json:"mutating,omitempty"`
+}
+
+// WorkflowPlaybookReference describes one optional playbook input that a planner may use.
+type WorkflowPlaybookReference struct {
+	ID    string `json:"id,omitempty"`
+	Path  string `json:"path,omitempty"`
+	Title string `json:"title,omitempty"`
+}
+
+// WorkflowPlanRequest describes one planning request sent to a workflow plugin.
+type WorkflowPlanRequest struct {
+	Goal                string                       `json:"goal"`
+	Context             map[string]any               `json:"context,omitempty"`
+	Constraints         map[string]any               `json:"constraints,omitempty"`
+	AvailableOperations []WorkflowAvailableOperation `json:"available_operations,omitempty"`
+	Playbooks           []WorkflowPlaybookReference  `json:"playbooks,omitempty"`
+}
+
+// WorkflowPlanStep describes one structured step in a workflow plan.
+type WorkflowPlanStep struct {
+	Type                 string         `json:"type"`
+	Title                string         `json:"title,omitempty"`
+	Operation            string         `json:"operation,omitempty"`
+	Input                map[string]any `json:"input,omitempty"`
+	Note                 string         `json:"note,omitempty"`
+	RequiresConfirmation bool           `json:"requires_confirmation,omitempty"`
+}
+
+// WorkflowMissingInput describes one required input that the planner could not infer.
+type WorkflowMissingInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	StepIndex   int    `json:"step_index,omitempty"`
+}
+
+// WorkflowPlanParams describes one workflow planning request.
+type WorkflowPlanParams struct {
+	WorkflowID string              `json:"workflow_id,omitempty"`
+	Request    WorkflowPlanRequest `json:"request"`
+}
+
+// WorkflowPlanResult describes one structured workflow planning result.
+type WorkflowPlanResult struct {
+	Summary              string                 `json:"summary,omitempty"`
+	Steps                []WorkflowPlanStep     `json:"steps,omitempty"`
+	Warnings             []string               `json:"warnings,omitempty"`
+	MissingInputs        []WorkflowMissingInput `json:"missing_inputs,omitempty"`
+	RequiresConfirmation bool                   `json:"requires_confirmation,omitempty"`
+}
+
+// RegistryPluginSummary describes one plugin entry exposed by a registry source.
+type RegistryPluginSummary struct {
+	Name          string `json:"name"`
+	LatestVersion string `json:"latest_version,omitempty"`
+	Description   string `json:"description,omitempty"`
+}
+
+// RegistrySourceListParams describes one registry listing request.
+type RegistrySourceListParams struct {
+	SourceID string `json:"source_id,omitempty"`
+	Query    string `json:"query,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+// RegistrySourceListResult describes one registry listing response.
+type RegistrySourceListResult struct {
+	Plugins []RegistryPluginSummary `json:"plugins,omitempty"`
+}
+
+// RegistrySourceResolveParams describes one registry artifact resolution request.
+type RegistrySourceResolveParams struct {
+	SourceID  string `json:"source_id,omitempty"`
+	Reference string `json:"reference"`
+	Version   string `json:"version,omitempty"`
+}
+
+// RegistrySourceResolveResult describes the resolved installable artifact for one logical reference.
+type RegistrySourceResolveResult struct {
+	Name           string `json:"name,omitempty"`
+	Version        string `json:"version,omitempty"`
+	ArtifactURL    string `json:"artifact_url,omitempty"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
+	MetadataURL    string `json:"metadata_url,omitempty"`
+}
+
+// AuditEmitParams describes one audit event delivery request.
+type AuditEmitParams struct {
+	SinkID string                `json:"sink_id,omitempty"`
+	Record GovernanceAuditRecord `json:"record"`
 }

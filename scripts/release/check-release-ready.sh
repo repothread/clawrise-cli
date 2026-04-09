@@ -66,8 +66,10 @@ check_release_outputs() {
   local metadata_path="${repo_root}/dist/release/npm/release-metadata.json"
   local notes_path="${repo_root}/dist/release/release-notes.md"
   local checksum_path="${repo_root}/dist/release/archives/SHA256SUMS"
+  local skills_index_path="${repo_root}/dist/release/skills/index.json"
+  local skills_latest_path="${repo_root}/dist/release/skills/latest.json"
 
-  for path in "${metadata_path}" "${notes_path}" "${checksum_path}"; do
+  for path in "${metadata_path}" "${notes_path}" "${checksum_path}" "${skills_index_path}" "${skills_latest_path}"; do
     if [[ ! -f "${path}" ]]; then
       echo "Missing expected release artifact: ${path}" >&2
       exit 1
@@ -103,6 +105,12 @@ verify_npm_runtime() {
   CLAWRISE_PACK_VERIFY_ROOT="${pack_verify_root}" \
     CLAWRISE_NPM_CACHE_DIR="${npm_cache_dir}" \
     node "${repo_root}/scripts/release/verify-npm-runtime.mjs"
+}
+
+verify_release_artifacts() {
+  echo "Verifying release artifact consistency"
+  CLAWRISE_NPM_DIST_TAG="${CLAWRISE_NPM_DIST_TAG:-}" \
+    node "${repo_root}/scripts/release/verify-release-artifacts.mjs" "${version}"
 }
 
 check_remote_auth() {
@@ -147,10 +155,14 @@ echo "Building multi-platform release bundles"
 echo "Preparing npm release directories"
 node "${repo_root}/scripts/release/prepare-npm-packages.mjs" "${version}"
 
+echo "Preparing skill release directories"
+node "${repo_root}/scripts/release/prepare-skill-packages.mjs" "${version}"
+
 echo "Generating release notes"
 "${repo_root}/scripts/release/generate-release-notes.sh" "${version}"
 
 check_release_outputs
+verify_release_artifacts
 verify_npm_packs
 verify_npm_runtime
 check_remote_auth

@@ -47,6 +47,8 @@ type Options struct {
 	ConfigPath      string
 	Backend         string
 	FallbackBackend string
+	Plugin          string
+	EnabledPlugins  map[string]string
 }
 
 var storeFactories = map[string]StoreFactory{
@@ -91,15 +93,15 @@ func Open(options Options) (Store, error) {
 
 	backend := normalizeBackendName(options.Backend)
 	if backend == "" || backend == "auto" {
-		return openAutoStore(configPath, stateDir, options.FallbackBackend)
+		return openAutoStore(configPath, stateDir, options.FallbackBackend, options.Plugin, options.EnabledPlugins)
 	}
-	return openExplicitStore(configPath, stateDir, backend)
+	return openExplicitStore(configPath, stateDir, backend, options.Plugin, options.EnabledPlugins)
 }
 
-func openAutoStore(configPath string, stateDir string, fallback string) (Store, error) {
+func openAutoStore(configPath string, stateDir string, fallback string, plugin string, enabledPlugins map[string]string) (Store, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		store, err := openNamedStore(configPath, stateDir, "keychain")
+		store, err := openNamedStore(configPath, stateDir, "keychain", plugin, enabledPlugins)
 		if err == nil {
 			status := store.Status()
 			if status.Supported && status.Readable && status.Writable {
@@ -107,7 +109,7 @@ func openAutoStore(configPath string, stateDir string, fallback string) (Store, 
 			}
 		}
 	case "linux":
-		store, err := openNamedStore(configPath, stateDir, "secret_service")
+		store, err := openNamedStore(configPath, stateDir, "secret_service", plugin, enabledPlugins)
 		if err == nil {
 			status := store.Status()
 			if status.Supported && status.Readable && status.Writable {
@@ -115,18 +117,18 @@ func openAutoStore(configPath string, stateDir string, fallback string) (Store, 
 			}
 		}
 	case "windows":
-		return openNamedStore(configPath, stateDir, "windows_dpapi_file")
+		return openNamedStore(configPath, stateDir, "windows_dpapi_file", plugin, enabledPlugins)
 	}
 
 	backend := normalizeBackendName(fallback)
 	if backend == "" || backend == "auto" {
 		backend = "encrypted_file"
 	}
-	return openExplicitStore(configPath, stateDir, backend)
+	return openExplicitStore(configPath, stateDir, backend, plugin, enabledPlugins)
 }
 
-func openExplicitStore(configPath string, stateDir string, backend string) (Store, error) {
-	store, err := openNamedStore(configPath, stateDir, backend)
+func openExplicitStore(configPath string, stateDir string, backend string, plugin string, enabledPlugins map[string]string) (Store, error) {
+	store, err := openNamedStore(configPath, stateDir, backend, plugin, enabledPlugins)
 	if err != nil {
 		return nil, err
 	}
@@ -139,19 +141,36 @@ func openExplicitStore(configPath string, stateDir string, backend string) (Stor
 	return store, nil
 }
 
-func openNamedStore(configPath string, stateDir string, backend string) (Store, error) {
-	factory, ok := storeFactories[backend]
-	if ok {
-		return factory(configPath, stateDir)
+func openNamedStore(configPath string, stateDir string, backend string, plugin string, enabledPlugins map[string]string) (Store, error) {
+	plugin = strings.TrimSpace(plugin)
+	if plugin == "" || plugin == "builtin" {
+		factory, ok := storeFactories[backend]
+		if ok {
+			return factory(configPath, stateDir)
+		}
+	} else {
+		manifest, found, err := discoverSecretStorePlugin(backend, plugin, enabledPlugins)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("unsupported secret store backend: %s", backend)
+		}
+		// 使用 context.Background() 构造 pluginSecretStore，
+		// 因为 Store 接口无法传递 context。未来可在构造时传入可取消的 ctx。
+		return newPluginSecretStore(context.Background(), manifest), nil
 	}
-	manifest, found, err := discoverSecretStorePlugin(backend)
+
+	manifest, found, err := discoverSecretStorePlugin(backend, plugin, enabledPlugins)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
 		return nil, fmt.Errorf("unsupported secret store backend: %s", backend)
 	}
-	return newPluginSecretStore(manifest), nil
+	// 使用 context.Background() 构造 pluginSecretStore，
+	// 因为 Store 接口无法传递 context。未来可在构造时传入可取消的 ctx。
+	return newPluginSecretStore(context.Background(), manifest), nil
 }
 
 func normalizeBackendName(value string) string {
@@ -168,40 +187,29 @@ func normalizeBackendName(value string) string {
 	}
 }
 
-func discoverSecretStorePlugin(backend string) (pluginruntime.Manifest, bool, error) {
-	roots, err := pluginruntime.DefaultDiscoveryRoots()
-	if err != nil {
-		return pluginruntime.Manifest{}, false, err
-	}
-	manifests, err := pluginruntime.DiscoverManifests(roots)
-	if err != nil {
-		return pluginruntime.Manifest{}, false, err
-	}
-	for _, manifest := range manifests {
-		if strings.TrimSpace(manifest.Kind) != pluginruntime.ManifestKindStorageBackend {
-			continue
-		}
-		if manifest.StorageBackend == nil {
-			continue
-		}
-		if strings.TrimSpace(manifest.StorageBackend.Target) != "secret_store" {
-			continue
-		}
-		if strings.TrimSpace(manifest.StorageBackend.Backend) != backend {
-			continue
-		}
-		return manifest, true, nil
-	}
-	return pluginruntime.Manifest{}, false, nil
+func discoverSecretStorePlugin(backend string, pluginName string, enabledPlugins map[string]string) (pluginruntime.Manifest, bool, error) {
+	return pluginruntime.FindStorageBackendManifest(pluginruntime.StorageBackendLookup{
+		Target:         "secret_store",
+		Backend:        backend,
+		Plugin:         pluginName,
+		EnabledPlugins: enabledPlugins,
+	})
 }
 
+// pluginSecretStore 通过 JSON-RPC 插件进程实现 secret store 后端。
+// ctx 存储构造时传入的 context 引用，传递给所有底层 JSON-RPC 调用，
+// 使加解密操作可以响应 context 取消信号（如 SIGINT 中断）。
 type pluginSecretStore struct {
 	client *pluginruntime.ProcessSecretStore
+	ctx    context.Context
 }
 
-func newPluginSecretStore(manifest pluginruntime.Manifest) Store {
+// newPluginSecretStore 创建基于插件的 secret store 实例。
+// ctx 参数用于传递给所有底层 JSON-RPC 调用，支持操作可被 context 取消。
+func newPluginSecretStore(ctx context.Context, manifest pluginruntime.Manifest) Store {
 	return &pluginSecretStore{
 		client: pluginruntime.NewProcessSecretStore(manifest),
+		ctx:    ctx,
 	}
 }
 
@@ -209,7 +217,12 @@ func (s *pluginSecretStore) Backend() string {
 	if s == nil || s.client == nil {
 		return ""
 	}
-	descriptor, err := s.client.DescribeStorageBackend(context.Background())
+	if backend := strings.TrimSpace(s.client.Backend()); backend != "" {
+		return backend
+	}
+	// 使用存储的 ctx 引用替代 context.Background()，
+	// 使底层 JSON-RPC 调用可以响应 context 取消信号。
+	descriptor, err := s.client.DescribeStorageBackend(s.ctx)
 	if err != nil {
 		return ""
 	}
@@ -223,7 +236,8 @@ func (s *pluginSecretStore) Status() Status {
 			Detail:    "storage backend plugin client is not initialized",
 		}
 	}
-	status, err := s.client.Status(context.Background())
+	// 使用存储的 ctx 引用替代 context.Background()
+	status, err := s.client.Status(s.ctx)
 	if err != nil {
 		return Status{
 			Backend:   s.Backend(),
@@ -245,7 +259,8 @@ func (s *pluginSecretStore) Status() Status {
 }
 
 func (s *pluginSecretStore) Get(connectionName string, field string) (string, error) {
-	result, err := s.client.Get(context.Background(), pluginruntime.SecretStoreGetParams{
+	// 使用存储的 ctx 引用替代 context.Background()
+	result, err := s.client.Get(s.ctx, pluginruntime.SecretStoreGetParams{
 		AccountName: connectionName,
 		Field:       field,
 	})
@@ -259,7 +274,8 @@ func (s *pluginSecretStore) Get(connectionName string, field string) (string, er
 }
 
 func (s *pluginSecretStore) Set(connectionName string, field string, value string) error {
-	return s.client.Set(context.Background(), pluginruntime.SecretStoreSetParams{
+	// 使用存储的 ctx 引用替代 context.Background()
+	return s.client.Set(s.ctx, pluginruntime.SecretStoreSetParams{
 		AccountName: connectionName,
 		Field:       field,
 		Value:       value,
@@ -267,7 +283,8 @@ func (s *pluginSecretStore) Set(connectionName string, field string, value strin
 }
 
 func (s *pluginSecretStore) Delete(connectionName string, field string) error {
-	return s.client.Delete(context.Background(), pluginruntime.SecretStoreDeleteParams{
+	// 使用存储的 ctx 引用替代 context.Background()
+	return s.client.Delete(s.ctx, pluginruntime.SecretStoreDeleteParams{
 		AccountName: connectionName,
 		Field:       field,
 	})

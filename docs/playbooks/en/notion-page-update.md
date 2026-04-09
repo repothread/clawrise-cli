@@ -7,6 +7,10 @@ Operations:
 - `notion.page.get`
 - `notion.page.markdown.get`
 
+For structural block writes, use:
+
+- `docs/playbooks/en/notion-block-write.md`
+
 ## Read the page first
 
 ```bash
@@ -18,6 +22,15 @@ clawrise notion.page.markdown.get --json '{"page_id":"page_demo"}'
 
 ```bash
 clawrise notion.page.update --dry-run --json '{
+  "page_id":"page_demo",
+  "title":"Updated project notes"
+}'
+```
+
+## Verify or inspect one property update
+
+```bash
+clawrise notion.page.update --debug-provider-payload --verify --json '{
   "page_id":"page_demo",
   "title":"Updated project notes"
 }'

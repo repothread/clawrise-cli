@@ -50,7 +50,12 @@ func notionBlockAppendSpec() adapter.OperationSpec {
 		Summary: "Append child blocks to a Notion block.",
 		Input: adapter.InputSpec{
 			Required: []string{"block_id", "children"},
-			Optional: []string{"after"},
+			Optional: []string{"position", "after"},
+			Notes: []string{
+				"`children` supports both shorthand top-level fields such as `text`, `rich_text`, `children`, and `checked`, and provider-native nested block bodies such as `paragraph.rich_text` and `to_do.checked`.",
+				"`position` supports `start`, `end`, or `after_block`; `after` remains accepted as a backward-compatible alias for `position.type=after_block`.",
+				"When both shorthand and provider-native fields are present on the same block, the top-level fields take precedence.",
+			},
 			Sample: map[string]any{
 				"block_id": "blk_demo",
 				"children": []any{
@@ -59,6 +64,24 @@ func notionBlockAppendSpec() adapter.OperationSpec {
 						"text": "Hello Clawrise",
 					},
 				},
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Append blocks with shorthand fields",
+				Command: `clawrise notion.block.append --dry-run --json '{"block_id":"blk_demo","children":[{"type":"paragraph","text":"Hello Clawrise"}]}'`,
+			},
+			{
+				Title:   "Insert blocks at the start of one block's children",
+				Command: `clawrise notion.block.append --dry-run --json '{"block_id":"blk_demo","position":{"type":"start"},"children":[{"type":"paragraph","text":"Hello Clawrise"}]}'`,
+			},
+			{
+				Title:   "Append blocks with provider-native nested bodies",
+				Command: `clawrise notion.block.append --dry-run --json '{"block_id":"blk_demo","children":[{"type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":"Hello Clawrise"}}]}}]}'`,
+			},
+			{
+				Title:   "Append blocks with provider payload debug and verification",
+				Command: `clawrise notion.block.append --debug-provider-payload --verify --json '{"block_id":"blk_demo","children":[{"type":"paragraph","text":"Hello Clawrise"}]}'`,
 			},
 		},
 	}
@@ -70,10 +93,29 @@ func notionBlockUpdateSpec() adapter.OperationSpec {
 		Input: adapter.InputSpec{
 			Required: []string{"block_id"},
 			Optional: []string{"type", "text", "rich_text", "children", "checked", "color", "language", "is_toggleable", "block", "in_trash"},
+			Notes: []string{
+				"The block payload may be provided directly at the top level or under `block`.",
+				"Textual and structured fields support both shorthand top-level fields and provider-native nested block bodies.",
+				"When both shorthand and provider-native fields are present on the same block, the top-level fields take precedence.",
+			},
 			Sample: map[string]any{
 				"block_id": "blk_demo",
 				"type":     "paragraph",
 				"text":     "Updated paragraph",
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Update a block with shorthand fields",
+				Command: `clawrise notion.block.update --dry-run --json '{"block_id":"blk_demo","type":"paragraph","text":"Updated paragraph"}'`,
+			},
+			{
+				Title:   "Update a block with a provider-native body wrapper",
+				Command: `clawrise notion.block.update --dry-run --json '{"block_id":"blk_demo","block":{"type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":"Updated paragraph"}}]}}}'`,
+			},
+			{
+				Title:   "Update a block with provider payload debug and verification",
+				Command: `clawrise notion.block.update --debug-provider-payload --verify --json '{"block_id":"blk_demo","type":"paragraph","text":"Updated paragraph"}'`,
 			},
 		},
 	}

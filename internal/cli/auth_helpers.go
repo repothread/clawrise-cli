@@ -10,29 +10,44 @@ import (
 )
 
 func openCLISecretStore(cfg *config.Config, store *config.Store) (secretstore.Store, error) {
-	backend := strings.TrimSpace(cfg.Auth.SecretStore.Backend)
+	binding := config.ResolveStorageBinding(cfg, "secret_store")
+	backend := strings.TrimSpace(binding.Backend)
 	if backend == "" {
 		backend = "encrypted_file"
 	}
 	return secretstore.Open(secretstore.Options{
 		ConfigPath:      store.Path(),
 		Backend:         backend,
-		FallbackBackend: cfg.Auth.SecretStore.FallbackBackend,
+		FallbackBackend: binding.FallbackBackend,
+		Plugin:          binding.Plugin,
+		EnabledPlugins:  config.ResolveEnabledPlugins(cfg),
 	})
 }
 
 func openCLISessionStore(cfg *config.Config, store *config.Store) (authcache.Store, error) {
-	backend := strings.TrimSpace(cfg.Auth.SessionStore.Backend)
+	binding := config.ResolveStorageBinding(cfg, "session_store")
+	backend := strings.TrimSpace(binding.Backend)
 	if backend == "" {
 		backend = "file"
 	}
-	return authcache.OpenStore(store.Path(), backend)
+	return authcache.OpenStoreWithOptions(authcache.StoreOptions{
+		ConfigPath:     store.Path(),
+		Backend:        backend,
+		Plugin:         binding.Plugin,
+		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
+	})
 }
 
 func openCLIAuthFlowStore(cfg *config.Config, store *config.Store) (authflow.Store, error) {
-	backend := strings.TrimSpace(cfg.Auth.AuthFlowStore.Backend)
+	binding := config.ResolveStorageBinding(cfg, "authflow_store")
+	backend := strings.TrimSpace(binding.Backend)
 	if backend == "" {
 		backend = "file"
 	}
-	return authflow.OpenStore(store.Path(), backend)
+	return authflow.OpenStoreWithOptions(authflow.StoreOptions{
+		ConfigPath:     store.Path(),
+		Backend:        backend,
+		Plugin:         binding.Plugin,
+		EnabledPlugins: config.ResolveEnabledPlugins(cfg),
+	})
 }

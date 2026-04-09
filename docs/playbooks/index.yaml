@@ -1,5 +1,5 @@
 version: 1
-updated_at: "2026-03-27"
+updated_at: "2026-04-02"
 playbooks:
   - id: feishu-document-update
     title: 更新飞书文档
@@ -59,6 +59,24 @@ playbooks:
       - write
     zh_path: docs/playbooks/zh/notion-page-update.md
     en_path: docs/playbooks/en/notion-page-update.md
+  - id: notion-block-write
+    title: 安全写入 Notion block
+    title_en: Write Notion blocks safely
+    platform: notion
+    operations:
+      - notion.page.create
+      - notion.block.append
+      - notion.block.update
+      - notion.block.get
+      - notion.page.markdown.get
+    tags:
+      - notion
+      - block
+      - write
+      - dry-run
+      - verify
+    zh_path: docs/playbooks/zh/notion-block-write.md
+    en_path: docs/playbooks/en/notion-block-write.md
   - id: notion-data-source-query
     title: 查询 Notion data source
     title_en: Query a Notion data source

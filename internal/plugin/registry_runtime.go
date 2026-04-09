@@ -164,6 +164,14 @@ func (r *registryRuntime) Execute(ctx context.Context, req ExecuteRequest) (Exec
 
 	identity := buildAdapterIdentityFromExecuteRequest(req)
 	ctx = adapter.WithAccountName(ctx, identity.AccountName)
+	ctx = adapter.WithRequestID(ctx, req.RequestID)
+	ctx = adapter.WithRuntimeOptions(ctx, adapter.RuntimeOptions{
+		DebugProviderPayload: req.DebugProviderPayload,
+		VerifyAfterWrite:     req.VerifyAfterWrite,
+	})
+	if req.DebugProviderPayload {
+		ctx, _ = adapter.WithFreshProviderDebugCapture(ctx)
+	}
 	data, appErr := definition.Handler(ctx, adapter.Call{
 		AccountName:    identity.AccountName,
 		Identity:       identity,
@@ -172,6 +180,7 @@ func (r *registryRuntime) Execute(ctx context.Context, req ExecuteRequest) (Exec
 	})
 	return ExecuteResult{
 		Data:  data,
+		Debug: adapter.ProviderDebugFromContext(ctx),
 		Error: appErr,
 	}, nil
 }

@@ -4,17 +4,19 @@ import "time"
 
 // ExecuteOptions describes one operation execution request.
 type ExecuteOptions struct {
-	OperationInput string
-	AccountName    string
-	SubjectName    string
-	InputJSON      string
-	InputFile      string
-	Timeout        time.Duration
-	DryRun         bool
-	IdempotencyKey string
-	Output         string
-	Quiet          bool
-	Stdin          any
+	OperationInput       string
+	AccountName          string
+	SubjectName          string
+	InputJSON            string
+	InputFile            string
+	Timeout              time.Duration
+	DryRun               bool
+	DebugProviderPayload bool
+	VerifyAfterWrite     bool
+	IdempotencyKey       string
+	Output               string
+	Quiet                bool
+	Stdin                any
 }
 
 // Envelope is the normalized output envelope for execution commands.
@@ -26,7 +28,10 @@ type Envelope struct {
 	Data        any               `json:"data"`
 	Error       *ErrorBody        `json:"error"`
 	Meta        Meta              `json:"meta"`
+	Debug       map[string]any    `json:"debug,omitempty"`
 	Idempotency *IdempotencyState `json:"idempotency,omitempty"`
+	Policy      *PolicyResult     `json:"policy,omitempty"`
+	Warnings    []string          `json:"warnings,omitempty"`
 }
 
 // Context describes the resolved execution context for the current command.
@@ -59,6 +64,22 @@ type IdempotencyState struct {
 	Status    string `json:"status"`
 	Persisted bool   `json:"persisted,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// PolicyResult stores the structured policy evaluation summary for one request.
+type PolicyResult struct {
+	FinalDecision string      `json:"final_decision"`
+	Hits          []PolicyHit `json:"hits,omitempty"`
+}
+
+// PolicyHit records one matched local rule or plugin policy decision.
+type PolicyHit struct {
+	SourceType  string         `json:"source_type"`
+	SourceName  string         `json:"source_name"`
+	Decision    string         `json:"decision"`
+	Message     string         `json:"message,omitempty"`
+	MatchedRule string         `json:"matched_rule,omitempty"`
+	Annotations map[string]any `json:"annotations,omitempty"`
 }
 
 // ExecutionProfile is the resolved execution identity at runtime.

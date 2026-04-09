@@ -31,6 +31,7 @@ type Manifest struct {
 	Entry           ManifestEntry           `json:"entry"`
 	CatalogPath     string                  `json:"catalog_path,omitempty"`
 	StorageBackend  *StorageBackendManifest `json:"storage_backend,omitempty"`
+	Capabilities    []CapabilityDescriptor  `json:"capabilities,omitempty"`
 	MinCoreVersion  string                  `json:"min_core_version,omitempty"`
 	RootDir         string                  `json:"-"`
 }
@@ -68,8 +69,8 @@ func LoadManifest(path string) (Manifest, error) {
 }
 
 // Validate validates one plugin manifest.
-func (m Manifest) Validate() error {
-	if m.SchemaVersion != 1 {
+func (m *Manifest) Validate() error {
+	if m.SchemaVersion != ManifestSchemaVersionV1 && m.SchemaVersion != ManifestSchemaVersionV2 {
 		return fmt.Errorf("unsupported plugin manifest schema_version: %d", m.SchemaVersion)
 	}
 	if strings.TrimSpace(m.Name) == "" {
@@ -78,24 +79,22 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.Version) == "" {
 		return fmt.Errorf("plugin manifest version is required")
 	}
-	kind := strings.TrimSpace(m.Kind)
-	switch kind {
-	case ManifestKindProvider:
-		if len(m.Platforms) == 0 {
-			return fmt.Errorf("plugin manifest platforms must not be empty")
-		}
-	case ManifestKindAuthLauncher:
-		// Launcher plugins may remain platform-agnostic and declare only supported action types.
-	case ManifestKindStorageBackend:
-		if m.StorageBackend == nil {
-			return fmt.Errorf("storage backend plugin manifest storage_backend must not be empty")
-		}
-		if err := m.StorageBackend.Validate(); err != nil {
+
+	m.Platforms = trimmedStrings(m.Platforms)
+	m.Capabilities = normalizeCapabilityList(m.Capabilities)
+	if len(m.Capabilities) == 0 {
+		m.Capabilities = deriveCapabilitiesFromLegacyManifest(*m)
+	}
+	if len(m.Capabilities) == 0 {
+		return fmt.Errorf("plugin manifest must declare kind or capabilities")
+	}
+	for _, capability := range m.Capabilities {
+		if err := capability.Validate(); err != nil {
 			return err
 		}
-	default:
-		return fmt.Errorf("plugin manifest kind must be %s, %s, or %s", ManifestKindProvider, ManifestKindAuthLauncher, ManifestKindStorageBackend)
 	}
+
+	m.normalizeLegacyCompatibilityFields()
 	if m.ProtocolVersion <= 0 {
 		return fmt.Errorf("plugin manifest protocol_version must be positive")
 	}
@@ -106,6 +105,84 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("plugin manifest entry.command must not be empty")
 	}
 	return nil
+}
+
+func (m *Manifest) normalizeLegacyCompatibilityFields() {
+	m.Capabilities = normalizeCapabilityList(m.Capabilities)
+
+	providerPlatforms := make([]string, 0)
+	storageCapabilities := make([]CapabilityDescriptor, 0)
+	for _, capability := range m.Capabilities {
+		switch capability.Type {
+		case CapabilityTypeProvider:
+			providerPlatforms = append(providerPlatforms, capability.Platforms...)
+		case CapabilityTypeStorageBackend:
+			storageCapabilities = append(storageCapabilities, capability)
+		}
+	}
+
+	if len(providerPlatforms) > 0 {
+		m.Platforms = trimmedStrings(providerPlatforms)
+	}
+
+	if len(storageCapabilities) == 1 {
+		m.StorageBackend = &StorageBackendManifest{
+			Target:      storageCapabilities[0].Target,
+			Backend:     storageCapabilities[0].Backend,
+			DisplayName: storageCapabilities[0].DisplayName,
+			Description: storageCapabilities[0].Description,
+		}
+	} else if len(storageCapabilities) == 0 {
+		m.StorageBackend = nil
+	}
+
+	switch len(m.Capabilities) {
+	case 0:
+		m.Kind = strings.TrimSpace(m.Kind)
+	case 1:
+		m.Kind = strings.TrimSpace(m.Capabilities[0].Type)
+	default:
+		m.Kind = ManifestKindMulti
+	}
+}
+
+// CapabilityList returns a cloned normalized capability list.
+func (m Manifest) CapabilityList() []CapabilityDescriptor {
+	return append([]CapabilityDescriptor(nil), normalizeCapabilityList(m.Capabilities)...)
+}
+
+// CapabilitiesByType returns all capabilities with the requested type.
+func (m Manifest) CapabilitiesByType(capabilityType string) []CapabilityDescriptor {
+	capabilityType = strings.TrimSpace(capabilityType)
+	items := make([]CapabilityDescriptor, 0)
+	for _, capability := range m.CapabilityList() {
+		if capability.Type == capabilityType {
+			items = append(items, capability)
+		}
+	}
+	return items
+}
+
+// SupportsKind reports whether the manifest exposes one legacy kind.
+func (m Manifest) SupportsKind(kind string) bool {
+	kind = strings.TrimSpace(kind)
+	switch kind {
+	case ManifestKindProvider:
+		return len(m.CapabilitiesByType(CapabilityTypeProvider)) > 0
+	case ManifestKindAuthLauncher:
+		return len(m.CapabilitiesByType(CapabilityTypeAuthLauncher)) > 0
+	case ManifestKindStorageBackend:
+		return len(m.CapabilitiesByType(CapabilityTypeStorageBackend)) > 0
+	case ManifestKindMulti:
+		return len(m.CapabilityList()) > 1
+	default:
+		return strings.TrimSpace(m.Kind) == kind
+	}
+}
+
+// StorageBackendCapabilities returns all normalized storage backend capabilities.
+func (m Manifest) StorageBackendCapabilities() []CapabilityDescriptor {
+	return m.CapabilitiesByType(CapabilityTypeStorageBackend)
 }
 
 // Validate validates one storage backend descriptor.

@@ -29,18 +29,18 @@ var (
 	authCompletionCommands       = []string{"list", "methods", "presets", "inspect", "check", "login", "complete", "logout", "secret"}
 	authSecretCompletionCommands = []string{"set", "put", "delete"}
 	configCompletionCommands     = []string{"init", "secret-store"}
-	pluginCompletionCommands     = []string{"list", "install", "info", "remove", "verify"}
+	pluginCompletionCommands     = []string{"list", "install", "info", "remove", "verify", "upgrade"}
 	specCompletionCommands       = []string{"list", "get", "status", "export"}
 	docsCompletionCommands       = []string{"generate"}
 	completionShells             = []string{"bash", "zsh", "fish"}
-	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
 	batchCompletionFlags         = []string{"--json", "--input", "--help", "-h"}
 	specExportCompletionFlags    = []string{"--format", "--out-dir", "--help", "-h"}
 	docsGenerateCompletionFlags  = []string{"--out-dir", "--help", "-h"}
 	configInitCompletionFlags    = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
-// runCompletion 输出 shell completion 脚本。
+// runCompletion prints the shell completion script.
 func runCompletion(args []string, stdout io.Writer, service *spec.Service) error {
 	if len(args) == 0 || isHelpToken(args[0]) {
 		printCompletionHelp(stdout)
