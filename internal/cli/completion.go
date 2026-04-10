@@ -109,6 +109,10 @@ _clawrise_completion() {
       return 0
       ;;
     secret)
+      COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+      return 0
+      ;;
+    config)
       if [[ ${COMP_CWORD} -eq 2 ]]; then
         COMPREPLY=( $(compgen -W '%s' -- "$cur") )
       else
@@ -335,9 +339,7 @@ case "$words[2]" in
     fi
     ;;
   secret)
-    if (( CURRENT == 3 )); then
-      compadd -- $auth_secret_commands
-    fi
+    compadd -- $auth_secret_commands
     ;;
   config)
     if (( CURRENT == 3 )); then

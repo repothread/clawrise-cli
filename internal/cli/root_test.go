@@ -52,11 +52,11 @@ func TestRunRootHelpFlag(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")) {
 		t.Fatalf("expected auth usage in root help, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("clawrise secret [put|delete]")) {
-		t.Fatalf("expected secret usage in root help, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise account [list|inspect|use|current|add|ensure|remove]")) {
+		t.Fatalf("expected account ensure usage in root help, got: %s", stdout.String())
 	}
-	if !bytes.Contains(stdout.Bytes(), []byte("clawrise config [init|secret-store|provider|auth-launcher|policy|audit]")) {
-		t.Fatalf("expected full config usage in root help, got: %s", stdout.String())
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise secret [set|put|delete]")) {
+		t.Fatalf("expected root secret usage in root help, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
@@ -1563,6 +1563,30 @@ func TestRunPlatformHelpFlag(t *testing.T) {
 
 	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise platform [use|current|unset]")) {
 		t.Fatalf("expected platform help output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunAccountHelpFlag(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"account", "--help"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise account [list|inspect|use|current|add|ensure|remove]")) {
+		t.Fatalf("expected account help output, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
