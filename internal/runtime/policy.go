@@ -479,16 +479,7 @@ func policyRuntimeLabel(runtime pluginruntime.PolicyRuntime) string {
 	if runtime == nil {
 		return ""
 	}
-	id := strings.TrimSpace(runtime.ID())
-	name := strings.TrimSpace(runtime.Name())
-	switch {
-	case id != "" && name != "" && id != name:
-		return name + "/" + id
-	case id != "":
-		return id
-	default:
-		return name
-	}
+	return formatRuntimeCapabilityLabel(runtime.Name(), runtime.ID(), true)
 }
 
 func buildPolicyDecisionMessage(runtime pluginruntime.PolicyRuntime, result pluginruntime.PolicyEvaluateResult, fallback string) string {
