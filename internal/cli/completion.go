@@ -9,12 +9,11 @@ import (
 )
 
 var (
-	completionShells            = []string{"bash", "zsh", "fish"}
-	operationCompletionFlags    = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
-	batchCompletionFlags        = []string{"--json", "--input", "--help", "-h"}
-	specExportCompletionFlags   = []string{"--format", "--out-dir", "--help", "-h"}
-	docsGenerateCompletionFlags = []string{"--out-dir", "--help", "-h"}
-	configInitCompletionFlags   = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
+	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	batchCompletionFlags         = []string{"--json", "--input", "--help", "-h"}
+	specExportCompletionFlags    = []string{"--format", "--out-dir", "--help", "-h"}
+	docsGenerateCompletionFlags  = []string{"--out-dir", "--help", "-h"}
+	configInitCompletionFlags    = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
 // runCompletion prints the shell completion script.
@@ -55,7 +54,7 @@ func printCompletionHelp(stdout io.Writer) {
 }
 
 func buildBashCompletionScript(data spec.CompletionData) string {
-	rootWords := shellWords(append(append([]string{}, rootCompletionCommands...), data.Operations...))
+	rootWords := shellWords(append(append([]string{}, rootCommandNames...), data.Operations...))
 	specPaths := shellWords(data.SpecPaths)
 
 	return fmt.Sprintf(`# bash completion for clawrise
@@ -167,21 +166,22 @@ _clawrise_completion() {
 complete -F _clawrise_completion clawrise
 `,
 		rootWords,
-		shellWords(platformCompletionCommands),
-		shellWords(subjectCompletionCommands),
-		shellWords(accountCompletionCommands),
-		shellWords(authCompletionCommands),
-		shellWords(authSecretCompletionCommands),
-		shellWords(configCompletionCommands),
+		shellWords(platformCommandNames),
+		shellWords(subjectCommandNames),
+		shellWords(accountCommandNames),
+		shellWords(authCommandNames),
+		shellWords(secretCommandNames),
+		shellWords(secretCommandNames),
+		shellWords(configCommandNames),
 		shellWords(configInitCompletionFlags),
-		shellWords(pluginCompletionCommands),
-		shellWords(specCompletionCommands),
+		shellWords(pluginCommandNames),
+		shellWords(specCommandNames),
 		specPaths,
 		shellWords(specExportCompletionFlags),
-		shellWords(docsCompletionCommands),
+		shellWords(docsCommandNames),
 		specPaths,
 		shellWords(docsGenerateCompletionFlags),
-		shellWords(completionShells),
+		shellWords(completionShellNames),
 		shellWords(batchCompletionFlags),
 		shellWords(operationCompletionFlags),
 	)
@@ -298,17 +298,17 @@ case "$words[2]" in
     compadd -- $operation_flags
     ;;
 esac
-`, zshWords(append(append([]string{}, rootCompletionCommands...), data.Operations...)),
-		zshWords(platformCompletionCommands),
-		zshWords(subjectCompletionCommands),
-		zshWords(accountCompletionCommands),
-		zshWords(authCompletionCommands),
-		zshWords(authSecretCompletionCommands),
-		zshWords(configCompletionCommands),
-		zshWords(pluginCompletionCommands),
-		zshWords(specCompletionCommands),
-		zshWords(docsCompletionCommands),
-		zshWords(completionShells),
+`, zshWords(append(append([]string{}, rootCommandNames...), data.Operations...)),
+		zshWords(platformCommandNames),
+		zshWords(subjectCommandNames),
+		zshWords(accountCommandNames),
+		zshWords(authCommandNames),
+		zshWords(secretCommandNames),
+		zshWords(configCommandNames),
+		zshWords(pluginCommandNames),
+		zshWords(specCommandNames),
+		zshWords(docsCommandNames),
+		zshWords(completionShellNames),
 		zshWords(data.Operations),
 		zshWords(data.SpecPaths),
 		zshWords(operationCompletionFlags),
@@ -325,25 +325,26 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 		"complete -c clawrise -f",
 	}
 
-	for _, command := range rootCompletionCommands {
+	for _, command := range rootCommandNames {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_use_subcommand' -a '%s'", command))
 	}
 	for _, operation := range data.Operations {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_use_subcommand' -a '%s'", operation))
 	}
 
-	lines = append(lines, fishCommandCompletions("platform", platformCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("account", accountCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("subject", subjectCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("auth", authCompletionCommands)...)
-	for _, value := range authSecretCompletionCommands {
+	lines = append(lines, fishCommandCompletions("platform", platformCommandNames)...)
+	lines = append(lines, fishCommandCompletions("account", accountCommandNames)...)
+	lines = append(lines, fishCommandCompletions("subject", subjectCommandNames)...)
+	lines = append(lines, fishCommandCompletions("auth", authCommandNames)...)
+	lines = append(lines, fishCommandCompletions("secret", secretCommandNames)...)
+	for _, value := range secretCommandNames {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from auth; and __fish_seen_subcommand_from secret' -a '%s'", value))
 	}
-	lines = append(lines, fishCommandCompletions("config", configCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("plugin", pluginCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("spec", specCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("docs", docsCompletionCommands)...)
-	lines = append(lines, fishCommandCompletions("completion", completionShells)...)
+	lines = append(lines, fishCommandCompletions("config", configCommandNames)...)
+	lines = append(lines, fishCommandCompletions("plugin", pluginCommandNames)...)
+	lines = append(lines, fishCommandCompletions("spec", specCommandNames)...)
+	lines = append(lines, fishCommandCompletions("docs", docsCommandNames)...)
+	lines = append(lines, fishCommandCompletions("completion", completionShellNames)...)
 
 	for _, path := range data.SpecPaths {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from spec; and not __fish_seen_subcommand_from status' -a '%s'", path))
@@ -369,10 +370,10 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 	}
 	for _, flag := range operationCompletionFlags {
 		if strings.HasPrefix(flag, "--") {
-			lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -l '%s'", strings.Join(rootCompletionCommands, " "), strings.TrimPrefix(flag, "--")))
+			lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -l '%s'", strings.Join(rootCommandNames, " "), strings.TrimPrefix(flag, "--")))
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -s '%s'", strings.Join(rootCompletionCommands, " "), strings.TrimPrefix(flag, "-")))
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -s '%s'", strings.Join(rootCommandNames, " "), strings.TrimPrefix(flag, "-")))
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
