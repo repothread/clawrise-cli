@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	operationCompletionFlags  = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
-	batchCompletionFlags      = []string{"--json", "--input", "--help", "-h"}
-	specExportCompletionFlags = []string{"--format", "--out-dir", "--help", "-h"}
+	operationCompletionFlags    = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	batchCompletionFlags        = []string{"--json", "--input", "--help", "-h"}
+	specExportCompletionFlags   = []string{"--format", "--out-dir", "--help", "-h"}
 	docsGenerateCompletionFlags = []string{"--out-dir", "--help", "-h"}
-	configInitCompletionFlags = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
+	configInitCompletionFlags   = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
 // runCompletion prints the shell completion script.
@@ -110,14 +110,6 @@ _clawrise_completion() {
       ;;
     secret)
       COMPREPLY=( $(compgen -W '%s' -- "$cur") )
-      return 0
-      ;;
-    config)
-      if [[ ${COMP_CWORD} -eq 2 ]]; then
-        COMPREPLY=( $(compgen -W '%s' -- "$cur") )
-      else
-        COMPREPLY=()
-      fi
       return 0
       ;;
     config)
