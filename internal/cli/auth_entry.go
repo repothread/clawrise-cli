@@ -96,7 +96,7 @@ func buildAccountInspectionView(accountName string, account config.Account, resu
 }
 
 func printAuthHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")
+	_, _ = fmt.Fprintf(stdout, "Usage: %s\n", commandUsageLine("clawrise auth", authCompletionCommands))
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth methods [--platform <name>]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth presets [--platform <name>]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth inspect [account]")

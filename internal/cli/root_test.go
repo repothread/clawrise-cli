@@ -46,8 +46,17 @@ func TestRunRootHelpFlag(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise docs generate [path] [--out-dir <dir>]")) {
 		t.Fatalf("expected docs usage in root help, got: %s", stdout.String())
 	}
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise account [list|inspect|use|current|add|ensure|remove]")) {
+		t.Fatalf("expected account ensure in root help, got: %s", stdout.String())
+	}
 	if !bytes.Contains(stdout.Bytes(), []byte("clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")) {
 		t.Fatalf("expected auth usage in root help, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise secret [put|delete]")) {
+		t.Fatalf("expected secret usage in root help, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("clawrise config [init|secret-store|provider|auth-launcher|policy|audit]")) {
+		t.Fatalf("expected full config usage in root help, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
@@ -1345,6 +1354,15 @@ func TestRunCompletionBash(t *testing.T) {
 	if !bytes.Contains(stdout.Bytes(), []byte("docs")) {
 		t.Fatalf("expected docs command completion entry, got: %s", stdout.String())
 	}
+	if !bytes.Contains(stdout.Bytes(), []byte("platform account subject auth secret config")) {
+		t.Fatalf("expected root secret command in bash completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("list inspect use current add ensure remove")) {
+		t.Fatalf("expected account ensure command in bash completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("init secret-store provider auth-launcher policy audit")) {
+		t.Fatalf("expected full config command set in bash completion, got: %s", stdout.String())
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
@@ -1368,6 +1386,15 @@ func TestRunCompletionZsh(t *testing.T) {
 
 	if !bytes.Contains(stdout.Bytes(), []byte(`#compdef clawrise`)) {
 		t.Fatalf("expected zsh completion header, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`root_commands=('platform' 'account' 'subject' 'auth' 'secret' 'config' 'plugin' 'spec' 'docs' 'completion' 'doctor' 'version' 'batch'`)) {
+		t.Fatalf("expected root secret command in zsh completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`account_commands=('list' 'inspect' 'use' 'current' 'add' 'ensure' 'remove')`)) {
+		t.Fatalf("expected account ensure command in zsh completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`config_commands=('init' 'secret-store' 'provider' 'auth-launcher' 'policy' 'audit')`)) {
+		t.Fatalf("expected full config command set in zsh completion, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`completion_shells=('bash' 'zsh' 'fish')`)) {
 		t.Fatalf("expected shell variants in zsh completion, got: %s", stdout.String())
@@ -1401,6 +1428,18 @@ func TestRunCompletionFish(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_use_subcommand' -a 'platform'`)) {
 		t.Fatalf("expected root command in fish completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_use_subcommand' -a 'secret'`)) {
+		t.Fatalf("expected root secret command in fish completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_seen_subcommand_from account' -a 'ensure'`)) {
+		t.Fatalf("expected account ensure command in fish completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_seen_subcommand_from config' -a 'auth-launcher'`)) {
+		t.Fatalf("expected config auth-launcher command in fish completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_seen_subcommand_from config' -a 'audit'`)) {
+		t.Fatalf("expected config audit command in fish completion, got: %s", stdout.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_seen_subcommand_from completion' -a 'bash'`)) {
 		t.Fatalf("expected shell completion choices in fish completion, got: %s", stdout.String())
@@ -3130,6 +3169,29 @@ func TestRunConfigAuditAndAuthSecretHelpFlags(t *testing.T) {
 				t.Fatalf("expected empty stderr, got: %s", stderr.String())
 			}
 		})
+	}
+}
+
+func TestRunAccountHelpIncludesEnsure(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"account", "--help"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise account [list|inspect|use|current|add|ensure|remove]")) {
+		t.Fatalf("expected account ensure in account help, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
 	}
 }
 
