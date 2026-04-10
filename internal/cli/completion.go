@@ -9,35 +9,12 @@ import (
 )
 
 var (
-	rootCompletionCommands = []string{
-		"platform",
-		"account",
-		"subject",
-		"auth",
-		"config",
-		"plugin",
-		"spec",
-		"docs",
-		"completion",
-		"doctor",
-		"version",
-		"batch",
-	}
-	platformCompletionCommands   = []string{"use", "current", "unset"}
-	accountCompletionCommands    = []string{"use", "current", "list", "inspect", "add", "remove"}
-	subjectCompletionCommands    = []string{"use", "current", "unset", "list"}
-	authCompletionCommands       = []string{"list", "methods", "presets", "inspect", "check", "login", "complete", "logout", "secret"}
-	authSecretCompletionCommands = []string{"set", "put", "delete"}
-	configCompletionCommands     = []string{"init", "secret-store"}
-	pluginCompletionCommands     = []string{"list", "install", "info", "remove", "verify", "upgrade"}
-	specCompletionCommands       = []string{"list", "get", "status", "export"}
-	docsCompletionCommands       = []string{"generate"}
-	completionShells             = []string{"bash", "zsh", "fish"}
-	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
-	batchCompletionFlags         = []string{"--json", "--input", "--help", "-h"}
-	specExportCompletionFlags    = []string{"--format", "--out-dir", "--help", "-h"}
-	docsGenerateCompletionFlags  = []string{"--out-dir", "--help", "-h"}
-	configInitCompletionFlags    = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
+	completionShells            = []string{"bash", "zsh", "fish"}
+	operationCompletionFlags    = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	batchCompletionFlags        = []string{"--json", "--input", "--help", "-h"}
+	specExportCompletionFlags   = []string{"--format", "--out-dir", "--help", "-h"}
+	docsGenerateCompletionFlags = []string{"--out-dir", "--help", "-h"}
+	configInitCompletionFlags   = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
 // runCompletion prints the shell completion script.
