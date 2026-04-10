@@ -2501,6 +2501,45 @@ func TestRunAuthSecretSetValueRequiresExplicitInsecureFlag(t *testing.T) {
 	}
 }
 
+func TestRunAuthSecretDelete(t *testing.T) {
+	configPath := copyExampleConfig(t)
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+
+	store := config.NewStore(configPath)
+	cfg, err := store.Load()
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	secretStore, err := openCLISecretStore(cfg, store)
+	if err != nil {
+		t.Fatalf("failed to open secret store: %v", err)
+	}
+	if err := secretStore.Set("notion_bot", "token", "secret-to-delete"); err != nil {
+		t.Fatalf("failed to seed secret: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = Run([]string{"auth", "secret", "delete", "notion_bot", "token"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"deleted": true`)) {
+		t.Fatalf("expected delete success output, got: %s", stdout.String())
+	}
+	if _, err := secretStore.Get("notion_bot", "token"); err == nil {
+		t.Fatal("expected auth secret delete to remove stored secret")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunDoctor(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	t.Setenv("CLAWRISE_CONFIG", configPath)
@@ -3027,6 +3066,70 @@ func TestRunConfigAuditCommandsWriteBack(t *testing.T) {
 	}
 	if len(loaded.Runtime.Audit.Sinks) != 2 {
 		t.Fatalf("expected plugin audit sink to be removed, got: %+v", loaded.Runtime.Audit.Sinks)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "audit", "remove", "webhook", "env:CLAWRISE_AUDIT_WEBHOOK_URL"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config audit remove webhook returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"config", "audit", "remove", "stdout"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("config audit remove stdout returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	loaded, err = store.Load()
+	if err != nil {
+		t.Fatalf("failed to reload written config after removals: %v", err)
+	}
+	if len(loaded.Runtime.Audit.Sinks) != 0 {
+		t.Fatalf("expected all audit sinks to be removed, got: %+v", loaded.Runtime.Audit.Sinks)
+	}
+}
+
+func TestRunConfigAuditAndAuthSecretHelpFlags(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	for _, tc := range []struct {
+		args     []string
+		expected string
+	}{
+		{[]string{"config", "audit", "--help"}, "Usage: clawrise config audit mode <auto|manual|disabled>"},
+		{[]string{"auth", "secret", "--help"}, "Usage: clawrise auth secret [set|put|delete] <account> <field>"},
+	} {
+		t.Run(strings.Join(tc.args, "_"), func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			err := Run(tc.args, Dependencies{
+				Version:       "test",
+				Stdout:        &stdout,
+				Stderr:        &stderr,
+				PluginManager: newTestPluginManager(t),
+			})
+			if err != nil {
+				t.Fatalf("Run returned error: %v", err)
+			}
+			if !bytes.Contains(stdout.Bytes(), []byte(tc.expected)) {
+				t.Fatalf("expected help output %q, got: %s", tc.expected, stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("expected empty stderr, got: %s", stderr.String())
+			}
+		})
 	}
 }
 
