@@ -519,5 +519,5 @@ func isEmptyPublicValue(value any) bool {
 }
 
 func printAccountHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise account [list|inspect|use|current|add|remove]")
+	_, _ = fmt.Fprintln(stdout, commandUsage("account", accountCommandNames))
 }
