@@ -751,17 +751,17 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Usage:")
 	_, _ = fmt.Fprintln(w, "  clawrise <operation> [flags]")
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise platform", platformCompletionCommands))
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise account", accountCompletionCommands))
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise subject", subjectCompletionCommands))
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise auth", authCompletionCommands))
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise secret", authSecretCompletionCommands[1:]))
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise config", configCompletionCommands))
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise plugin", pluginCompletionCommands))
-	_, _ = fmt.Fprintf(w, "  %s\n", commandUsageLine("clawrise spec", specCompletionCommands))
-	_, _ = fmt.Fprintf(w, "  clawrise docs %s [path] [--out-dir <dir>]\n", docsCompletionCommands[0])
+	_, _ = fmt.Fprintf(w, "  clawrise platform %s\n", commandAlternatives(platformCLICommands))
+	_, _ = fmt.Fprintf(w, "  clawrise account %s\n", commandAlternatives(accountCLICommands))
+	_, _ = fmt.Fprintf(w, "  clawrise subject %s\n", commandAlternatives(subjectCLICommands))
+	_, _ = fmt.Fprintf(w, "  clawrise auth %s\n", commandAlternatives(authCLICommands))
+	_, _ = fmt.Fprintf(w, "  clawrise secret %s <account> <field>\n", commandAlternatives(authSecretCLICommands))
+	_, _ = fmt.Fprintf(w, "  clawrise config %s\n", commandAlternatives(configCLICommands))
+	_, _ = fmt.Fprintf(w, "  clawrise plugin %s\n", commandAlternatives(pluginCLICommands))
+	_, _ = fmt.Fprintf(w, "  clawrise spec %s\n", commandAlternatives(specCLICommands))
+	_, _ = fmt.Fprintln(w, "  clawrise docs generate [path] [--out-dir <dir>]")
 	_, _ = fmt.Fprintln(w, "  clawrise batch [--json <payload> | --input <path>]")
-	_, _ = fmt.Fprintf(w, "  clawrise completion %s\n", commandAlternatives(completionShells))
+	_, _ = fmt.Fprintf(w, "  clawrise completion %s\n", commandAlternatives(completionShellCLICommands))
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")
 	_, _ = fmt.Fprintln(w, "")
@@ -776,11 +776,11 @@ func printRootHelp(w io.Writer) {
 }
 
 func printPlatformHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintf(stdout, "Usage: %s\n", commandUsageLine("clawrise platform", platformCompletionCommands))
+	_, _ = fmt.Fprintf(stdout, "Usage: clawrise platform %s\n", commandAlternatives(platformCLICommands))
 }
 
 func printSubjectHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintf(stdout, "Usage: %s\n", commandUsageLine("clawrise subject", subjectCompletionCommands))
+	_, _ = fmt.Fprintf(stdout, "Usage: clawrise subject %s\n", commandAlternatives(subjectCLICommands))
 }
 
 type providerConflictView struct {

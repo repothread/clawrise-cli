@@ -115,7 +115,8 @@ func runConfigInit(args []string, store *config.Store, stdout io.Writer, manager
 }
 
 func printConfigHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise config init --platform <name> [--preset <id>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
+	_, _ = fmt.Fprintf(stdout, "Usage: clawrise config %s\n", commandAlternatives(configCLICommands))
+	_, _ = fmt.Fprintln(stdout, "       clawrise config init --platform <name> [--preset <id>] [--subject <name>] [--account <name>] [--method <name>] [--scope <name>] [--force]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config secret-store use <backend> [--fallback-backend <backend>]")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config provider use <platform> <plugin>")
 	_, _ = fmt.Fprintln(stdout, "       clawrise config provider unset <platform>")
