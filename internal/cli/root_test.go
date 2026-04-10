@@ -115,6 +115,29 @@ func TestRunOperationDryRun(t *testing.T) {
 	}
 }
 
+func TestRunVersion(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"version"}, Dependencies{
+		Version:       "test-version",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"version": "test-version"`)) {
+		t.Fatalf("expected version output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunSubjectUse(t *testing.T) {
 	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
 
@@ -133,6 +156,142 @@ func TestRunSubjectUse(t *testing.T) {
 
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "bot"`)) {
 		t.Fatalf("expected subject output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunPlatformCurrentAndUnset(t *testing.T) {
+	copyExampleConfig(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"platform", "current"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"platform": "feishu"`)) {
+		t.Fatalf("expected default platform in output, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"platform", "unset"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ok": true`)) {
+		t.Fatalf("expected platform unset success, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"platform", "current"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"platform": null`)) {
+		t.Fatalf("expected cleared platform, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunSubjectCurrentListAndUnset(t *testing.T) {
+	copyExampleConfig(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"subject", "list"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subjects": [`)) ||
+		!bytes.Contains(stdout.Bytes(), []byte(`"bot"`)) ||
+		!bytes.Contains(stdout.Bytes(), []byte(`"integration"`)) ||
+		!bytes.Contains(stdout.Bytes(), []byte(`"user"`)) {
+		t.Fatalf("expected sorted subject list, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"subject", "use", "integration"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"subject", "current"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "integration"`)) {
+		t.Fatalf("expected current subject output, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"subject", "unset"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"ok": true`)) {
+		t.Fatalf("expected subject unset success, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"subject", "current"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": null`)) {
+		t.Fatalf("expected cleared subject, got: %s", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
@@ -763,6 +922,85 @@ func TestRunAccountUseSynchronizesPlatformForBareOperation(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"subject": "integration"`)) {
 		t.Fatalf("expected integration subject in output, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunAccountListInspectCurrentAndRemove(t *testing.T) {
+	configPath := copyExampleConfig(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"account", "list"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"name": "feishu_bot"`)) || !bytes.Contains(stdout.Bytes(), []byte(`"name": "notion_bot"`)) {
+		t.Fatalf("expected account list to include example accounts, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"account", "current"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"name": "feishu_bot"`)) {
+		t.Fatalf("expected current account output, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"account", "inspect", "notion_bot"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"platform": "notion"`)) || !bytes.Contains(stdout.Bytes(), []byte(`"method": "notion.internal_token"`)) {
+		t.Fatalf("expected notion account inspection payload, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"account", "remove", "notion_bot"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"deleted": true`)) {
+		t.Fatalf("expected account remove success, got: %s", stdout.String())
+	}
+
+	cfg, err := config.NewStore(configPath).Load()
+	if err != nil {
+		t.Fatalf("failed to reload config: %v", err)
+	}
+	if _, ok := cfg.Accounts["notion_bot"]; ok {
+		t.Fatalf("expected notion_bot to be removed from config: %+v", cfg.Accounts)
+	}
+	if _, ok := cfg.Defaults.PlatformAccounts["notion"]; ok {
+		t.Fatalf("expected notion platform binding to be cleared after remove: %+v", cfg.Defaults.PlatformAccounts)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())
@@ -1579,6 +1817,143 @@ func TestRunAuthInspectUsesStableOutputShape(t *testing.T) {
 	}
 	if _, ok := data["next_actions"]; !ok {
 		t.Fatalf("expected next_actions in auth inspect output: %+v", data)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunAuthMethodsAndPresets(t *testing.T) {
+	copyExampleConfig(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"auth", "methods", "--platform", "notion"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"id": "notion.internal_token"`)) || !bytes.Contains(stdout.Bytes(), []byte(`"id": "notion.oauth_public"`)) {
+		t.Fatalf("expected notion auth methods, got: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run([]string{"auth", "presets", "--platform", "notion"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"id": "internal_token"`)) || !bytes.Contains(stdout.Bytes(), []byte(`"id": "public_oauth"`)) {
+		t.Fatalf("expected notion auth presets, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunAuthLogoutClearsSessionAndTokenSecrets(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("CLAWRISE_CONFIG", configPath)
+	t.Setenv("CLAWRISE_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CLAWRISE_MASTER_KEY", "test-master-key")
+
+	cfg := config.New()
+	cfg.Ensure()
+	cfg.Auth.SecretStore.Backend = "encrypted_file"
+	cfg.Auth.SecretStore.FallbackBackend = "encrypted_file"
+	cfg.Auth.SessionStore.Backend = "file"
+	cfg.Defaults.Account = "notion_oauth_live"
+	cfg.Defaults.Platform = "notion"
+	cfg.Defaults.Subject = "integration"
+	cfg.Defaults.PlatformAccounts["notion"] = "notion_oauth_live"
+	cfg.Accounts["notion_oauth_live"] = config.Account{
+		Title:    "Notion OAuth Live",
+		Platform: "notion",
+		Subject:  "integration",
+		Auth: config.AccountAuth{
+			Method: "notion.oauth_public",
+			Public: map[string]any{
+				"client_id":      "demo-client",
+				"notion_version": "2026-03-11",
+				"redirect_mode":  "loopback",
+			},
+			SecretRefs: map[string]string{
+				"client_secret": "secret:notion_oauth_live:client_secret",
+				"access_token":  "secret:notion_oauth_live:access_token",
+				"refresh_token": "secret:notion_oauth_live:refresh_token",
+			},
+		},
+	}
+	store := config.NewStore(configPath)
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("failed to seed config: %v", err)
+	}
+
+	secretStore, err := openCLISecretStore(cfg, store)
+	if err != nil {
+		t.Fatalf("failed to open secret store: %v", err)
+	}
+	for field, value := range map[string]string{
+		"client_secret": "client-secret",
+		"access_token":  "access-token",
+		"refresh_token": "refresh-token",
+	} {
+		if err := secretStore.Set("notion_oauth_live", field, value); err != nil {
+			t.Fatalf("failed to seed secret %s: %v", field, err)
+		}
+	}
+
+	sessionStore, err := openCLISessionStore(cfg, store)
+	if err != nil {
+		t.Fatalf("failed to open session store: %v", err)
+	}
+	if err := sessionStore.Save(authcache.Session{
+		AccountName:  "notion_oauth_live",
+		Platform:     "notion",
+		Subject:      "integration",
+		GrantType:    "notion.oauth_public",
+		AccessToken:  "session-access-token",
+		RefreshToken: "session-refresh-token",
+	}); err != nil {
+		t.Fatalf("failed to seed session: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = Run([]string{"auth", "logout", "notion_oauth_live"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`"logged_out": true`)) {
+		t.Fatalf("expected logout success output, got: %s", stdout.String())
+	}
+
+	if _, err := sessionStore.Load("notion_oauth_live"); err == nil {
+		t.Fatal("expected auth logout to remove stored session")
+	}
+	if _, err := secretStore.Get("notion_oauth_live", "access_token"); err == nil {
+		t.Fatal("expected auth logout to delete access_token secret")
+	}
+	if _, err := secretStore.Get("notion_oauth_live", "refresh_token"); err == nil {
+		t.Fatal("expected auth logout to delete refresh_token secret")
+	}
+	if value, err := secretStore.Get("notion_oauth_live", "client_secret"); err != nil || value != "client-secret" {
+		t.Fatalf("expected client_secret to be preserved, got value=%q err=%v", value, err)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got: %s", stderr.String())

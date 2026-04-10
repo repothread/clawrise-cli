@@ -23,6 +23,17 @@ require_env() {
   fi
 }
 
+resolve_first_env() {
+  local name
+  for name in "$@"; do
+    if [[ -n "${!name:-}" ]]; then
+      printf '%s' "${!name}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 require_command() {
   local name="$1"
   if ! command -v "${name}" >/dev/null 2>&1; then
@@ -35,8 +46,18 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 
 require_command go
 require_command jq
-require_env NOTION_TOKEN
-require_env NOTION_PARENT_PAGE_ID
+
+NOTION_TOKEN="$(resolve_first_env NOTION_TOKEN CLAWRISE_TEST_NOTION_TOKEN || true)"
+if [[ -z "${NOTION_TOKEN}" ]]; then
+  fail "缺少 Notion token，请设置 NOTION_TOKEN 或 CLAWRISE_TEST_NOTION_TOKEN"
+fi
+export NOTION_TOKEN
+
+NOTION_PARENT_PAGE_ID="${NOTION_PARENT_PAGE_ID:-}"
+if [[ -z "${NOTION_PARENT_PAGE_ID}" ]]; then
+  NOTION_PARENT_PAGE_ID="$(resolve_first_env CLAWRISE_TEST_NOTION_PARENT_PAGE_ID || true)"
+fi
+export NOTION_PARENT_PAGE_ID
 
 NOTION_VERSION="${NOTION_VERSION:-2026-03-11}"
 LIVE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/clawrise-notion-live.XXXXXX")"
@@ -156,12 +177,56 @@ assert_block_round_trip() {
   fi
 }
 
+log "验证 core 内建命令"
+version_output="$(clawrise_json version)"
+extract_json '.version | length > 0' "${version_output}" >/dev/null
+platform_current_output="$(clawrise_json platform current)"
+extract_json '.platform == "notion"' "${platform_current_output}" >/dev/null
+subject_current_output="$(clawrise_json subject current)"
+extract_json '.subject == "integration"' "${subject_current_output}" >/dev/null
+account_current_output="$(clawrise_json account current)"
+extract_json '.account.name == "notion_ci"' "${account_current_output}" >/dev/null
+account_list_output="$(clawrise_json account list)"
+extract_json '.accounts | length == 1' "${account_list_output}" >/dev/null
+extract_json '.accounts[0].name == "notion_ci"' "${account_list_output}" >/dev/null
+account_inspect_output="$(clawrise_json account inspect notion_ci)"
+extract_json '.ok == true and .data.platform == "notion" and .data.subject == "integration"' "${account_inspect_output}" >/dev/null
+auth_methods_output="$(clawrise_json auth methods --platform notion)"
+extract_json '.ok == true and (.data.methods | map(.id) | index("notion.internal_token")) != null' "${auth_methods_output}" >/dev/null
+auth_presets_output="$(clawrise_json auth presets --platform notion)"
+extract_json '.ok == true and (.data.presets | map(.id) | index("internal_token")) != null' "${auth_presets_output}" >/dev/null
+auth_inspect_output="$(clawrise_json auth inspect notion_ci)"
+extract_json '.ok == true and .data.ready == true and .data.auth_method == "notion.internal_token"' "${auth_inspect_output}" >/dev/null
+doctor_output="$(clawrise_json doctor)"
+extract_json '.ok == true and .data.defaults.platform == "notion" and .data.defaults.account == "notion_ci"' "${doctor_output}" >/dev/null
+spec_list_output="$(clawrise_json spec list notion)"
+extract_json '.ok == true and (.data.items | length) > 0' "${spec_list_output}" >/dev/null
+spec_get_output="$(clawrise_json spec get notion.page.create)"
+extract_json '.ok == true and .data.operation == "notion.page.create"' "${spec_get_output}" >/dev/null
+docs_output_dir="${LIVE_ROOT}/generated-docs"
+docs_generate_output="$(clawrise_json docs generate notion.page --out-dir "${docs_output_dir}")"
+extract_json '.ok == true and (.data.written_files | length) >= 1' "${docs_generate_output}" >/dev/null
+plugin_list_output="$(clawrise_json plugin list)"
+extract_json '.plugins != null' "${plugin_list_output}" >/dev/null
+
 log "验证 Notion CI 账号鉴权"
 clawrise_json auth check notion_ci >/dev/null
 
 log "检查当前 integration 可访问页面，并确认父页面可访问"
 visible_pages_output="$(clawrise_json notion.search.query --json '{"filter":{"property":"object","value":"page"},"page_size":20}')"
 extract_json '.data.items | length >= 1' "${visible_pages_output}" >/dev/null
+
+if [[ -z "${NOTION_PARENT_PAGE_ID}" ]]; then
+  NOTION_PARENT_PAGE_ID="$(extract_json '.data.items | map(select(.object == "page" and (.archived != true) and ((.parent.type // "") != "data_source_id"))) | .[0].id // empty' "${visible_pages_output}" || true)"
+fi
+if [[ -z "${NOTION_PARENT_PAGE_ID}" ]]; then
+  NOTION_PARENT_PAGE_ID="$(extract_json '.data.items | map(select(.object == "page" and (.archived != true))) | .[0].id // empty' "${visible_pages_output}" || true)"
+fi
+if [[ -z "${NOTION_PARENT_PAGE_ID}" ]]; then
+  fail "无法从 notion.search.query 自动选出可用父页面，请显式设置 NOTION_PARENT_PAGE_ID"
+fi
+log "本次运行父页面: ${NOTION_PARENT_PAGE_ID}"
+
 parent_page_output="$(clawrise_json notion.page.get --json "{\"page_id\":\"${NOTION_PARENT_PAGE_ID}\"}")"
 extract_json '.data.page_id == "'"${NOTION_PARENT_PAGE_ID}"'"' "${parent_page_output}" >/dev/null
 
