@@ -751,17 +751,17 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Usage:")
 	_, _ = fmt.Fprintln(w, "  clawrise <operation> [flags]")
-	_, _ = fmt.Fprintln(w, "  clawrise platform [use|current|unset]")
-	_, _ = fmt.Fprintln(w, "  clawrise account [list|inspect|use|current|add|remove]")
-	_, _ = fmt.Fprintln(w, "  clawrise subject [use|current|unset|list]")
-	_, _ = fmt.Fprintln(w, "  clawrise auth [list|methods|presets|inspect|check|login|complete|logout|secret]")
-	_, _ = fmt.Fprintln(w, "  clawrise secret [put|delete]")
-	_, _ = fmt.Fprintln(w, "  clawrise config [init|secret-store|provider|auth-launcher|policy|audit]")
-	_, _ = fmt.Fprintln(w, "  clawrise plugin [list|install|info|remove|verify|upgrade]")
-	_, _ = fmt.Fprintln(w, "  clawrise spec [list|get|status|export]")
-	_, _ = fmt.Fprintln(w, "  clawrise docs generate [path] [--out-dir <dir>]")
+	_, _ = fmt.Fprintf(w, "  clawrise platform %s\n", bracketedCommandList(platformCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise account %s\n", bracketedCommandList(accountCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise subject %s\n", bracketedCommandList(subjectCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise auth %s\n", bracketedCommandList(authCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise secret %s\n", bracketedCommandList(secretCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise config %s\n", bracketedCommandList(configCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise plugin %s\n", bracketedCommandList(pluginCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise spec %s\n", bracketedCommandList(specCommandNames))
+	_, _ = fmt.Fprintf(w, "  clawrise docs %s [path] [--out-dir <dir>]\n", docsCommandNames[0])
 	_, _ = fmt.Fprintln(w, "  clawrise batch [--json <payload> | --input <path>]")
-	_, _ = fmt.Fprintln(w, "  clawrise completion [bash|zsh|fish]")
+	_, _ = fmt.Fprintf(w, "  clawrise completion %s\n", bracketedCommandList(completionShellNames))
 	_, _ = fmt.Fprintln(w, "  clawrise doctor")
 	_, _ = fmt.Fprintln(w, "  clawrise version")
 	_, _ = fmt.Fprintln(w, "")
@@ -776,11 +776,11 @@ func printRootHelp(w io.Writer) {
 }
 
 func printPlatformHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise platform [use|current|unset]")
+	_, _ = fmt.Fprintln(stdout, commandUsage("platform", platformCommandNames))
 }
 
 func printSubjectHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise subject [use|current|unset|list]")
+	_, _ = fmt.Fprintln(stdout, commandUsage("subject", subjectCommandNames))
 }
 
 type providerConflictView struct {

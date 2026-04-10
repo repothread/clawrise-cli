@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	rootCompletionCommands = []string{
+	rootCommandNames = []string{
 		"platform",
 		"account",
 		"subject",
@@ -21,21 +21,22 @@ var (
 		"version",
 		"batch",
 	}
-	platformCompletionCommands   = []string{"use", "current", "unset"}
-	accountCompletionCommands    = []string{"list", "inspect", "use", "current", "add", "ensure", "remove"}
-	subjectCompletionCommands    = []string{"use", "current", "unset", "list"}
-	authCompletionCommands       = []string{"list", "methods", "presets", "inspect", "check", "login", "complete", "logout", "secret"}
-	authSecretCompletionCommands = []string{"set", "put", "delete"}
-	configCompletionCommands     = []string{"init", "secret-store", "provider", "auth-launcher", "policy", "audit"}
-	pluginCompletionCommands     = []string{"list", "install", "info", "remove", "verify", "upgrade"}
-	specCompletionCommands       = []string{"list", "get", "status", "export"}
-	docsCompletionCommands       = []string{"generate"}
+	platformCommandNames = []string{"use", "current", "unset"}
+	accountCommandNames  = []string{"list", "inspect", "use", "current", "add", "ensure", "remove"}
+	subjectCommandNames  = []string{"use", "current", "unset", "list"}
+	authCommandNames     = []string{"list", "methods", "presets", "inspect", "check", "login", "complete", "logout", "secret"}
+	secretCommandNames   = []string{"set", "put", "delete"}
+	configCommandNames   = []string{"init", "secret-store", "provider", "auth-launcher", "policy", "audit"}
+	pluginCommandNames   = []string{"list", "install", "info", "remove", "verify", "upgrade"}
+	specCommandNames     = []string{"list", "get", "status", "export"}
+	docsCommandNames     = []string{"generate"}
+	completionShellNames = []string{"bash", "zsh", "fish"}
 )
 
-func commandUsageLine(path string, commands []string) string {
-	return fmt.Sprintf("%s %s", path, commandAlternatives(commands))
+func commandUsage(noun string, commands []string) string {
+	return fmt.Sprintf("Usage: clawrise %s %s", noun, bracketedCommandList(commands))
 }
 
-func commandAlternatives(commands []string) string {
+func bracketedCommandList(commands []string) string {
 	return "[" + strings.Join(commands, "|") + "]"
 }
