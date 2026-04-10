@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	operationCompletionFlags     = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
-	batchCompletionFlags         = []string{"--json", "--input", "--help", "-h"}
-	specExportCompletionFlags    = []string{"--format", "--out-dir", "--help", "-h"}
-	docsGenerateCompletionFlags  = []string{"--out-dir", "--help", "-h"}
-	configInitCompletionFlags    = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
+	operationCompletionFlags  = []string{"--account", "--subject", "--json", "--input", "--timeout", "--dry-run", "--debug-provider-payload", "--verify", "--idempotency-key", "--output", "--quiet", "--help", "-h"}
+	batchCompletionFlags      = []string{"--json", "--input", "--help", "-h"}
+	specExportCompletionFlags = []string{"--format", "--out-dir", "--help", "-h"}
+	docsGenerateCompletionFlags = []string{"--out-dir", "--help", "-h"}
+	configInitCompletionFlags = []string{"--platform", "--preset", "--subject", "--account", "--method", "--scope", "--force", "--help", "-h"}
 )
 
 // runCompletion prints the shell completion script.
@@ -45,7 +45,7 @@ func runCompletion(args []string, stdout io.Writer, service *spec.Service) error
 }
 
 func printCompletionHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise completion <bash|zsh|fish>")
+	_, _ = fmt.Fprintf(stdout, "Usage: clawrise completion <%s>\n", strings.Join(completionShellCLICommands, "|"))
 	_, _ = fmt.Fprintln(stdout, "")
 	_, _ = fmt.Fprintln(stdout, "Examples:")
 	_, _ = fmt.Fprintln(stdout, "  clawrise completion bash")
@@ -54,12 +54,12 @@ func printCompletionHelp(stdout io.Writer) {
 }
 
 func buildBashCompletionScript(data spec.CompletionData) string {
-	rootWords := shellWords(append(append([]string{}, rootCommandNames...), data.Operations...))
+	rootWords := shellWords(append(append([]string{}, rootCLICommands...), data.Operations...))
 	specPaths := shellWords(data.SpecPaths)
 
 	return fmt.Sprintf(`# bash completion for clawrise
 _clawrise_completion() {
-  local cur prev first second
+  local cur prev first second third
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev=""
   if [[ ${COMP_CWORD} -gt 0 ]]; then
@@ -67,11 +67,15 @@ _clawrise_completion() {
   fi
   first=""
   second=""
+  third=""
   if [[ ${#COMP_WORDS[@]} -gt 1 ]]; then
     first="${COMP_WORDS[1]}"
   fi
   if [[ ${#COMP_WORDS[@]} -gt 2 ]]; then
     second="${COMP_WORDS[2]}"
+  fi
+  if [[ ${#COMP_WORDS[@]} -gt 3 ]]; then
+    third="${COMP_WORDS[3]}"
   fi
 
   if [[ ${COMP_CWORD} -eq 1 ]]; then
@@ -104,13 +108,71 @@ _clawrise_completion() {
       COMPREPLY=()
       return 0
       ;;
-    config)
+    secret)
       if [[ ${COMP_CWORD} -eq 2 ]]; then
         COMPREPLY=( $(compgen -W '%s' -- "$cur") )
       else
-        COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+        COMPREPLY=()
       fi
       return 0
+      ;;
+    config)
+      if [[ ${COMP_CWORD} -eq 2 ]]; then
+        COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+        return 0
+      fi
+      case "$second" in
+        init)
+          COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+          return 0
+          ;;
+        secret-store)
+          if [[ ${COMP_CWORD} -eq 3 ]]; then
+            COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+          else
+            COMPREPLY=()
+          fi
+          return 0
+          ;;
+        provider)
+          if [[ ${COMP_CWORD} -eq 3 ]]; then
+            COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+          else
+            COMPREPLY=()
+          fi
+          return 0
+          ;;
+        auth-launcher)
+          if [[ ${COMP_CWORD} -eq 3 ]]; then
+            COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+          else
+            COMPREPLY=()
+          fi
+          return 0
+          ;;
+        policy)
+          if [[ ${COMP_CWORD} -eq 3 ]]; then
+            COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+          else
+            COMPREPLY=()
+          fi
+          return 0
+          ;;
+        audit)
+          if [[ ${COMP_CWORD} -eq 3 ]]; then
+            COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+          elif [[ ${COMP_CWORD} -eq 4 && ( "$third" == "add" || "$third" == "remove" ) ]]; then
+            COMPREPLY=( $(compgen -W '%s' -- "$cur") )
+          else
+            COMPREPLY=()
+          fi
+          return 0
+          ;;
+        *)
+          COMPREPLY=()
+          return 0
+          ;;
+      esac
       ;;
     plugin)
       COMPREPLY=( $(compgen -W '%s' -- "$cur") )
@@ -166,22 +228,28 @@ _clawrise_completion() {
 complete -F _clawrise_completion clawrise
 `,
 		rootWords,
-		shellWords(platformCommandNames),
-		shellWords(subjectCommandNames),
-		shellWords(accountCommandNames),
-		shellWords(authCommandNames),
-		shellWords(secretCommandNames),
-		shellWords(secretCommandNames),
-		shellWords(configCommandNames),
+		shellWords(platformCLICommands),
+		shellWords(subjectCLICommands),
+		shellWords(accountCLICommands),
+		shellWords(authCLICommands),
+		shellWords(authSecretCLICommands),
+		shellWords(authSecretCLICommands),
+		shellWords(configCLICommands),
 		shellWords(configInitCompletionFlags),
-		shellWords(pluginCommandNames),
-		shellWords(specCommandNames),
+		shellWords(configSecretStoreCLICommands),
+		shellWords(configProviderCLICommands),
+		shellWords(configAuthLauncherCLICommands),
+		shellWords(configPolicyCLICommands),
+		shellWords(configAuditCLICommands),
+		shellWords(configAuditTargetCLICommands),
+		shellWords(pluginCLICommands),
+		shellWords(specCLICommands),
 		specPaths,
 		shellWords(specExportCompletionFlags),
-		shellWords(docsCommandNames),
+		shellWords(docsCLICommands),
 		specPaths,
 		shellWords(docsGenerateCompletionFlags),
-		shellWords(completionShellNames),
+		shellWords(completionShellCLICommands),
 		shellWords(batchCompletionFlags),
 		shellWords(operationCompletionFlags),
 	)
@@ -197,6 +265,12 @@ local -a account_commands
 local -a auth_commands
 local -a auth_secret_commands
 local -a config_commands
+local -a config_secret_store_commands
+local -a config_provider_commands
+local -a config_auth_launcher_commands
+local -a config_policy_commands
+local -a config_audit_commands
+local -a config_audit_targets
 local -a plugin_commands
 local -a spec_commands
 local -a docs_commands
@@ -216,6 +290,12 @@ account_commands=(%s)
 auth_commands=(%s)
 auth_secret_commands=(%s)
 config_commands=(%s)
+config_secret_store_commands=(%s)
+config_provider_commands=(%s)
+config_auth_launcher_commands=(%s)
+config_policy_commands=(%s)
+config_audit_commands=(%s)
+config_audit_targets=(%s)
 plugin_commands=(%s)
 spec_commands=(%s)
 docs_commands=(%s)
@@ -254,11 +334,47 @@ case "$words[2]" in
       esac
     fi
     ;;
+  secret)
+    if (( CURRENT == 3 )); then
+      compadd -- $auth_secret_commands
+    fi
+    ;;
   config)
     if (( CURRENT == 3 )); then
       compadd -- $config_commands
     else
-      compadd -- $config_init_flags
+      case "$words[3]" in
+        init)
+          compadd -- $config_init_flags
+          ;;
+        secret-store)
+          if (( CURRENT == 4 )); then
+            compadd -- $config_secret_store_commands
+          fi
+          ;;
+        provider)
+          if (( CURRENT == 4 )); then
+            compadd -- $config_provider_commands
+          fi
+          ;;
+        auth-launcher)
+          if (( CURRENT == 4 )); then
+            compadd -- $config_auth_launcher_commands
+          fi
+          ;;
+        policy)
+          if (( CURRENT == 4 )); then
+            compadd -- $config_policy_commands
+          fi
+          ;;
+        audit)
+          if (( CURRENT == 4 )); then
+            compadd -- $config_audit_commands
+          elif (( CURRENT == 5 )) && [[ "$words[4]" == "add" || "$words[4]" == "remove" ]]; then
+            compadd -- $config_audit_targets
+          fi
+          ;;
+      esac
     fi
     ;;
   plugin)
@@ -298,17 +414,23 @@ case "$words[2]" in
     compadd -- $operation_flags
     ;;
 esac
-`, zshWords(append(append([]string{}, rootCommandNames...), data.Operations...)),
-		zshWords(platformCommandNames),
-		zshWords(subjectCommandNames),
-		zshWords(accountCommandNames),
-		zshWords(authCommandNames),
-		zshWords(secretCommandNames),
-		zshWords(configCommandNames),
-		zshWords(pluginCommandNames),
-		zshWords(specCommandNames),
-		zshWords(docsCommandNames),
-		zshWords(completionShellNames),
+`, zshWords(append(append([]string{}, rootCLICommands...), data.Operations...)),
+		zshWords(platformCLICommands),
+		zshWords(subjectCLICommands),
+		zshWords(accountCLICommands),
+		zshWords(authCLICommands),
+		zshWords(authSecretCLICommands),
+		zshWords(configCLICommands),
+		zshWords(configSecretStoreCLICommands),
+		zshWords(configProviderCLICommands),
+		zshWords(configAuthLauncherCLICommands),
+		zshWords(configPolicyCLICommands),
+		zshWords(configAuditCLICommands),
+		zshWords(configAuditTargetCLICommands),
+		zshWords(pluginCLICommands),
+		zshWords(specCLICommands),
+		zshWords(docsCLICommands),
+		zshWords(completionShellCLICommands),
 		zshWords(data.Operations),
 		zshWords(data.SpecPaths),
 		zshWords(operationCompletionFlags),
@@ -325,26 +447,31 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 		"complete -c clawrise -f",
 	}
 
-	for _, command := range rootCommandNames {
+	for _, command := range rootCLICommands {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_use_subcommand' -a '%s'", command))
 	}
 	for _, operation := range data.Operations {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_use_subcommand' -a '%s'", operation))
 	}
 
-	lines = append(lines, fishCommandCompletions("platform", platformCommandNames)...)
-	lines = append(lines, fishCommandCompletions("account", accountCommandNames)...)
-	lines = append(lines, fishCommandCompletions("subject", subjectCommandNames)...)
-	lines = append(lines, fishCommandCompletions("auth", authCommandNames)...)
-	lines = append(lines, fishCommandCompletions("secret", secretCommandNames)...)
-	for _, value := range secretCommandNames {
-		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from auth; and __fish_seen_subcommand_from secret' -a '%s'", value))
-	}
-	lines = append(lines, fishCommandCompletions("config", configCommandNames)...)
-	lines = append(lines, fishCommandCompletions("plugin", pluginCommandNames)...)
-	lines = append(lines, fishCommandCompletions("spec", specCommandNames)...)
-	lines = append(lines, fishCommandCompletions("docs", docsCommandNames)...)
-	lines = append(lines, fishCommandCompletions("completion", completionShellNames)...)
+	lines = append(lines, fishCommandCompletions("platform", platformCLICommands)...)
+	lines = append(lines, fishCommandCompletions("account", accountCLICommands)...)
+	lines = append(lines, fishCommandCompletions("subject", subjectCLICommands)...)
+	lines = append(lines, fishCommandCompletions("auth", authCLICommands)...)
+	lines = append(lines, fishNestedCommandCompletions(authSecretCLICommands, "auth", "secret")...)
+	lines = append(lines, fishCommandCompletions("secret", authSecretCLICommands)...)
+	lines = append(lines, fishCommandCompletions("config", configCLICommands)...)
+	lines = append(lines, fishNestedCommandCompletions(configSecretStoreCLICommands, "config", "secret-store")...)
+	lines = append(lines, fishNestedCommandCompletions(configProviderCLICommands, "config", "provider")...)
+	lines = append(lines, fishNestedCommandCompletions(configAuthLauncherCLICommands, "config", "auth-launcher")...)
+	lines = append(lines, fishNestedCommandCompletions(configPolicyCLICommands, "config", "policy")...)
+	lines = append(lines, fishNestedCommandCompletions(configAuditCLICommands, "config", "audit")...)
+	lines = append(lines, fishNestedCommandCompletions(configAuditTargetCLICommands, "config", "audit", "add")...)
+	lines = append(lines, fishNestedCommandCompletions(configAuditTargetCLICommands, "config", "audit", "remove")...)
+	lines = append(lines, fishCommandCompletions("plugin", pluginCLICommands)...)
+	lines = append(lines, fishCommandCompletions("spec", specCLICommands)...)
+	lines = append(lines, fishCommandCompletions("docs", docsCLICommands)...)
+	lines = append(lines, fishCommandCompletions("completion", completionShellCLICommands)...)
 
 	for _, path := range data.SpecPaths {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from spec; and not __fish_seen_subcommand_from status' -a '%s'", path))
@@ -370,10 +497,10 @@ func buildFishCompletionScript(data spec.CompletionData) string {
 	}
 	for _, flag := range operationCompletionFlags {
 		if strings.HasPrefix(flag, "--") {
-			lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -l '%s'", strings.Join(rootCommandNames, " "), strings.TrimPrefix(flag, "--")))
+			lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -l '%s'", strings.Join(rootCLICommands, " "), strings.TrimPrefix(flag, "--")))
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -s '%s'", strings.Join(rootCommandNames, " "), strings.TrimPrefix(flag, "-")))
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n 'not __fish_seen_subcommand_from %s' -s '%s'", strings.Join(rootCLICommands, " "), strings.TrimPrefix(flag, "-")))
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
@@ -382,6 +509,20 @@ func fishCommandCompletions(command string, values []string) []string {
 	lines := make([]string, 0, len(values))
 	for _, value := range values {
 		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '__fish_seen_subcommand_from %s' -a '%s'", command, value))
+	}
+	return lines
+}
+
+func fishNestedCommandCompletions(values []string, seen ...string) []string {
+	conditions := make([]string, 0, len(seen))
+	for _, command := range seen {
+		conditions = append(conditions, fmt.Sprintf("__fish_seen_subcommand_from %s", command))
+	}
+	predicate := strings.Join(conditions, "; and ")
+
+	lines := make([]string, 0, len(values))
+	for _, value := range values {
+		lines = append(lines, fmt.Sprintf("complete -c clawrise -n '%s' -a '%s'", predicate, value))
 	}
 	return lines
 }
