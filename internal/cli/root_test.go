@@ -1350,6 +1350,83 @@ func TestRunCompletionBash(t *testing.T) {
 	}
 }
 
+func TestRunCompletionZsh(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"completion", "zsh"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`#compdef clawrise`)) {
+		t.Fatalf("expected zsh completion header, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`completion_shells=('bash' 'zsh' 'fish')`)) {
+		t.Fatalf("expected shell variants in zsh completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`operation_flags=('--account' '--subject' '--json' '--input' '--timeout' '--dry-run' '--debug-provider-payload' '--verify'`)) {
+		t.Fatalf("expected operation flags in zsh completion, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunCompletionFish(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"completion", "fish"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -f`)) {
+		t.Fatalf("expected fish completion prefix, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_use_subcommand' -a 'platform'`)) {
+		t.Fatalf("expected root command in fish completion, got: %s", stdout.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte(`complete -c clawrise -n '__fish_seen_subcommand_from completion' -a 'bash'`)) {
+		t.Fatalf("expected shell completion choices in fish completion, got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
+func TestRunCompletionRejectsUnsupportedShell(t *testing.T) {
+	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"completion", "powershell"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported completion shell") {
+		t.Fatalf("expected unsupported shell error, got: %v", err)
+	}
+}
+
 func TestRunSpecHelpFlag(t *testing.T) {
 	t.Setenv("CLAWRISE_CONFIG", t.TempDir()+"/config.yaml")
 
