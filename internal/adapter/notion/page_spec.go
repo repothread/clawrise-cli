@@ -100,6 +100,10 @@ func notionPageUpdateSpec() adapter.OperationSpec {
 				Command: `clawrise notion.page.update --dry-run --json '{"page_id":"page_demo","title":"Updated project notes"}'`,
 			},
 			{
+				Title:   "Archive or trash a page",
+				Command: `clawrise notion.page.update --dry-run --json '{"page_id":"page_demo","in_trash":true}'`,
+			},
+			{
 				Title:   "Update page properties with provider payload debug and verification",
 				Command: `clawrise notion.page.update --debug-provider-payload --verify --json '{"page_id":"page_demo","title":"Updated project notes"}'`,
 			},

@@ -156,6 +156,6 @@ func runAuthSecretDelete(args []string, cfg *config.Config, stdout io.Writer, se
 }
 
 func printAuthSecretHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise auth secret [set|put|delete] <account> <field>")
+	_, _ = fmt.Fprintf(stdout, "Usage: clawrise auth secret %s <account> <field>\n", commandAlternatives(authSecretCLICommands))
 	_, _ = fmt.Fprintln(stdout, "       clawrise auth secret set <account> <field> [--stdin | --from-env <name> | --value <text> --allow-insecure-cli-secret]")
 }

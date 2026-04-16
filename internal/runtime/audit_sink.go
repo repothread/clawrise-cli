@@ -110,16 +110,7 @@ func (s *pluginAuditSink) Name() string {
 	if s == nil || s.runtime == nil {
 		return ""
 	}
-	id := strings.TrimSpace(s.runtime.ID())
-	name := strings.TrimSpace(s.runtime.Name())
-	switch {
-	case id != "" && name != "" && id != name:
-		return name + "/" + id
-	case id != "":
-		return id
-	default:
-		return name
-	}
+	return formatRuntimeCapabilityLabel(s.runtime.Name(), s.runtime.ID(), true)
 }
 
 // 注意：不在 Emit 中关闭 runtime，因为插件进程需要在整个 CLI 调用生命周期内保持可用。
@@ -463,16 +454,7 @@ func auditSinkRuntimeLabel(runtime pluginruntime.AuditSinkRuntime) string {
 	if runtime == nil {
 		return ""
 	}
-	pluginName := strings.TrimSpace(runtime.Name())
-	sinkID := strings.TrimSpace(runtime.ID())
-	switch {
-	case pluginName != "" && sinkID != "":
-		return pluginName + "/" + sinkID
-	case pluginName != "":
-		return pluginName
-	default:
-		return sinkID
-	}
+	return formatRuntimeCapabilityLabel(runtime.Name(), runtime.ID(), false)
 }
 
 func auditSinkSelectorLabel(item config.AuditSinkConfig) string {

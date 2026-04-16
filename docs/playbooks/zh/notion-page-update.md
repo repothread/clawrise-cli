@@ -44,7 +44,18 @@ clawrise notion.page.update --debug-provider-payload --verify --json '{
 }'
 ```
 
-## 4. 用 markdown 替换正文
+## 4. 归档或移入回收站
+
+```bash
+clawrise notion.page.update --dry-run --json '{
+  "page_id":"page_demo",
+  "in_trash":true
+}'
+```
+
+当前 Notion API 原生字段是 `in_trash`，`archived` 仍作为向后兼容别名保留。
+
+## 5. 用 markdown 替换正文
 
 ```bash
 clawrise notion.page.markdown.update --dry-run --json '{

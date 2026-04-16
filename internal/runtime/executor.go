@@ -506,21 +506,11 @@ func writeEnhancementWarnings(operation string, opts ExecuteOptions) []string {
 }
 
 func supportsProviderPayloadDebug(operation string) bool {
-	switch strings.TrimSpace(operation) {
-	case "notion.page.create", "notion.page.update", "notion.block.append", "notion.block.update":
-		return true
-	default:
-		return false
-	}
+	return supportsWriteEnhancement(operation)
 }
 
 func supportsWriteVerification(operation string) bool {
-	switch strings.TrimSpace(operation) {
-	case "notion.page.create", "notion.page.update", "notion.block.append", "notion.block.update":
-		return true
-	default:
-		return false
-	}
+	return supportsWriteEnhancement(operation)
 }
 
 // ExecuteContext is kept as a small seam for future adapter integration.

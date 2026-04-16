@@ -180,7 +180,7 @@ func buildPluginInstallOptions(cfg *config.Config, coreVersion string) pluginrun
 }
 
 func printPluginHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise plugin [list|install|info|remove|verify|upgrade]")
+	_, _ = fmt.Fprintf(stdout, "Usage: clawrise plugin %s\n", commandAlternatives(pluginCLICommands))
 	_, _ = fmt.Fprintln(stdout, "")
 	_, _ = fmt.Fprintln(stdout, "Examples:")
 	_, _ = fmt.Fprintln(stdout, "  clawrise plugin list")

@@ -18,10 +18,15 @@ func TestNotionLiveSmokeWithRealToken(t *testing.T) {
 		t.Skip("short 模式下跳过真实 Notion 联调")
 	}
 
-	for _, name := range []string{"NOTION_TOKEN", "NOTION_PARENT_PAGE_ID"} {
-		if strings.TrimSpace(os.Getenv(name)) == "" {
-			t.Fatalf("缺少真实联调所需环境变量 %s", name)
+	hasToken := false
+	for _, name := range []string{"NOTION_TOKEN", "CLAWRISE_TEST_NOTION_TOKEN"} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			hasToken = true
+			break
 		}
+	}
+	if !hasToken {
+		t.Fatal("缺少真实联调所需 Notion token，请设置 NOTION_TOKEN 或 CLAWRISE_TEST_NOTION_TOKEN")
 	}
 
 	_, currentFile, _, ok := runtime.Caller(0)

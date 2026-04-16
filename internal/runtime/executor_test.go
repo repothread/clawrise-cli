@@ -448,6 +448,160 @@ func TestExecutorExecutesNotionPageGet(t *testing.T) {
 	}
 }
 
+func TestExecutorExecutesNotionPageUpdateWithInTrash(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	var requestBody map[string]any
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/pages/page_demo" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				if request.Method != http.MethodPatch {
+					t.Fatalf("unexpected method: %s", request.Method)
+				}
+				if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+					t.Fatalf("failed to decode request body: %v", err)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"id":       "page_demo",
+					"url":      "https://www.notion.so/page_demo",
+					"in_trash": true,
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "page.update",
+		InputJSON:      `{"page_id":"page_demo","in_trash":true}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion page update success, got error: %+v", envelope.Error)
+	}
+
+	if requestBody["in_trash"] != true {
+		t.Fatalf("expected in_trash=true in request body, got: %+v", requestBody)
+	}
+	if _, exists := requestBody["archived"]; exists {
+		t.Fatalf("expected archived to be omitted from request body, got: %+v", requestBody)
+	}
+}
+
+func TestExecutorExecutesNotionPageUpdateWithArchivedAlias(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	var requestBody map[string]any
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/pages/page_demo" {
+					t.Fatalf("unexpected request path: %s", request.URL.Path)
+				}
+				if request.Method != http.MethodPatch {
+					t.Fatalf("unexpected method: %s", request.Method)
+				}
+				if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+					t.Fatalf("failed to decode request body: %v", err)
+				}
+				return jsonHTTPResponse(t, http.StatusOK, map[string]any{
+					"id":        "page_demo",
+					"url":       "https://www.notion.so/page_demo",
+					"archived":  true,
+					"in_trash":  true,
+					"is_locked": false,
+				}), nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, feishuClient, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "page.update",
+		InputJSON:      `{"page_id":"page_demo","archived":true}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if !envelope.OK {
+		t.Fatalf("expected notion page update success, got error: %+v", envelope.Error)
+	}
+
+	if requestBody["in_trash"] != true {
+		t.Fatalf("expected archived alias to map to in_trash=true, got: %+v", requestBody)
+	}
+	if _, exists := requestBody["archived"]; exists {
+		t.Fatalf("expected archived alias to be normalized away before request, got: %+v", requestBody)
+	}
+}
+
 func TestExecutorExportsProviderDebugForSupportedNotionWrite(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

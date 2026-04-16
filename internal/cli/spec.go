@@ -141,7 +141,7 @@ func runSpecExport(args []string, stdout io.Writer, service *spec.Service) error
 }
 
 func printSpecHelp(stdout io.Writer) {
-	_, _ = fmt.Fprintln(stdout, "Usage: clawrise spec [list|get|status|export]")
+	_, _ = fmt.Fprintf(stdout, "Usage: clawrise spec %s\n", commandAlternatives(specCLICommands))
 	_, _ = fmt.Fprintln(stdout, "")
 	_, _ = fmt.Fprintln(stdout, "Examples:")
 	_, _ = fmt.Fprintln(stdout, "  clawrise spec list")
