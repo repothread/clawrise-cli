@@ -232,6 +232,48 @@ func TestBuildUpdatePagePayloadSupportsInTrashField(t *testing.T) {
 	}
 }
 
+func TestBuildUpdatePagePayloadRejectsUnsupportedTopLevelFields(t *testing.T) {
+	_, appErr := buildUpdatePagePayload(map[string]any{
+		"title": "MOVE TEST PAGE",
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_parent_demo",
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected buildUpdatePagePayload to reject unsupported parent field")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+	if !strings.Contains(appErr.Message, "parent is not supported by notion.page.update") {
+		t.Fatalf("unexpected error message: %s", appErr.Message)
+	}
+	if !strings.Contains(appErr.Message, "use notion.page.move") {
+		t.Fatalf("expected error message to guide callers toward notion.page.move, got: %s", appErr.Message)
+	}
+}
+
+func TestBuildUpdatePagePayloadRejectsMultipleUnsupportedTopLevelFields(t *testing.T) {
+	_, appErr := buildUpdatePagePayload(map[string]any{
+		"title":    "MOVE TEST PAGE",
+		"children": []any{},
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_parent_demo",
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected buildUpdatePagePayload to reject unsupported top-level fields")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+	if !strings.Contains(appErr.Message, "unsupported fields for notion.page.update: children, parent") {
+		t.Fatalf("unexpected error message: %s", appErr.Message)
+	}
+}
+
 func TestBuildUpdatePagePayloadSupportsTemplateLockAndEraseContent(t *testing.T) {
 	payload, appErr := buildUpdatePagePayload(map[string]any{
 		"is_locked":     true,
