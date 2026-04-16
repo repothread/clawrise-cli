@@ -20,7 +20,8 @@ sample_policy_archive="${tmp_root}/sample-policy.tar.gz"
 cli_bin="${CLAWRISE_BIN:-${tmp_root}/clawrise}"
 
 cleanup() {
-  rm -rf "${tmp_root}" "${REPO_ROOT}/.clawrise/plugins"
+  chmod -R u+w "${tmp_root}" 2>/dev/null || true
+  rm -rf "${tmp_root}" "${REPO_ROOT}/.clawrise/plugins" 2>/dev/null || true
 }
 trap cleanup EXIT
 

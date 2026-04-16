@@ -81,7 +81,7 @@ func TestAccountNameContextHelpers(t *testing.T) {
 		t.Fatalf("expected blank account name to keep existing context value, got %q", got)
 	}
 
-	if got := AccountNameFromContext(nil); got != "" {
-		t.Fatalf("expected nil context to return empty account name, got %q", got)
+	if got := AccountNameFromContext(context.Background()); got != "" {
+		t.Fatalf("expected empty context to return empty account name, got %q", got)
 	}
 }

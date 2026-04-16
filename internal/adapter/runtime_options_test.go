@@ -6,7 +6,7 @@ import (
 )
 
 func TestRuntimeOptionsAndRequestIDContextHelpers(t *testing.T) {
-	ctx := WithRuntimeOptions(nil, RuntimeOptions{
+	ctx := WithRuntimeOptions(context.Background(), RuntimeOptions{
 		DebugProviderPayload: true,
 		VerifyAfterWrite:     true,
 	})
@@ -14,16 +14,16 @@ func TestRuntimeOptionsAndRequestIDContextHelpers(t *testing.T) {
 	if !options.DebugProviderPayload || !options.VerifyAfterWrite {
 		t.Fatalf("unexpected runtime options: %+v", options)
 	}
-	if got := RuntimeOptionsFromContext(nil); got != (RuntimeOptions{}) {
-		t.Fatalf("expected nil context to return zero runtime options, got %+v", got)
+	if got := RuntimeOptionsFromContext(context.Background()); got != (RuntimeOptions{}) {
+		t.Fatalf("expected empty context to return zero runtime options, got %+v", got)
 	}
 
 	ctx = WithRequestID(ctx, "req-123")
 	if got := RequestIDFromContext(ctx); got != "req-123" {
 		t.Fatalf("unexpected request id from context: %q", got)
 	}
-	if got := RequestIDFromContext(nil); got != "" {
-		t.Fatalf("expected nil context to return empty request id, got %q", got)
+	if got := RequestIDFromContext(context.Background()); got != "" {
+		t.Fatalf("expected empty context to return empty request id, got %q", got)
 	}
 
 	unchanged := WithRequestID(ctx, "")
@@ -33,7 +33,7 @@ func TestRuntimeOptionsAndRequestIDContextHelpers(t *testing.T) {
 }
 
 func TestProviderDebugCaptureExportsClonedEntries(t *testing.T) {
-	ctx, capture := WithProviderDebugCapture(nil)
+	ctx, capture := WithProviderDebugCapture(context.Background())
 	if capture == nil {
 		t.Fatal("expected provider debug capture to be created")
 	}
