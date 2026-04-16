@@ -1536,6 +1536,89 @@ func TestExecutorRejectsIdempotencyConflict(t *testing.T) {
 	}
 }
 
+func TestExecutorRestartsRejectedInvalidInputIdempotencyRecord(t *testing.T) {
+	t.Setenv("FEISHU_BOT_OPS_APP_ID", "app-id")
+	t.Setenv("FEISHU_BOT_OPS_APP_SECRET", "app-secret")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "feishu",
+			Account:  "feishu_bot_ops",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"feishu_bot_ops": {
+				Platform: "feishu",
+				Subject:  "bot",
+				LegacyAuth: legacyTestAuth{
+					Type:      "client_credentials",
+					AppID:     "env:FEISHU_BOT_OPS_APP_ID",
+					AppSecret: "env:FEISHU_BOT_OPS_APP_SECRET",
+				},
+			},
+		}),
+	})
+
+	registry := adapter.NewRegistry()
+	callCount := 0
+	shouldReject := true
+	registry.Register(adapter.Definition{
+		Operation:       "feishu.demo.write",
+		Platform:        "feishu",
+		Mutating:        true,
+		DefaultTimeout:  time.Second,
+		AllowedSubjects: []string{"bot"},
+		Spec: adapter.OperationSpec{
+			Summary: "测试写操作。",
+		},
+		Handler: func(ctx context.Context, call adapter.Call) (map[string]any, *apperr.AppError) {
+			callCount++
+			if shouldReject {
+				return nil, apperr.New("INVALID_INPUT", "old validation rejected this request")
+			}
+			return map[string]any{
+				"message": call.Input["message"],
+				"id":      "demo_1",
+			}, nil
+		},
+	})
+
+	executor := NewExecutor(store, registry)
+	firstEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.write",
+		InputJSON:      `{"message":"hello"}`,
+	})
+	if err != nil {
+		t.Fatalf("first ExecuteContext returned error: %v", err)
+	}
+	if firstEnvelope.OK {
+		t.Fatal("expected first execution to fail with INVALID_INPUT")
+	}
+	if firstEnvelope.Error == nil || firstEnvelope.Error.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected first error: %+v", firstEnvelope.Error)
+	}
+	if firstEnvelope.Idempotency == nil || firstEnvelope.Idempotency.Status != "rejected" || !firstEnvelope.Idempotency.Persisted {
+		t.Fatalf("unexpected first idempotency state: %+v", firstEnvelope.Idempotency)
+	}
+
+	shouldReject = false
+	secondEnvelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput: "demo.write",
+		InputJSON:      `{"message":"hello"}`,
+	})
+	if err != nil {
+		t.Fatalf("second ExecuteContext returned error: %v", err)
+	}
+	if !secondEnvelope.OK {
+		t.Fatalf("expected second execution to rerun instead of replaying stale INVALID_INPUT, got error: %+v", secondEnvelope.Error)
+	}
+	if secondEnvelope.Idempotency == nil || secondEnvelope.Idempotency.Status != "executed" || !secondEnvelope.Idempotency.Persisted {
+		t.Fatalf("unexpected second idempotency state: %+v", secondEnvelope.Idempotency)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected handler to run twice, got %d", callCount)
+	}
+}
+
 func TestExecutorRetriesRetryableReadByConfig(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 

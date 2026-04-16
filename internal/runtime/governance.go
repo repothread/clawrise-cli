@@ -229,6 +229,49 @@ func (g *runtimeGovernance) finishIdempotency(state *IdempotencyState, record *p
 	return nil
 }
 
+func (g *runtimeGovernance) shouldRestartIdempotency(record *persistedIdempotencyRecord) bool {
+	if record == nil || record.Status != "rejected" || record.Error == nil {
+		return false
+	}
+
+	// Local input-validation failures can become stale across CLI upgrades when
+	// the same auto-generated idempotency key is derived from an unchanged input.
+	// Let those requests re-execute instead of replaying the cached rejection.
+	return strings.TrimSpace(record.Error.Code) == "INVALID_INPUT"
+}
+
+func (g *runtimeGovernance) restartIdempotency(state *IdempotencyState, record *persistedIdempotencyRecord, operation string, requestID string, input map[string]any) error {
+	if state == nil || record == nil {
+		return nil
+	}
+
+	inputHash, err := calculateInputHash(operation, input)
+	if err != nil {
+		return err
+	}
+
+	now := g.now().UTC().Format(time.RFC3339)
+	record.Operation = operation
+	record.InputHash = inputHash
+	record.Status = "in_progress"
+	record.RequestID = requestID
+	record.CreatedAt = now
+	record.UpdatedAt = now
+	record.RetryCount = 0
+	record.Data = nil
+	record.Error = nil
+	record.Meta = Meta{}
+
+	if err := g.store.SaveIdempotencyRecord(record); err != nil {
+		return err
+	}
+
+	state.Status = record.Status
+	state.Persisted = true
+	state.UpdatedAt = record.UpdatedAt
+	return nil
+}
+
 func (g *runtimeGovernance) buildReplayEnvelope(startAt time.Time, requestID string, profile ExecutionProfile, state *IdempotencyState, record *persistedIdempotencyRecord) Envelope {
 	envelope := Envelope{
 		OK:        record.Error == nil,

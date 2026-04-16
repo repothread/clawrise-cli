@@ -182,13 +182,18 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 			if appErr := governance.validateIdempotencyConflict(idempotency, record, canonicalOperation, input); appErr != nil {
 				return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, appErr, executionProfile), warnings, &policyResult), input), nil
 			}
-			if record.Status == "in_progress" {
+			if governance.shouldRestartIdempotency(record) {
+				if err := governance.restartIdempotency(idempotency, record, canonicalOperation, requestID, input); err != nil {
+					return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, 0, apperr.New("IDEMPOTENCY_STORE_FAILED", err.Error()), executionProfile), warnings, &policyResult), input), nil
+				}
+			} else if record.Status == "in_progress" {
 				idempotency.Status = record.Status
 				idempotency.Persisted = true
 				idempotency.UpdatedAt = record.UpdatedAt
 				return e.auditEnvelope(governance, withExecutionMetadata(e.finish(startAt, requestID, canonicalOperation, operation.Platform, false, nil, idempotency, record.RetryCount, apperr.New("IDEMPOTENCY_IN_PROGRESS", "write request with the same idempotency key is already in progress"), executionProfile), warnings, &policyResult), input), nil
+			} else {
+				return e.auditEnvelope(governance, withExecutionMetadata(governance.buildReplayEnvelope(startAt, requestID, executionProfile, idempotency, record), warnings, &policyResult), input), nil
 			}
-			return e.auditEnvelope(governance, withExecutionMetadata(governance.buildReplayEnvelope(startAt, requestID, executionProfile, idempotency, record), warnings, &policyResult), input), nil
 		}
 	}
 
