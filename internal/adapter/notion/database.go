@@ -130,6 +130,10 @@ func (c *Client) UpdateDatabase(ctx context.Context, profile ExecutionProfile, i
 // buildDatabaseCreateRequestPayload builds the request body for database creation.
 // 为 database.create 构造请求体；常见场景优先走简写字段，复杂场景仍可直接透传 body。
 func buildDatabaseCreateRequestPayload(profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.database.create", input, notionDatabaseCreateSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	if body, exists := input["body"]; exists {
 		record, ok := asMap(body)
 		if !ok {
@@ -190,6 +194,10 @@ func buildDatabaseCreateRequestPayload(profile ExecutionProfile, input map[strin
 // buildUpdateDatabasePayload builds the request body for database updates.
 // database.update 的简写字段会映射到新版 Notion API 的原生字段。
 func buildUpdateDatabasePayload(profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.database.update", input, notionDatabaseUpdateSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	if body, exists := input["body"]; exists {
 		record, ok := asMap(body)
 		if !ok {

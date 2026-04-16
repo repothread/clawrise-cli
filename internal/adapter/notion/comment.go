@@ -142,6 +142,10 @@ func (c *Client) CreateComment(ctx context.Context, profile ExecutionProfile, in
 }
 
 func buildCreateCommentPayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.comment.create", input, notionCommentCreateSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	richText, appErr := buildRichText(input["text"], input["rich_text"])
 	if appErr != nil {
 		return nil, appErr

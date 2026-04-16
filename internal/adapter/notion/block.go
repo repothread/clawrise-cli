@@ -104,6 +104,10 @@ func (c *Client) ListBlockChildren(ctx context.Context, profile ExecutionProfile
 // AppendBlockChildren 追加子 block，并支持控制插入位置。
 // AppendBlockChildren appends child blocks to a page or block and can control the insertion position.
 func (c *Client) AppendBlockChildren(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.block.append", input, notionBlockAppendSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
 		return nil, appErr
@@ -330,6 +334,10 @@ func buildBlockChildren(raw any) ([]map[string]any, *apperr.AppError) {
 }
 
 func buildUpdateBlockPayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.block.update", input, notionBlockUpdateSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	var blockInput map[string]any
 	if rawBlock, exists := input["block"]; exists {
 		record, ok := asMap(rawBlock)
