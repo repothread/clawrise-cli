@@ -263,6 +263,10 @@ func (c *Client) UpdatePageMarkdown(ctx context.Context, profile ExecutionProfil
 
 // buildCreatePagePayload builds the request payload used to create a page.
 func buildCreatePagePayload(profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.page.create", input, notionPageCreateSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	parent, parentType, appErr := buildPageParent(profile, input["parent"])
 	if appErr != nil {
 		return nil, appErr
@@ -346,6 +350,12 @@ func buildCreatePagePayload(profile ExecutionProfile, input map[string]any) (map
 }
 
 func buildUpdatePagePayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.page.update", input, notionPageUpdateSpec().Input, map[string]string{
+		"parent": "use notion.page.move",
+	}); appErr != nil {
+		return nil, appErr
+	}
+
 	payload := map[string]any{}
 	properties := map[string]any{}
 
@@ -805,6 +815,10 @@ func decodePageMarkdownResponse(responseBody []byte, decodeErrorMessage string) 
 }
 
 func buildUpdatePageMarkdownPayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.page.markdown.update", input, notionPageMarkdownUpdateSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	commandType, ok := asString(input["type"])
 	if !ok || strings.TrimSpace(commandType) == "" {
 		commandType = inferMarkdownUpdateType(input)

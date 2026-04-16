@@ -269,6 +269,10 @@ func (c *Client) doMultipartRequest(ctx context.Context, method, rawPath string,
 }
 
 func buildCreateFileUploadPayload(input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.file_upload.create", input, notionFileUploadCreateSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	payload := map[string]any{}
 
 	mode := "single_part"
@@ -313,6 +317,10 @@ func buildCreateFileUploadPayload(input map[string]any) (map[string]any, *apperr
 }
 
 func buildSendFileUploadRequest(input map[string]any) (string, []byte, string, int, map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.file_upload.send", input, notionFileUploadSendSpec().Input, nil); appErr != nil {
+		return "", nil, "", 0, nil, appErr
+	}
+
 	fileName := ""
 	if value, ok := asString(input["filename"]); ok && strings.TrimSpace(value) != "" {
 		fileName = strings.TrimSpace(value)
