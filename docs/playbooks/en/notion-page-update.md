@@ -36,6 +36,17 @@ clawrise notion.page.update --debug-provider-payload --verify --json '{
 }'
 ```
 
+## Archive or trash a page
+
+```bash
+clawrise notion.page.update --dry-run --json '{
+  "page_id":"page_demo",
+  "in_trash":true
+}'
+```
+
+`in_trash` is the native field for current Notion API versions. `archived` remains accepted as a backward-compatible alias.
+
 ## Replace markdown content
 
 ```bash
