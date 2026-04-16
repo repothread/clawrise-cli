@@ -117,6 +117,9 @@ jobs:
           CLAWRISE_NPM_DIST_TAG: ${{ steps.npm.outputs.dist_tag }}
         run: node ./scripts/release/prepare-npm-packages.mjs "${{ steps.version.outputs.version }}"
 
+      - name: Prepare skill packages
+        run: node ./scripts/release/prepare-skill-packages.mjs "${{ steps.version.outputs.version }}"
+
       - name: Verify npm runtime wiring
         run: node ./scripts/release/verify-npm-runtime.mjs
 
