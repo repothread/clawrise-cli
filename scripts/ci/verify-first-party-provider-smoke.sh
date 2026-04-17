@@ -40,7 +40,7 @@ defaults:
   subject: bot
   platform_accounts:
     feishu: feishu_bot
-    notion: notion_bot
+    notion: notion_test_bot
 
 auth:
   secret_store:
@@ -71,8 +71,8 @@ accounts:
       secret_refs:
         app_secret: env:FEISHU_APP_SECRET
 
-  notion_bot:
-    title: Notion Bot
+  notion_test_bot:
+    title: Notion Test Bot
     platform: notion
     subject: integration
     auth:
@@ -121,9 +121,9 @@ assert_contains "${doctor_output}" '"name": "notion"' "doctor output"
 echo "Checking account and default-context commands..."
 account_list_output="$("${cli_bin}" account list)"
 assert_contains "${account_list_output}" '"name": "feishu_bot"' "account list output"
-assert_contains "${account_list_output}" '"name": "notion_bot"' "account list output"
+assert_contains "${account_list_output}" '"name": "notion_test_bot"' "account list output"
 
-account_inspect_output="$("${cli_bin}" account inspect notion_bot)"
+account_inspect_output="$("${cli_bin}" account inspect notion_test_bot)"
 assert_contains "${account_inspect_output}" '"ok": true' "account inspect output"
 assert_contains "${account_inspect_output}" '"method": "notion.internal_token"' "account inspect output"
 
@@ -193,12 +193,12 @@ fish_completion_output="$("${cli_bin}" completion fish)"
 assert_contains "${fish_completion_output}" '# fish completion for clawrise' "fish completion output"
 
 echo "Checking dry-run operation paths..."
-"${cli_bin}" account use notion_bot >/dev/null
+"${cli_bin}" account use notion_test_bot >/dev/null
 
 notion_read_output="$("${cli_bin}" notion.page.get --dry-run --json '{"page_id":"page_demo"}')"
 assert_contains "${notion_read_output}" '"ok": true' "notion page get output"
 assert_contains "${notion_read_output}" '"operation": "notion.page.get"' "notion page get output"
-assert_contains "${notion_read_output}" '"account": "notion_bot"' "notion page get output"
+assert_contains "${notion_read_output}" '"account": "notion_test_bot"' "notion page get output"
 
 notion_write_output="$("${cli_bin}" notion.page.create --dry-run --verify --debug-provider-payload --json '{"title":"Dry Run","parent":{"type":"page_id","id":"page_demo"}}')"
 assert_contains "${notion_write_output}" '"ok": true' "notion page create output"
@@ -213,7 +213,7 @@ assert_contains "${feishu_write_output}" '"operation": "feishu.calendar.event.cr
 assert_contains "${feishu_write_output}" '"account": "feishu_bot"' "feishu calendar create output"
 
 echo "Checking batch execution output..."
-batch_output="$("${cli_bin}" batch --json '{"requests":[{"operation":"feishu.calendar.event.create","dry_run":true,"input":{"calendar_id":"cal_demo","summary":"Batch Smoke 1","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}},{"operation":"notion.page.get","account":"notion_bot","dry_run":true,"input":{"page_id":"page_demo"}}]}')"
+batch_output="$("${cli_bin}" batch --json '{"requests":[{"operation":"feishu.calendar.event.create","dry_run":true,"input":{"calendar_id":"cal_demo","summary":"Batch Smoke 1","start_at":"2026-03-30T10:00:00+08:00","end_at":"2026-03-30T11:00:00+08:00"}},{"operation":"notion.page.get","account":"notion_test_bot","dry_run":true,"input":{"page_id":"page_demo"}}]}')"
 assert_contains "${batch_output}" '"success_count": 2' "batch output"
 assert_contains "${batch_output}" '"operation": "notion.page.get"' "batch output"
 assert_contains "${batch_output}" '"operation": "feishu.calendar.event.create"' "batch output"
