@@ -11,6 +11,8 @@ import (
 	"github.com/clawrise/clawrise-cli/internal/apperr"
 )
 
+const dataSourceDescriptionUnsupportedMessage = "The `description` property is not supported for data sources. Use the Update Database API instead."
+
 // CreateDataSource 创建一个 Notion data source。
 func (c *Client) CreateDataSource(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
 	payload, appErr := buildDataSourceWritePayload(input, false)
@@ -103,7 +105,13 @@ func buildDataSourceWritePayload(input map[string]any, isUpdate bool) (map[strin
 		if len(body) == 0 {
 			return nil, apperr.New("INVALID_INPUT", "body must not be empty")
 		}
-		return cloneMap(body), nil
+		payload := cloneMap(body)
+		if isUpdate {
+			if appErr := validateDataSourceUpdatePayload(payload); appErr != nil {
+				return nil, appErr
+			}
+		}
+		return payload, nil
 	}
 
 	payload := cloneMap(input)
@@ -115,7 +123,19 @@ func buildDataSourceWritePayload(input map[string]any, isUpdate bool) (map[strin
 		}
 		return nil, apperr.New("INVALID_INPUT", "body is required")
 	}
+	if isUpdate {
+		if appErr := validateDataSourceUpdatePayload(payload); appErr != nil {
+			return nil, appErr
+		}
+	}
 	return payload, nil
+}
+
+func validateDataSourceUpdatePayload(payload map[string]any) *apperr.AppError {
+	if _, exists := payload["description"]; exists {
+		return apperr.New("INVALID_INPUT", dataSourceDescriptionUnsupportedMessage)
+	}
+	return nil
 }
 
 func shouldCreateDatabaseForDataSource(payload map[string]any) bool {

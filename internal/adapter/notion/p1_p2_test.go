@@ -204,7 +204,7 @@ func TestDataSourceWriteOperationsSuccess(t *testing.T) {
 				if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 					t.Fatalf("failed to decode update data source payload: %v", err)
 				}
-				if _, ok := payload["description"].([]any); !ok {
+				if _, ok := payload["title"].([]any); !ok {
 					t.Fatalf("unexpected update payload: %+v", payload)
 				}
 				return jsonResponse(t, http.StatusOK, map[string]any{
@@ -262,11 +262,11 @@ func TestDataSourceWriteOperationsSuccess(t *testing.T) {
 	updated, appErr := client.UpdateDataSource(context.Background(), testStaticProfile(), map[string]any{
 		"data_source_id": "ds_123",
 		"body": map[string]any{
-			"description": []any{
+			"title": []any{
 				map[string]any{
 					"type": "text",
 					"text": map[string]any{
-						"content": "Managed by Clawrise",
+						"content": "Project Tasks Updated",
 					},
 				},
 			},

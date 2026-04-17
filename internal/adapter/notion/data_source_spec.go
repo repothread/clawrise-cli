@@ -82,15 +82,16 @@ func notionDataSourceUpdateSpec() adapter.OperationSpec {
 			Required: []string{"data_source_id", "body"},
 			Notes: []string{
 				"`body` is passed through to the Notion update data source API as-is.",
+				"`body.description` is not supported by Notion for data source updates; use `notion.database.update` for database descriptions.",
 			},
 			Sample: map[string]any{
 				"data_source_id": "ds_demo",
 				"body": map[string]any{
-					"description": []any{
+					"title": []any{
 						map[string]any{
 							"type": "text",
 							"text": map[string]any{
-								"content": "Managed by Clawrise",
+								"content": "Project Tasks",
 							},
 						},
 					},

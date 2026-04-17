@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -270,6 +271,59 @@ func TestBuildCreateDatabasePayloadRejectsInvalidParent(t *testing.T) {
 	}
 	if appErr.Code != "INVALID_INPUT" {
 		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
+func TestUpdateDataSourceRejectsDescriptionField(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	client := newTestClient(t, &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+			return nil, nil
+		},
+	})
+
+	_, appErr := client.UpdateDataSource(context.Background(), testStaticProfile(), map[string]any{
+		"data_source_id": "ds_123",
+		"body": map[string]any{
+			"description": []any{
+				map[string]any{
+					"type": "text",
+					"text": map[string]any{
+						"content": "Managed by Clawrise",
+					},
+				},
+			},
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected UpdateDataSource to reject description field")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+	if appErr.Message != dataSourceDescriptionUnsupportedMessage {
+		t.Fatalf("unexpected error message: %s", appErr.Message)
+	}
+}
+
+func TestNotionDataSourceUpdateSpecOmitsDescriptionSample(t *testing.T) {
+	spec := notionDataSourceUpdateSpec()
+
+	body, ok := spec.Input.Sample["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected body sample to be an object: %+v", spec.Input.Sample)
+	}
+	if _, exists := body["description"]; exists {
+		t.Fatalf("did not expect description in update sample: %+v", body)
+	}
+	title, ok := body["title"].([]any)
+	if !ok || len(title) == 0 {
+		t.Fatalf("expected title sample in update body: %+v", body)
+	}
+	if len(spec.Input.Notes) < 2 || !strings.Contains(spec.Input.Notes[1], "notion.database.update") {
+		t.Fatalf("expected update note to direct callers to notion.database.update: %+v", spec.Input.Notes)
 	}
 }
 

@@ -113,8 +113,8 @@ cat > "${CONFIG_PATH}" <<EOF
 defaults:
     platform: notion
     platform_accounts:
-        notion: notion_ci
-    account: notion_ci
+        notion: notion_test_bot
+    account: notion_test_bot
     subject: integration
 auth:
     secret_store:
@@ -128,8 +128,8 @@ runtime:
         base_delay_ms: 200
         max_delay_ms: 1000
 accounts:
-    notion_ci:
-        title: Notion CI
+    notion_test_bot:
+        title: Notion Test Bot
         platform: notion
         subject: integration
         auth:
@@ -185,20 +185,20 @@ extract_json '.platform == "notion"' "${platform_current_output}" >/dev/null
 subject_current_output="$(clawrise_json subject current)"
 extract_json '.subject == "integration"' "${subject_current_output}" >/dev/null
 account_current_output="$(clawrise_json account current)"
-extract_json '.account.name == "notion_ci"' "${account_current_output}" >/dev/null
+extract_json '.account.name == "notion_test_bot"' "${account_current_output}" >/dev/null
 account_list_output="$(clawrise_json account list)"
 extract_json '.accounts | length == 1' "${account_list_output}" >/dev/null
-extract_json '.accounts[0].name == "notion_ci"' "${account_list_output}" >/dev/null
-account_inspect_output="$(clawrise_json account inspect notion_ci)"
+extract_json '.accounts[0].name == "notion_test_bot"' "${account_list_output}" >/dev/null
+account_inspect_output="$(clawrise_json account inspect notion_test_bot)"
 extract_json '.ok == true and .data.platform == "notion" and .data.subject == "integration"' "${account_inspect_output}" >/dev/null
 auth_methods_output="$(clawrise_json auth methods --platform notion)"
 extract_json '.ok == true and (.data.methods | map(.id) | index("notion.internal_token")) != null' "${auth_methods_output}" >/dev/null
 auth_presets_output="$(clawrise_json auth presets --platform notion)"
 extract_json '.ok == true and (.data.presets | map(.id) | index("internal_token")) != null' "${auth_presets_output}" >/dev/null
-auth_inspect_output="$(clawrise_json auth inspect notion_ci)"
+auth_inspect_output="$(clawrise_json auth inspect notion_test_bot)"
 extract_json '.ok == true and .data.ready == true and .data.auth_method == "notion.internal_token"' "${auth_inspect_output}" >/dev/null
 doctor_output="$(clawrise_json doctor)"
-extract_json '.ok == true and .data.defaults.platform == "notion" and .data.defaults.account == "notion_ci"' "${doctor_output}" >/dev/null
+extract_json '.ok == true and .data.defaults.platform == "notion" and .data.defaults.account == "notion_test_bot"' "${doctor_output}" >/dev/null
 spec_list_output="$(clawrise_json spec list notion)"
 extract_json '.ok == true and (.data.items | length) > 0' "${spec_list_output}" >/dev/null
 spec_get_output="$(clawrise_json spec get notion.page.create)"
@@ -209,8 +209,8 @@ extract_json '.ok == true and (.data.written_files | length) >= 1' "${docs_gener
 plugin_list_output="$(clawrise_json plugin list)"
 extract_json '.plugins != null' "${plugin_list_output}" >/dev/null
 
-log "验证 Notion CI 账号鉴权"
-clawrise_json auth check notion_ci >/dev/null
+log "验证 Notion Test Bot 账号鉴权"
+clawrise_json auth check notion_test_bot >/dev/null
 
 log "检查当前 integration 可访问页面，并确认父页面可访问"
 visible_pages_output="$(clawrise_json notion.search.query --json '{"filter":{"property":"object","value":"page"},"page_size":20}')"
