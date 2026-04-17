@@ -21,14 +21,15 @@ func newError(code, message string) *Error {
 
 // ListItem describes one node returned by `spec list`.
 type ListItem struct {
-	Name           string `json:"name"`
-	FullPath       string `json:"full_path"`
-	NodeType       string `json:"node_type"`
-	ChildCount     int    `json:"child_count,omitempty"`
-	OperationCount int    `json:"operation_count,omitempty"`
-	Implemented    *bool  `json:"implemented,omitempty"`
-	Mutating       *bool  `json:"mutating,omitempty"`
-	Summary        string `json:"summary,omitempty"`
+	Name             string   `json:"name"`
+	FullPath         string   `json:"full_path"`
+	NodeType         string   `json:"node_type"`
+	ChildCount       int      `json:"child_count,omitempty"`
+	OperationCount   int      `json:"operation_count,omitempty"`
+	DirectOperations []string `json:"direct_operations,omitempty"`
+	Implemented      *bool    `json:"implemented,omitempty"`
+	Mutating         *bool    `json:"mutating,omitempty"`
+	Summary          string   `json:"summary,omitempty"`
 }
 
 // ListResult describes one hierarchical browse result.

@@ -54,6 +54,43 @@ func TestServiceListGroup(t *testing.T) {
 	}
 }
 
+func TestServiceListPlatformIncludesDirectOperationsPreview(t *testing.T) {
+	registry := newTestRegistry(t)
+	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
+
+	result, err := service.List("notion")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+
+	var databaseItem *ListItem
+	for index := range result.Items {
+		if result.Items[index].FullPath == "notion.database" {
+			databaseItem = &result.Items[index]
+			break
+		}
+	}
+	if databaseItem == nil {
+		t.Fatalf("expected notion.database item in %+v", result.Items)
+	}
+	if databaseItem.OperationCount != 3 {
+		t.Fatalf("expected notion.database operation count 3, got %+v", databaseItem)
+	}
+	expected := []string{
+		"notion.database.create",
+		"notion.database.get",
+		"notion.database.update",
+	}
+	if len(databaseItem.DirectOperations) != len(expected) {
+		t.Fatalf("unexpected direct operations: %+v", databaseItem.DirectOperations)
+	}
+	for index, operation := range expected {
+		if databaseItem.DirectOperations[index] != operation {
+			t.Fatalf("unexpected direct operations: %+v", databaseItem.DirectOperations)
+		}
+	}
+}
+
 func TestServiceGetOperation(t *testing.T) {
 	registry := newTestRegistry(t)
 	service := NewServiceWithCatalog(registry, catalogEntriesFromRegistry(registry))
