@@ -3,11 +3,14 @@ package metadata
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/clawrise/clawrise-cli/internal/adapter"
+	feishuadapter "github.com/clawrise/clawrise-cli/internal/adapter/feishu"
+	notionadapter "github.com/clawrise/clawrise-cli/internal/adapter/notion"
 )
 
 func TestValidatePlaybooksFilePassesForRegisteredOperations(t *testing.T) {
@@ -82,6 +85,48 @@ playbooks:
 	}
 	if len(result.Issues) == 0 || !strings.Contains(result.Issues[0].Code, "PLAYBOOK_OPERATION_NOT_FOUND") {
 		t.Fatalf("expected missing operation issue, got: %+v", result.Issues)
+	}
+}
+
+func TestValidateProjectPlaybooksIndex(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve current test file path")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd returned error: %v", err)
+	}
+	if err := os.Chdir(repoRoot); err != nil {
+		t.Fatalf("Chdir returned error: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(cwd)
+	}()
+
+	registry := adapter.NewRegistry()
+
+	feishuClient, err := feishuadapter.NewClient(feishuadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct feishu client: %v", err)
+	}
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	feishuadapter.RegisterOperations(registry, feishuClient)
+	notionadapter.RegisterOperations(registry, notionClient)
+
+	service := NewServiceWithCatalog(registry, nil)
+	result, err := service.ValidatePlaybooks()
+	if err != nil {
+		t.Fatalf("ValidatePlaybooks returned error: %v", err)
+	}
+	if !result.OK || result.InvalidCount != 0 {
+		t.Fatalf("expected project playbooks to validate cleanly, got %+v", result)
 	}
 }
 

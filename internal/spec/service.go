@@ -48,6 +48,7 @@ func (s *Service) List(path string) (ListResult, error) {
 
 	itemsByPath := map[string]*ListItem{}
 	childrenByPath := map[string]map[string]struct{}{}
+	directOperationsByPath := map[string]map[string]struct{}{}
 	hasMatch := path == ""
 
 	for _, definition := range definitions {
@@ -85,6 +86,12 @@ func (s *Service) List(path string) (ListResult, error) {
 		}
 
 		item.OperationCount++
+		if len(opParts) == childDepth+1 {
+			if _, ok := directOperationsByPath[childFullPath]; !ok {
+				directOperationsByPath[childFullPath] = map[string]struct{}{}
+			}
+			directOperationsByPath[childFullPath][definition.Operation] = struct{}{}
+		}
 		if len(opParts) > childDepth {
 			if _, ok := childrenByPath[childFullPath]; !ok {
 				childrenByPath[childFullPath] = map[string]struct{}{}
@@ -101,6 +108,13 @@ func (s *Service) List(path string) (ListResult, error) {
 	for _, item := range itemsByPath {
 		if item.NodeType != "operation" {
 			item.ChildCount = len(childrenByPath[item.FullPath])
+			if operations := directOperationsByPath[item.FullPath]; len(operations) > 0 {
+				item.DirectOperations = make([]string, 0, len(operations))
+				for operation := range operations {
+					item.DirectOperations = append(item.DirectOperations, operation)
+				}
+				sort.Strings(item.DirectOperations)
+			}
 		}
 		items = append(items, *item)
 	}

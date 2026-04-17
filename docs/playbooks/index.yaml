@@ -1,5 +1,5 @@
 version: 1
-updated_at: "2026-04-02"
+updated_at: "2026-04-17"
 playbooks:
   - id: feishu-document-update
     title: 更新飞书文档
@@ -91,3 +91,19 @@ playbooks:
       - read
     zh_path: docs/playbooks/zh/notion-data-source-query.md
     en_path: docs/playbooks/en/notion-data-source-query.md
+  - id: notion-database-update
+    title: 更新 Notion database 顶层 description
+    title_en: Update a Notion database description
+    platform: notion
+    operations:
+      - notion.database.update
+      - notion.database.get
+      - notion.data_source.update
+    tags:
+      - notion
+      - database
+      - description
+      - write
+      - dry-run
+    zh_path: docs/playbooks/zh/notion-database-update.md
+    en_path: docs/playbooks/en/notion-database-update.md
