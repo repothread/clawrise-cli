@@ -874,9 +874,19 @@ Required fields:
 
 - `block_id`
 
+Optional fields:
+
+- `allow_child_page_delete`
+
 Allowed subject:
 
 - `integration`
+
+Safety notes:
+
+- deleting a `child_page` block can archive/trash the underlying Notion page, not merely remove one visual entry
+- keep `allow_child_page_delete` unset unless you intentionally want to archive that page
+- if the integration lacks Notion read content capability, the adapter cannot inspect the target type and will require `allow_child_page_delete=true` before deleting
 
 Success output should include:
 

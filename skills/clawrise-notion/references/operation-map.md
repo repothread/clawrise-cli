@@ -35,7 +35,7 @@ Use this reference when the user describes a Notion task but does not know the e
 - `notion.block.get_descendants`: recursively collect all descendant blocks
 - `notion.block.append`: append child blocks under one block
 - `notion.block.update`: update one block body
-- `notion.block.delete`: archive one block
+- `notion.block.delete`: archive one block (`child_page` targets can archive the underlying page; use with care)
 
 ## File Uploads And Attachments
 

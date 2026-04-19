@@ -1653,32 +1653,54 @@ func TestUpdateBlockVerifyAfterWriteSuccess(t *testing.T) {
 func TestDeleteBlockSuccess(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 
+	requestCount := 0
 	transport := &roundTripFunc{
 		handler: func(request *http.Request) (*http.Response, error) {
 			if request.URL.Path != "/v1/blocks/block_demo" {
 				t.Fatalf("unexpected request path: %s", request.URL.Path)
 			}
-			if request.Method != http.MethodDelete {
-				t.Fatalf("unexpected method: %s", request.Method)
-			}
-
-			return jsonResponse(t, http.StatusOK, map[string]any{
-				"id":           "block_demo",
-				"type":         "paragraph",
-				"has_children": false,
-				"in_trash":     true,
-				"paragraph": map[string]any{
-					"rich_text": []map[string]any{
-						{
-							"type":       "text",
-							"plain_text": "待删除正文",
-							"text": map[string]any{
-								"content": "待删除正文",
+			requestCount++
+			switch request.Method {
+			case http.MethodGet:
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":           "block_demo",
+					"type":         "paragraph",
+					"has_children": false,
+					"in_trash":     false,
+					"paragraph": map[string]any{
+						"rich_text": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "待删除正文",
+								"text": map[string]any{
+									"content": "待删除正文",
+								},
 							},
 						},
 					},
-				},
-			}), nil
+				}), nil
+			case http.MethodDelete:
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":           "block_demo",
+					"type":         "paragraph",
+					"has_children": false,
+					"in_trash":     true,
+					"paragraph": map[string]any{
+						"rich_text": []map[string]any{
+							{
+								"type":       "text",
+								"plain_text": "待删除正文",
+								"text": map[string]any{
+									"content": "待删除正文",
+								},
+							},
+						},
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected method: %s", request.Method)
+				return nil, nil
+			}
 		},
 	}
 
@@ -1694,6 +1716,132 @@ func TestDeleteBlockSuccess(t *testing.T) {
 	}
 	if data["archived"] != true {
 		t.Fatalf("unexpected archived flag: %+v", data["archived"])
+	}
+	if requestCount != 2 {
+		t.Fatalf("expected guard GET plus DELETE, got %d requests", requestCount)
+	}
+}
+
+func TestDeleteBlockChildPageRequiresOverride(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	requestCount := 0
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/blocks/block_demo" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			requestCount++
+			if request.Method != http.MethodGet {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":           "block_demo",
+				"type":         "child_page",
+				"has_children": false,
+				"in_trash":     false,
+				"child_page": map[string]any{
+					"title": "Dangerous child page",
+				},
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.DeleteBlock(context.Background(), testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+	})
+	if appErr == nil {
+		t.Fatalf("expected unsafe delete error, got data: %+v", data)
+	}
+	if appErr.Code != "UNSAFE_BLOCK_DELETE" {
+		t.Fatalf("unexpected error code: %+v", appErr)
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected only the guard GET request, got %d requests", requestCount)
+	}
+}
+
+func TestDeleteBlockChildPageAllowedWithOverride(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	requestCount := 0
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/blocks/block_demo" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			requestCount++
+			switch request.Method {
+			case http.MethodDelete:
+				return jsonResponse(t, http.StatusOK, map[string]any{
+					"id":           "block_demo",
+					"type":         "child_page",
+					"has_children": false,
+					"in_trash":     true,
+					"child_page": map[string]any{
+						"title": "Dangerous child page",
+					},
+				}), nil
+			default:
+				t.Fatalf("unexpected method: %s", request.Method)
+				return nil, nil
+			}
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.DeleteBlock(context.Background(), testStaticProfile(), map[string]any{
+		"block_id":                "block_demo",
+		"allow_child_page_delete": true,
+	})
+	if appErr != nil {
+		t.Fatalf("DeleteBlock returned error: %+v", appErr)
+	}
+	if data["deleted"] != true {
+		t.Fatalf("unexpected deleted flag: %+v", data["deleted"])
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected a direct DELETE when override is set, got %d requests", requestCount)
+	}
+}
+
+func TestDeleteBlockRequiresOverrideWhenGuardCannotInspectType(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	requestCount := 0
+	transport := &roundTripFunc{
+		handler: func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path != "/v1/blocks/block_demo" {
+				t.Fatalf("unexpected request path: %s", request.URL.Path)
+			}
+			requestCount++
+			if request.Method != http.MethodGet {
+				t.Fatalf("unexpected method: %s", request.Method)
+			}
+
+			return jsonResponse(t, http.StatusForbidden, map[string]any{
+				"object":  "error",
+				"status":  http.StatusForbidden,
+				"code":    "restricted_resource",
+				"message": "API token does not have read content capabilities.",
+			}), nil
+		},
+	}
+
+	client := newTestClient(t, transport)
+	data, appErr := client.DeleteBlock(context.Background(), testStaticProfile(), map[string]any{
+		"block_id": "block_demo",
+	})
+	if appErr == nil {
+		t.Fatalf("expected unsafe delete error, got data: %+v", data)
+	}
+	if appErr.Code != "UNSAFE_BLOCK_DELETE" {
+		t.Fatalf("unexpected error code: %+v", appErr)
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected only the guard GET request, got %d requests", requestCount)
 	}
 }
 

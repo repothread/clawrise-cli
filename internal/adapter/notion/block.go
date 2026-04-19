@@ -272,8 +272,16 @@ func (c *Client) UpdateBlock(ctx context.Context, profile ExecutionProfile, inpu
 
 // DeleteBlock moves the specified block to the trash.
 func (c *Client) DeleteBlock(ctx context.Context, profile ExecutionProfile, input map[string]any) (map[string]any, *apperr.AppError) {
+	if appErr := validateTopLevelInputFields("notion.block.delete", input, notionBlockDeleteSpec().Input, nil); appErr != nil {
+		return nil, appErr
+	}
+
 	blockID, appErr := requireIDField(input, "block_id")
 	if appErr != nil {
+		return nil, appErr
+	}
+
+	if appErr := c.guardChildPageDelete(ctx, profile, blockID, input); appErr != nil {
 		return nil, appErr
 	}
 
@@ -304,6 +312,35 @@ func (c *Client) DeleteBlock(ctx context.Context, profile ExecutionProfile, inpu
 	data := normalizeBlockData(block)
 	data["deleted"] = true
 	return data, nil
+}
+
+func (c *Client) guardChildPageDelete(ctx context.Context, profile ExecutionProfile, blockID string, input map[string]any) *apperr.AppError {
+	if allowed, _ := asBool(input["allow_child_page_delete"]); allowed {
+		return nil
+	}
+
+	blockData, appErr := c.GetBlock(ctx, profile, map[string]any{
+		"block_id": blockID,
+	})
+	if appErr != nil {
+		if appErr.Code == "PERMISSION_DENIED" {
+			return apperr.New(
+				"UNSAFE_BLOCK_DELETE",
+				"unable to inspect the block type before delete because Notion read content capability is missing; deleting a child_page can archive/trash the underlying page; grant read content or set allow_child_page_delete=true to continue",
+			)
+		}
+		return appErr
+	}
+
+	blockType, _ := asString(blockData["type"])
+	if strings.TrimSpace(blockType) != "child_page" {
+		return nil
+	}
+
+	return apperr.New(
+		"UNSAFE_BLOCK_DELETE",
+		"target block is a child_page; deleting it can archive/trash the underlying Notion page; set allow_child_page_delete=true to continue",
+	)
 }
 
 // buildBlockChildren 将 Clawrise shorthand 与 provider-native block body 统一映射为 Notion blocks。

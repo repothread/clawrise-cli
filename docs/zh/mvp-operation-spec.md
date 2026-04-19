@@ -904,9 +904,19 @@ MVP 限制：
 
 - `block_id`
 
+可选字段：
+
+- `allow_child_page_delete`
+
 允许主体：
 
 - `integration`
+
+安全说明：
+
+- 删除 `child_page` block 可能会归档/移入回收站其底层 Notion 页面，不只是移除一个视觉入口
+- 只有在你明确要归档该页面时才应设置 `allow_child_page_delete=true`
+- 如果集成缺少 Notion 的 read content capability，适配器无法安全判断目标类型，也会要求显式设置 `allow_child_page_delete=true` 才允许删除
 
 成功输出建议包含：
 
