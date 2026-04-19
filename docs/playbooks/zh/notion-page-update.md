@@ -67,6 +67,11 @@ clawrise notion.page.markdown.update --dry-run --json '{
 }'
 ```
 
+对于 Notion enhanced markdown：
+
+- 句子或列表项里的行内提及要用 `<mention-page>` 和 `<mention-database>`
+- `<page>` 和 `<database>` 只应用作独立 block 引用，必须单独占一行
+
 真正写入时移除 `--dry-run` 即可。
 
 ## 验证建议

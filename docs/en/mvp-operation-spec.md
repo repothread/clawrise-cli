@@ -749,6 +749,11 @@ Supported command types:
 - `insert_content`
 - `replace_content_range`
 
+Safety notes:
+
+- inline page and database mentions must use `<mention-page>` and `<mention-database>`
+- standalone `<page>` and `<database>` tags are block references and must appear on their own line
+
 Allowed subject:
 
 - `integration`

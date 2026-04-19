@@ -58,3 +58,8 @@ clawrise notion.page.markdown.update --dry-run --json '{
   }
 }'
 ```
+
+For Notion enhanced markdown:
+
+- use `<mention-page>` and `<mention-database>` for inline mentions inside sentences or list items
+- use `<page>` and `<database>` only as standalone block references on their own line

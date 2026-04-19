@@ -779,6 +779,11 @@ MVP 限制：
 - `insert_content`
 - `replace_content_range`
 
+安全说明：
+
+- 行内页面/数据库提及必须使用 `<mention-page>` 和 `<mention-database>`
+- 独立的 `<page>` 和 `<database>` 标签表示 block 级引用，必须单独占一行
+
 允许主体：
 
 - `integration`

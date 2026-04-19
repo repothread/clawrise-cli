@@ -646,6 +646,9 @@ func extractCreatePageMarkdown(input map[string]any) (string, bool, *apperr.AppE
 	if !ok {
 		return "", false, apperr.New("INVALID_INPUT", "markdown must be a string")
 	}
+	if appErr := validateEnhancedMarkdownInlineReferences(markdown); appErr != nil {
+		return "", false, appErr
+	}
 	return markdown, true, nil
 }
 
@@ -904,6 +907,9 @@ func buildUpdateContentCommand(raw any) (map[string]any, *apperr.AppError) {
 		if !ok {
 			return nil, apperr.New("INVALID_INPUT", "new_str is required for each content update")
 		}
+		if appErr := validateEnhancedMarkdownInlineReferences(newStr); appErr != nil {
+			return nil, appErr
+		}
 
 		update := map[string]any{
 			"old_str": strings.TrimSpace(oldStr),
@@ -933,6 +939,9 @@ func buildReplaceContentCommand(raw any) (map[string]any, *apperr.AppError) {
 	if !ok {
 		return nil, apperr.New("INVALID_INPUT", "replace_content.new_str is required")
 	}
+	if appErr := validateEnhancedMarkdownInlineReferences(newStr); appErr != nil {
+		return nil, appErr
+	}
 
 	result := map[string]any{
 		"new_str": newStr,
@@ -951,6 +960,9 @@ func buildInsertContentCommand(raw any) (map[string]any, *apperr.AppError) {
 	content, ok := asString(command["content"])
 	if !ok {
 		return nil, apperr.New("INVALID_INPUT", "insert_content.content is required")
+	}
+	if appErr := validateEnhancedMarkdownInlineReferences(content); appErr != nil {
+		return nil, appErr
 	}
 
 	result := map[string]any{
@@ -971,6 +983,9 @@ func buildReplaceContentRangeCommand(raw any) (map[string]any, *apperr.AppError)
 	if !ok {
 		return nil, apperr.New("INVALID_INPUT", "replace_content_range.content is required")
 	}
+	if appErr := validateEnhancedMarkdownInlineReferences(content); appErr != nil {
+		return nil, appErr
+	}
 	contentRange, ok := asString(command["content_range"])
 	if !ok || strings.TrimSpace(contentRange) == "" {
 		return nil, apperr.New("INVALID_INPUT", "replace_content_range.content_range is required")
@@ -984,4 +999,52 @@ func buildReplaceContentRangeCommand(raw any) (map[string]any, *apperr.AppError)
 		result["allow_deleting_content"] = allowDeletingContent
 	}
 	return result, nil
+}
+
+func validateEnhancedMarkdownInlineReferences(markdown string) *apperr.AppError {
+	lines := strings.Split(markdown, "\n")
+	inFence := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		if !strings.Contains(line, "<page ") && !strings.Contains(line, "<database ") {
+			continue
+		}
+		if isStandaloneReferenceLine(trimmed) {
+			continue
+		}
+
+		return apperr.New(
+			"INVALID_INPUT",
+			"inline <page> and <database> tags are not supported by Notion enhanced markdown; use standalone block references on their own line or inline <mention-page>/<mention-database> tags instead",
+		)
+	}
+
+	return nil
+}
+
+func isStandaloneReferenceLine(line string) bool {
+	for _, tag := range []string{"page", "database"} {
+		open := "<" + tag
+		close := "</" + tag + ">"
+		if !strings.HasPrefix(line, open) {
+			continue
+		}
+		if !strings.HasSuffix(line, close) {
+			return false
+		}
+		openEnd := strings.Index(line, ">")
+		if openEnd == -1 || openEnd < len(open) {
+			return false
+		}
+		return true
+	}
+	return false
 }
