@@ -86,6 +86,12 @@ func TestExecutorHelperFunctionsAndAccountSelection(t *testing.T) {
 	if !supportsWriteVerification("notion.block.update") || supportsWriteVerification("notion.database.query") {
 		t.Fatal("unexpected supportsWriteVerification behavior")
 	}
+	if appErr := validateWriteEnhancements("notion.page.markdown.update", adapter.Definition{Mutating: true}, ExecuteOptions{VerifyAfterWrite: true}); appErr == nil || appErr.Code != "UNSUPPORTED_WRITE_ENHANCEMENT" {
+		t.Fatalf("expected strict unsupported verify error, got %+v", appErr)
+	}
+	if appErr := validateWriteEnhancements("notion.page.markdown.update", adapter.Definition{Mutating: true}, ExecuteOptions{VerifyAfterWrite: true, DryRun: true}); appErr != nil {
+		t.Fatalf("expected dry-run verify to stay warning-only, got %+v", appErr)
+	}
 	warnings := writeEnhancementWarnings("feishu.doc.create", ExecuteOptions{DebugProviderPayload: true, VerifyAfterWrite: true})
 	if len(warnings) != 2 {
 		t.Fatalf("expected unsupported enhancement warnings, got %+v", warnings)

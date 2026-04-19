@@ -120,6 +120,10 @@ func (e *Executor) Execute(ctx context.Context, opts ExecuteOptions) (Envelope, 
 		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, apperr.New("SUBJECT_NOT_ALLOWED", fmt.Sprintf("account %s with subject %s is not allowed to call %s", accountName, account.Subject, canonicalOperation)), ExecutionProfile{}), input), nil
 	}
 
+	if appErr := validateWriteEnhancements(canonicalOperation, definition, opts); appErr != nil {
+		return e.auditEnvelope(governance, e.finish(startAt, requestID, canonicalOperation, operation.Platform, opts.DryRun, nil, nil, 0, appErr, ExecutionProfile{}), input), nil
+	}
+
 	warnings = append(warnings, writeEnhancementWarnings(canonicalOperation, opts)...)
 
 	executionProfile := ExecutionProfile{
@@ -508,6 +512,16 @@ func writeEnhancementWarnings(operation string, opts ExecuteOptions) []string {
 		}
 	}
 	return warnings
+}
+
+func validateWriteEnhancements(operation string, definition adapter.Definition, opts ExecuteOptions) *apperr.AppError {
+	if !opts.VerifyAfterWrite || opts.DryRun || !definition.Mutating {
+		return nil
+	}
+	if supportsWriteVerification(operation) {
+		return nil
+	}
+	return apperr.New("UNSUPPORTED_WRITE_ENHANCEMENT", "--verify is not supported for "+operation)
 }
 
 func supportsProviderPayloadDebug(operation string) bool {

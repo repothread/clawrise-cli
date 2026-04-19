@@ -857,6 +857,64 @@ func TestExecutorExecutesNotionPageMarkdownGet(t *testing.T) {
 	}
 }
 
+func TestExecutorRejectsUnsupportedVerifyForNotionPageMarkdownUpdate(t *testing.T) {
+	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
+
+	store := newTestStore(t, &config.Config{
+		Defaults: config.Defaults{
+			Platform: "notion",
+			Account:  "notion_team_docs",
+		},
+		Accounts: accountsFromLegacyAccounts(map[string]legacyTestAccount{
+			"notion_team_docs": {
+				Platform: "notion",
+				Subject:  "integration",
+				LegacyAuth: legacyTestAuth{
+					Type:  "static_token",
+					Token: "env:NOTION_ACCESS_TOKEN",
+				},
+			},
+		}),
+	})
+
+	notionClient, err := notionadapter.NewClient(notionadapter.Options{
+		BaseURL: "https://api.notion.com",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				t.Fatalf("unexpected provider request for unsupported verify path: %s %s", request.Method, request.URL.Path)
+				return nil, nil
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notion client: %v", err)
+	}
+
+	executor := &Executor{
+		store:    store,
+		registry: newTestRegistry(t, nil, notionClient),
+		now:      time.Now,
+	}
+
+	envelope, err := executor.ExecuteContext(context.Background(), ExecuteOptions{
+		OperationInput:   "page.markdown.update",
+		VerifyAfterWrite: true,
+		InputJSON:        `{"page_id":"page_demo","type":"replace_content","replace_content":{"new_str":"# Updated title"}}`,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteContext returned error: %v", err)
+	}
+	if envelope.OK {
+		t.Fatalf("expected unsupported verify execution to fail, got data: %+v", envelope.Data)
+	}
+	if envelope.Error == nil || envelope.Error.Code != "UNSUPPORTED_WRITE_ENHANCEMENT" {
+		t.Fatalf("unexpected error payload: %+v", envelope.Error)
+	}
+	if !strings.Contains(envelope.Error.Message, "--verify is not supported for notion.page.markdown.update") {
+		t.Fatalf("unexpected error message: %+v", envelope.Error)
+	}
+}
+
 func TestExecutorExecutesNotionSearch(t *testing.T) {
 	t.Setenv("NOTION_ACCESS_TOKEN", "notion-token")
 
