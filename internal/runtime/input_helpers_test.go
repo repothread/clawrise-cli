@@ -74,6 +74,23 @@ func TestReadInputCoversInlineFileAndStdinPaths(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "failed to decode JSON input") {
 			t.Fatalf("expected json decode failure, got: %v", err)
 		}
+		if !strings.Contains(err.Error(), "prefer --input <file> for automation") {
+			t.Fatalf("expected inline json guidance in decode failure, got: %v", err)
+		}
+	})
+
+	t.Run("keeps file decode failures source-specific without shell quoting hint", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "broken.json")
+		if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+			t.Fatalf("failed to write broken input file: %v", err)
+		}
+		_, err := ReadInput("", path, nil)
+		if err == nil || !strings.Contains(err.Error(), "failed to decode JSON input from --input") {
+			t.Fatalf("expected file decode failure, got: %v", err)
+		}
+		if strings.Contains(err.Error(), "prefer --input <file> for automation") {
+			t.Fatalf("did not expect shell quoting hint for file input, got: %v", err)
+		}
 	})
 
 	t.Run("returns empty map for null json", func(t *testing.T) {

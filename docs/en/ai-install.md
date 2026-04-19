@@ -62,10 +62,9 @@ Setup is responsible for:
 - installing any requested platform skills
 - configuring default platform accounts when credentials are available
 
-Default setup account names:
+Setup-generated default account names come from the selected auth preset metadata and may vary by platform and auth method.
 
-- `notion_bot`
-- `feishu_bot`
+Do not hard-code account names in automation unless you passed `--account` explicitly during setup.
 
 If no platform is specified, setup installs only `clawrise-core` and does not initialize a platform account.
 
@@ -93,6 +92,10 @@ FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feis
 ```
 
 If the environment variables are missing and the shell is interactive, `setup` can prompt for the required credentials directly.
+
+Environment variables are only an import source during setup.
+
+After setup imports the credentials, Clawrise persists them in its configured secret store for normal execution. Long-lived automation should not rely on recurring shell rc injection such as `~/.bashrc`.
 
 Client-specific examples:
 
@@ -128,11 +131,18 @@ clawrise doctor
 clawrise spec list
 ```
 
-If platform setup was requested, also verify the default account:
+If platform setup was requested, first verify the current default selection:
 
 ```bash
-clawrise auth check notion_bot
-clawrise auth check feishu_bot
+clawrise auth check
+```
+
+If you need the explicit generated account name, inspect it before hard-coding follow-up commands:
+
+```bash
+clawrise account list
+clawrise auth presets --platform notion
+clawrise auth presets --platform feishu
 ```
 
 Also verify that the installed skill directories exist in the target location.
@@ -148,6 +158,12 @@ Expected skill names:
 If installation fails because of write permissions:
 
 - switch from a shared install path to a project-local install path
+
+If you later import secrets outside of `setup`:
+
+- treat `clawrise auth secret set ...` as a one-time import into the configured secret store
+- prefer `--stdin`, a real process environment with `--from-env`, or direct provisioning into the secret backend
+- avoid relying on non-interactive shell startup files for recurring secret injection
 
 If the user only wants one platform skill:
 

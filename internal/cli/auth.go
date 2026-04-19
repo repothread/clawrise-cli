@@ -84,11 +84,16 @@ func runAuthInspect(args []string, cfg *config.Config, store *config.Store, stdo
 	if manager == nil {
 		return fmt.Errorf("plugin manager is required")
 	}
-	if len(args) > 1 {
-		return fmt.Errorf("usage: clawrise auth inspect [account]")
+
+	parsedArgs, handled, err := parseAuthOptionalAccountArgs("inspect", args, stdout)
+	if err != nil {
+		return err
+	}
+	if handled {
+		return nil
 	}
 
-	accountName, account, ok, err := resolveAccountSelection(cfg, args)
+	accountName, account, ok, err := resolveAccountSelection(cfg, parsedArgs)
 	if err != nil {
 		return writeCLIError(stdout, "ACCOUNT_REQUIRED", err.Error())
 	}
@@ -113,10 +118,17 @@ func runAuthInspect(args []string, cfg *config.Config, store *config.Store, stdo
 }
 
 func runAuthCheck(args []string, cfg *config.Config, store *config.Store, stdout io.Writer, manager *pluginruntime.Manager) error {
-	if err := runAuthInspect(args, cfg, store, stdout, manager); err != nil {
+	parsedArgs, handled, err := parseAuthOptionalAccountArgs("check", args, stdout)
+	if err != nil {
 		return err
 	}
-	accountName, account, ok, err := resolveAccountSelection(cfg, args)
+	if handled {
+		return nil
+	}
+	if err := runAuthInspect(parsedArgs, cfg, store, stdout, manager); err != nil {
+		return err
+	}
+	accountName, account, ok, err := resolveAccountSelection(cfg, parsedArgs)
 	if err != nil {
 		return err
 	}
@@ -366,11 +378,15 @@ func runAuthComplete(args []string, cfg *config.Config, store *config.Store, std
 }
 
 func runAuthLogout(args []string, cfg *config.Config, store *config.Store, stdout io.Writer) error {
-	if len(args) > 1 {
-		return fmt.Errorf("usage: clawrise auth logout [account]")
+	parsedArgs, handled, err := parseAuthOptionalAccountArgs("logout", args, stdout)
+	if err != nil {
+		return err
+	}
+	if handled {
+		return nil
 	}
 
-	accountName, account, ok, err := resolveAccountSelection(cfg, args)
+	accountName, account, ok, err := resolveAccountSelection(cfg, parsedArgs)
 	if err != nil {
 		return writeCLIError(stdout, "ACCOUNT_REQUIRED", err.Error())
 	}
@@ -405,6 +421,28 @@ func runAuthLogout(args []string, cfg *config.Config, store *config.Store, stdou
 			"logged_out": true,
 		},
 	})
+}
+
+func parseAuthOptionalAccountArgs(command string, args []string, stdout io.Writer) ([]string, bool, error) {
+	flags := pflag.NewFlagSet("clawrise auth "+command, pflag.ContinueOnError)
+	flags.SetOutput(stdout)
+	flags.Usage = func() {
+		_, _ = fmt.Fprintf(stdout, "Usage: clawrise auth %s [account]\n", command)
+		_, _ = fmt.Fprintln(stdout, "")
+		_, _ = fmt.Fprintln(stdout, "If account is omitted, Clawrise uses the current/default account selection.")
+		_, _ = fmt.Fprintln(stdout, "  -h, --help   show this help message")
+	}
+
+	if err := flags.Parse(args); err != nil {
+		if err == pflag.ErrHelp {
+			return nil, true, nil
+		}
+		return nil, false, err
+	}
+	if len(flags.Args()) > 1 {
+		return nil, false, fmt.Errorf("usage: clawrise auth %s [account]", command)
+	}
+	return flags.Args(), false, nil
 }
 
 func resolveAccountSelection(cfg *config.Config, args []string) (string, config.Account, bool, error) {
