@@ -1892,6 +1892,33 @@ func TestRunAuthCheck(t *testing.T) {
 	}
 }
 
+func TestRunAuthCheckHelpFlag(t *testing.T) {
+	copyExampleConfig(t)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"auth", "check", "--help"}, Dependencies{
+		Version:       "test",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+		PluginManager: newTestPluginManager(t),
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v, stdout=%s, stderr=%s", err, stdout.String(), stderr.String())
+	}
+
+	if !bytes.Contains(stdout.Bytes(), []byte("Usage: clawrise auth check [account]")) {
+		t.Fatalf("expected auth check help output, got: %s", stdout.String())
+	}
+	if bytes.Contains(stdout.Bytes(), []byte(`"code": "ACCOUNT_NOT_FOUND"`)) {
+		t.Fatalf("did not expect auth check help to be treated as an account lookup: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+}
+
 func TestRunAuthCheckReportsAuthorizationPending(t *testing.T) {
 	copyExampleConfig(t)
 	runSecretSet(t, "notion_public_workspace_a", "client_secret", "client-secret")

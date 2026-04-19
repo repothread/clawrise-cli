@@ -34,6 +34,8 @@ Examples:
 - `feishu_user_alice`
 - `notion_bot`
 
+These example account names are illustrative only. Setup-generated default account names come from preset metadata and may differ by platform or auth method.
+
 ### Subject
 
 Subject describes the identity category used at the provider side.

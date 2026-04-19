@@ -70,10 +70,9 @@ npx @clawrise/clawrise-cli setup ...
 - 安装请求的平台 skills
 - 在凭证可用时初始化默认平台账号
 
-默认 setup 账号名：
+setup 生成的默认账号名来自所选 auth preset 的元数据，不同平台和鉴权方式可能不同。
 
-- `notion_bot`
-- `feishu_bot`
+除非你在 setup 时显式传了 `--account`，否则不要在自动化里硬编码账号名。
 
 如果没有指定平台，`setup` 只安装 `clawrise-core`，不会初始化平台账号。
 
@@ -101,6 +100,10 @@ FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=cli_secret_xxx clawrise setup codex feis
 ```
 
 如果缺少环境变量且当前 shell 可交互，`setup` 会直接提示输入所需凭证。
+
+环境变量在这里只是导入来源。
+
+setup 导入凭证后，Clawrise 会把它们持久化到配置好的 secret store 中供后续正常执行使用。长期自动化不应依赖反复从 `~/.bashrc` 之类的 shell rc 文件注入。
 
 按客户端区分的示例：
 
@@ -136,11 +139,18 @@ clawrise doctor
 clawrise spec list
 ```
 
-如果 setup 里包含平台初始化，再校验默认账号：
+如果 setup 里包含平台初始化，先验证当前默认选择：
 
 ```bash
-clawrise auth check notion_bot
-clawrise auth check feishu_bot
+clawrise auth check
+```
+
+如果你确实需要拿到 setup 生成的显式账号名，再先查看后续要引用的名字：
+
+```bash
+clawrise account list
+clawrise auth presets --platform notion
+clawrise auth presets --platform feishu
 ```
 
 同时确认目标目录中已出现这些 skill：
@@ -154,6 +164,12 @@ clawrise auth check feishu_bot
 如果安装失败是因为写权限不足：
 
 - 改为安装到项目内 skills 目录
+
+如果你在 `setup` 之外单独导入 secret：
+
+- 把 `clawrise auth secret set ...` 理解成一次性导入到 secret store
+- 优先使用 `--stdin`、真实进程环境里的 `--from-env`，或直接写入所配置的 secret backend
+- 避免依赖非交互 shell 的启动文件来反复注入 secret
 
 如果用户只需要一个平台：
 

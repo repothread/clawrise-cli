@@ -34,6 +34,8 @@ Account 是用户显式选择或默认选中的具体执行身份。
 - `feishu_user_alice`
 - `notion_bot`
 
+这些账号名只是示例。setup 自动生成的默认账号名来自 preset 元数据，会因平台或鉴权方式不同而变化。
+
 ### Subject
 
 Subject 表示请求在平台侧归属于哪类主体。

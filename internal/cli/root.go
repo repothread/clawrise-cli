@@ -768,6 +768,7 @@ func printRootHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Write Enhancements:")
 	_, _ = fmt.Fprintln(w, "  --verify                  read back and verify the result after a successful write when supported")
 	_, _ = fmt.Fprintln(w, "  --debug-provider-payload  include the final provider request and response payloads when supported")
+	_, _ = fmt.Fprintln(w, "  For automation and non-trivial payloads, prefer --input <path> or stdin over shell-quoted --json.")
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Examples:")
 	_, _ = fmt.Fprintln(w, "  clawrise notion.block.append --dry-run --json '{\"block_id\":\"blk_demo\",\"children\":[{\"type\":\"paragraph\",\"text\":\"Hello Clawrise\"}]}'")
