@@ -13,6 +13,7 @@ func notionPageCreateSpec() adapter.OperationSpec {
 				"When using a public integration, `parent` may be omitted for workspace-level page creation.",
 				"`children` supports both shorthand top-level block fields and provider-native nested block bodies.",
 				"`markdown` is mutually exclusive with `children` and follows the Notion markdown page API.",
+				"When `markdown` contains inline page or database mentions, use `<mention-page>` and `<mention-database>`; standalone `<page>` and `<database>` tags are block references and must stay on their own line.",
 				"`template` cannot be combined with `children` or `markdown` because Notion applies template content asynchronously.",
 				"`position` customizes where the child page mention is inserted when the parent is a page; `after` is a shorthand alias for `position.type=after_block`.",
 				"When both shorthand and provider-native fields are present on the same block, the top-level fields take precedence.",
@@ -163,6 +164,7 @@ func notionPageMarkdownUpdateSpec() adapter.OperationSpec {
 			Optional: []string{"update_content", "replace_content", "insert_content", "replace_content_range"},
 			Notes: []string{
 				"`type` selects which command payload is required.",
+				"Inline page and database mentions must use `<mention-page>` and `<mention-database>`; standalone `<page>` and `<database>` tags are block references and must stay on their own line.",
 			},
 			Sample: map[string]any{
 				"page_id": "page_demo",

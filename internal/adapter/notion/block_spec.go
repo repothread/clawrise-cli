@@ -126,8 +126,24 @@ func notionBlockDeleteSpec() adapter.OperationSpec {
 		Summary: "Archive a Notion block.",
 		Input: adapter.InputSpec{
 			Required: []string{"block_id"},
+			Optional: []string{"allow_child_page_delete"},
+			Notes: []string{
+				"Deleting a `child_page` block can archive/trash the underlying Notion page, not just remove one visual entry.",
+				"Set `allow_child_page_delete=true` only when you intentionally want that destructive behavior.",
+				"If the integration lacks Notion read content capability, the adapter cannot inspect the block type safely and will also require `allow_child_page_delete=true` before deleting.",
+			},
 			Sample: map[string]any{
 				"block_id": "blk_demo",
+			},
+		},
+		Examples: []adapter.ExampleSpec{
+			{
+				Title:   "Delete a regular block",
+				Command: `clawrise notion.block.delete --json '{"block_id":"blk_demo"}'`,
+			},
+			{
+				Title:   "Explicitly allow deleting a child_page block",
+				Command: `clawrise notion.block.delete --json '{"block_id":"blk_child_page","allow_child_page_delete":true}'`,
 			},
 		},
 	}

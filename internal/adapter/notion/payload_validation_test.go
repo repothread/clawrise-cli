@@ -428,6 +428,55 @@ func TestBuildUpdatePageMarkdownPayloadRejectsUnsupportedTopLevelFields(t *testi
 	}
 }
 
+func TestBuildUpdatePageMarkdownPayloadRejectsInlinePageAndDatabaseReferenceTags(t *testing.T) {
+	_, appErr := buildUpdatePageMarkdownPayload(map[string]any{
+		"type": "replace_content",
+		"replace_content": map[string]any{
+			"new_str": "- 共享入口页：<page url=\"https://www.notion.so/34734e09734f8198914add9bf199494c\">共享增长资产索引</page>\n- 数据库：<database url=\"https://www.notion.so/dd486be033c5403fbe1ba3de6dc0f9c3\">共享产品库</database>",
+		},
+	})
+	if appErr == nil {
+		t.Fatal("expected buildUpdatePageMarkdownPayload to reject inline page/database references")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+	if !strings.Contains(appErr.Message, "<mention-page>/<mention-database>") {
+		t.Fatalf("unexpected error message: %s", appErr.Message)
+	}
+}
+
+func TestBuildUpdatePageMarkdownPayloadAllowsStandaloneReferenceBlocksAndInlineMentions(t *testing.T) {
+	payload, appErr := buildUpdatePageMarkdownPayload(map[string]any{
+		"type": "replace_content",
+		"replace_content": map[string]any{
+			"new_str": "<page url=\"https://www.notion.so/34734e09734f8198914add9bf199494c\">共享增长资产索引</page>\n\n请改为维护 <mention-database url=\"https://www.notion.so/dd486be033c5403fbe1ba3de6dc0f9c3\">共享产品库</mention-database>。",
+		},
+	})
+	if appErr != nil {
+		t.Fatalf("buildUpdatePageMarkdownPayload returned error: %+v", appErr)
+	}
+	if payload["type"] != "replace_content" {
+		t.Fatalf("unexpected payload type: %+v", payload)
+	}
+}
+
+func TestBuildCreatePagePayloadRejectsInlinePageReferenceTagsInMarkdown(t *testing.T) {
+	_, appErr := buildCreatePagePayload(testStaticProfile(), map[string]any{
+		"parent": map[string]any{
+			"type": "page_id",
+			"id":   "page_demo",
+		},
+		"markdown": "请改为维护 <page url=\"https://www.notion.so/34734e09734f8198914add9bf199494c\">共享增长资产索引</page>。",
+	})
+	if appErr == nil {
+		t.Fatal("expected buildCreatePagePayload to reject inline page references in markdown")
+	}
+	if appErr.Code != "INVALID_INPUT" {
+		t.Fatalf("unexpected error code: %s", appErr.Code)
+	}
+}
+
 func TestBuildCreateCommentPayloadValidatesParentsAndAttachments(t *testing.T) {
 	// 评论接口要求 parent 互斥，这里把有效负载与错误路径一起补上。
 	// The comments API requires mutually exclusive parent selectors, so this test covers both one valid payload and the conflicting-input error path.

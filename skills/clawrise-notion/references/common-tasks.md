@@ -128,6 +128,8 @@ Notes:
 - when both input shapes are present on the same block, top-level fields win
 - keep `--dry-run` in the loop until the payload shape is stable
 - add `--verify` on `notion.block.append` or `notion.block.update` when you need immediate read-after-write confirmation
+- do not treat `child_page` blocks as disposable navigation-only items; `notion.block.delete` can archive/trash the underlying page unless you intentionally opt in with `allow_child_page_delete=true`
+- if your Notion integration lacks read content capability, the adapter cannot inspect block type before delete and will still require `allow_child_page_delete=true`
 - add `--debug-provider-payload` on `notion.block.append` or `notion.block.update` when you need to inspect the final provider request and response
 - use `notion.block.get_descendants` instead of repeated `notion.block.list_children` calls when you need the full subtree
 
