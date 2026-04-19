@@ -753,6 +753,9 @@ Safety notes:
 
 - inline page and database mentions must use `<mention-page>` and `<mention-database>`
 - standalone `<page>` and `<database>` tags are block references and must appear on their own line
+- `replace_content.allow_deleting_content`, `update_content.allow_deleting_content`, and `replace_content_range.allow_deleting_content` explicitly allow destructive writes that would remove existing child pages or child databases
+- for navigation or index pages, prefer `notion.block.append` / `notion.block.delete` when you need to preserve existing child content
+- when the goal is hierarchy restructuring rather than page-body replacement, prefer `notion.page.move`
 
 Allowed subject:
 

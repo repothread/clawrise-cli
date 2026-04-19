@@ -72,6 +72,26 @@ clawrise notion.page.markdown.update --dry-run --json '{
 - 句子或列表项里的行内提及要用 `<mention-page>` 和 `<mention-database>`
 - `<page>` 和 `<database>` 只应用作独立 block 引用，必须单独占一行
 
+如果这次 replace 会移除现有的 `child_page` 或 `child_database` 内容，Notion 默认会拦截这条路径。
+
+- 如果你想做非破坏性更新，就在 replacement markdown 中保留现有 child content
+- 只有在你明确要删除这些 child content 时，才设置 `replace_content.allow_deleting_content=true`
+- 对首页 / 导航页重构，优先考虑 `notion.block.append` / `notion.block.delete`，而不是整页 replace
+- 如果真实目标是调整层级关系，优先使用 `notion.page.move`
+
+显式 destructive override 示例：
+
+```bash
+clawrise notion.page.markdown.update --dry-run --json '{
+  "page_id":"page_demo",
+  "type":"replace_content",
+  "replace_content":{
+    "new_str":"# Rebuilt homepage",
+    "allow_deleting_content":true
+  }
+}'
+```
+
 真正写入时移除 `--dry-run` 即可。
 
 ## 验证建议
