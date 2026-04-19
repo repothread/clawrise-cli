@@ -783,6 +783,9 @@ MVP 限制：
 
 - 行内页面/数据库提及必须使用 `<mention-page>` 和 `<mention-database>`
 - 独立的 `<page>` 和 `<database>` 标签表示 block 级引用，必须单独占一行
+- `replace_content.allow_deleting_content`、`update_content.allow_deleting_content`、`replace_content_range.allow_deleting_content` 可以显式允许删除现有 child pages / child databases 的破坏性写入
+- 对首页、导航页、索引页，如果你需要保留现有 child content，优先使用 `notion.block.append` / `notion.block.delete`
+- 如果目标其实是调整页面层级而不是替换正文，优先使用 `notion.page.move`
 
 允许主体：
 

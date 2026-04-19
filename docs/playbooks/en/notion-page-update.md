@@ -63,3 +63,23 @@ For Notion enhanced markdown:
 
 - use `<mention-page>` and `<mention-database>` for inline mentions inside sentences or list items
 - use `<page>` and `<database>` only as standalone block references on their own line
+
+If the replace would remove existing `child_page` or `child_database` content, Notion protects that path by default.
+
+- keep the existing child content in the replacement markdown when you want a non-destructive update
+- set `replace_content.allow_deleting_content=true` only when you intentionally want the replace to delete that child content
+- for homepage / navigation refactors, prefer `notion.block.append` / `notion.block.delete` over whole-page replace
+- if the real goal is hierarchy restructuring, prefer `notion.page.move`
+
+Example destructive override:
+
+```bash
+clawrise notion.page.markdown.update --dry-run --json '{
+  "page_id":"page_demo",
+  "type":"replace_content",
+  "replace_content":{
+    "new_str":"# Rebuilt homepage",
+    "allow_deleting_content":true
+  }
+}'
+```
